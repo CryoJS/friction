@@ -1,5 +1,6 @@
 /**
  * Friction orchestrator.
+ *   POST /scans          { url }       -> { scanId } at once; crawl, 10 tasks, 30 persona runs in the background
  *   POST /runs           { url, task } -> { runId } at once; three personas run in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
  *   GET  /health                       -> live or mock, and which env vars are missing
@@ -7,15 +8,18 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
   CreateRunRequestSchema,
+  CreateScanRequestSchema,
   SuggestTasksRequestSchema,
   formatIssues,
   isAllowedOrigin,
   normalizeTargetUrl,
   type CreateRunResponse,
+  type CreateScanResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
 import { RunManager } from "./runManager";
+import { ScanManager } from "./scanManager";
 import { suggestTasks } from "./suggest";
 import { Semaphore, errorMessage, log } from "./util";
 import { WorkerClient } from "./workerClient";
@@ -24,6 +28,7 @@ const worker = new WorkerClient(config.workerUrl);
 /** One pool for every browser this process opens: persona runs and scan crawls alike. */
 const sessions = new Semaphore(config.maxSessions);
 const runs = new RunManager(config, worker, sessions);
+const scans = new ScanManager(config, worker, runs, sessions);
 const app = express();
 
 app.use(express.json({ limit: "64kb" }));
@@ -67,6 +72,22 @@ app.post("/runs", async (req, res) => {
   } catch (err) {
     // Only reachable if the Worker refused to create the run. The control room then falls back on its own.
     log("http", `could not start a run: ${errorMessage(err)}`);
+    res.status(502).json({ error: `Worker unreachable at ${config.workerUrl}: ${errorMessage(err)}` });
+  }
+});
+
+app.post("/scans", async (req, res) => {
+  const parsed = CreateScanRequestSchema.safeParse(req.body);
+  const url = parsed.success ? normalizeTargetUrl(parsed.data.url) : null;
+  if (!url) {
+    res.status(400).json({ error: "url: not a valid http(s) URL" });
+    return;
+  }
+  try {
+    const body: CreateScanResponse = { scanId: await scans.start(url) };
+    res.status(201).json(body);
+  } catch (err) {
+    log("http", `could not start a scan: ${errorMessage(err)}`);
     res.status(502).json({ error: `Worker unreachable at ${config.workerUrl}: ${errorMessage(err)}` });
   }
 });

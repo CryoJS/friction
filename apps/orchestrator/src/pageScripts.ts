@@ -168,3 +168,17 @@ export function locateScript(xpath: string): string {
     return { found: true, label: st.labelOf(el), bbox: r.width > 0 && r.height > 0 ? st.rectOf(el) : null, scrolled, opensPopup };
   })()`;
 }
+
+/**
+ * hrefs a visitor reaches from the site's navigation: anchors inside nav,
+ * header and [role=navigation] (collapsed dropdown items included), else every
+ * visible anchor on the page. Filtering (same origin, auth pages, files) is
+ * pickCrawlLinks' job, in Node.
+ */
+export const NAV_LINKS = `(() => {
+  const hrefs = (root, visibleOnly) => Array.from(root.querySelectorAll("a[href]"))
+    .filter((a) => !visibleOnly || a.getBoundingClientRect().width > 0)
+    .map((a) => a.href);
+  const scoped = Array.from(document.querySelectorAll("nav, header, [role=navigation]")).flatMap((el) => hrefs(el, false));
+  return scoped.length > 0 ? scoped : hrefs(document, true);
+})()`;
