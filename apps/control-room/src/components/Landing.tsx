@@ -20,16 +20,16 @@ type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "
 
 const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
-    title: "One isolated browser",
-    detail: "One agent, a competent first-time visitor, attempts your task in its own Browserbase session inside a fresh context, on the live site.",
+    title: "One copied browser, multiple agents",
+    detail: "A disposable copy of the site gives several agents the same page to inspect. They work in parallel without touching the live experience, then leave notes directly on the UI.",
   },
   {
     title: "Observe the page",
-    detail: "Every step starts with a screenshot and the accessibility tree, pruned to interactive elements and headings.",
+    detail: "Every agent starts with a screenshot and the accessibility tree, pruned to interactive elements and headings.",
   },
   {
     title: "Plan, act and keep the evidence",
-    detail: "One model call picks a single action and says why. The action runs, the screenshot is stored, and the step streams straight into the control room. The run is capped at 15 steps.",
+    detail: "One model call picks a single action for the copied browser. The action runs, the screenshot is stored, and the step streams straight into the control room. Each agent is capped at 15 steps.",
   },
   {
     title: "Detect friction deterministically",
@@ -79,7 +79,7 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
   }, []);
 
   return (
-    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth motion-reduce:scroll-auto">
+    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth">
       {/* ---------------------------------------------------------------- hero */}
       <section ref={hero} className="horizon relative isolate overflow-hidden rounded-b-panel">
         <div aria-hidden="true" className="horizon-scrim pointer-events-none absolute inset-0 -z-10" />
@@ -88,7 +88,7 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
         <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
           <h1 className="max-w-[21ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
             <span className="lg:block">
-              <HeadlineTarget className="hero-headline-target--users">One agent.</HeadlineTarget>{" "}
+              <HeadlineTarget className="hero-headline-target--users">Three users.</HeadlineTarget>{" "}
               <HeadlineTarget className="hero-headline-target--task">One task.</HeadlineTarget>
             </span>
             <span className="lg:block">
@@ -118,8 +118,8 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL and a task. Friction opens an isolated Browserbase session and lets one agent attempt the task on the live site. Friction is
-            detected as it happens and ends up in a ranked report with screenshot evidence.
+            Enter a URL and a task. Friction opens a disposable copy of the site, sends multiple agents through the task, and lets them annotate issues where they
+            happen. Friction is detected as it happens and ends up in a ranked report with screenshot evidence.
           </p>
         </div>
 
