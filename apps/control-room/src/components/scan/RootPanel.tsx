@@ -32,7 +32,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-caption text-smoke">Site report</p>
+        <p className="text-caption text-smoke">Scan results</p>
         <h2 className="mt-1 truncate font-heading text-heading-sm font-medium tracking-[-0.02em] text-white" title={scan.url}>
           {hostOf(scan.url)}
         </h2>
