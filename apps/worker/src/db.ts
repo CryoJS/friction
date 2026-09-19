@@ -35,7 +35,9 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     .first<{ name: string }>();
   if (!existing) {
     const statements = schemaSql
-      .split("\n")
+      // \r?\n, not \n: with core.autocrlf the file is checked out as CRLF, and
+      // `.` stops at \r, so a trailing \r would keep the comment alive.
+      .split(/\r?\n/)
       .map((line) => line.replace(/--.*$/, ""))
       .join(" ")
       .split(";")

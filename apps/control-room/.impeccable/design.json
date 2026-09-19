@@ -1,0 +1,543 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-19T15:37:26.531Z",
+  "title": "Design System: Friction control room",
+  "extensions": {
+    "colorMeta": {
+      "void": {
+        "role": "neutral",
+        "displayName": "Void",
+        "canonical": "#0a0a0a",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#161616",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "frost": {
+        "role": "neutral",
+        "displayName": "Frost",
+        "canonical": "#d4d4d4",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "white": {
+        "role": "primary",
+        "displayName": "Lamp White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "black": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "bone": {
+        "role": "neutral",
+        "displayName": "Bone",
+        "canonical": "#ededed",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "ash": {
+        "role": "neutral",
+        "displayName": "Ash",
+        "canonical": "#c2c2c2",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "smoke": {
+        "role": "neutral",
+        "displayName": "Smoke",
+        "canonical": "#b2b2b2",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "slate": {
+        "role": "neutral",
+        "displayName": "Slate",
+        "canonical": "#686868",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e5e5e5",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "violet": {
+        "role": "tertiary",
+        "displayName": "Dusk Violet",
+        "canonical": "#6b62f2",
+        "tonalRamp": [
+          "oklch(15% 0.209 280.6)",
+          "oklch(26% 0.209 280.6)",
+          "oklch(38% 0.209 280.6)",
+          "oklch(50% 0.209 280.6)",
+          "oklch(62% 0.209 280.6)",
+          "oklch(74% 0.209 280.6)",
+          "oklch(85% 0.209 280.6)",
+          "oklch(95% 0.209 280.6)"
+        ]
+      },
+      "sev-5": {
+        "role": "secondary",
+        "displayName": "Sunset Coral (S5 Blocker)",
+        "canonical": "#ff6b57",
+        "tonalRamp": [
+          "oklch(15% 0.185 30.1)",
+          "oklch(26% 0.185 30.1)",
+          "oklch(38% 0.185 30.1)",
+          "oklch(50% 0.185 30.1)",
+          "oklch(62% 0.185 30.1)",
+          "oklch(74% 0.185 30.1)",
+          "oklch(85% 0.185 30.1)",
+          "oklch(95% 0.185 30.1)"
+        ]
+      },
+      "sev-4": {
+        "role": "secondary",
+        "displayName": "Ember Amber (S4 Major)",
+        "canonical": "#ff9e4f",
+        "tonalRamp": [
+          "oklch(15% 0.148 57.2)",
+          "oklch(26% 0.148 57.2)",
+          "oklch(38% 0.148 57.2)",
+          "oklch(50% 0.148 57.2)",
+          "oklch(62% 0.148 57.2)",
+          "oklch(74% 0.148 57.2)",
+          "oklch(85% 0.148 57.2)",
+          "oklch(95% 0.148 57.2)"
+        ]
+      },
+      "sev-3": {
+        "role": "secondary",
+        "displayName": "Last-Light Gold (S3 Moderate)",
+        "canonical": "#f5cf7a",
+        "tonalRamp": [
+          "oklch(15% 0.113 86.0)",
+          "oklch(26% 0.113 86.0)",
+          "oklch(38% 0.113 86.0)",
+          "oklch(50% 0.113 86.0)",
+          "oklch(62% 0.113 86.0)",
+          "oklch(74% 0.113 86.0)",
+          "oklch(85% 0.113 86.0)",
+          "oklch(95% 0.113 86.0)"
+        ]
+      },
+      "sev-2": {
+        "role": "secondary",
+        "displayName": "Twilight Periwinkle (S2 Minor)",
+        "canonical": "#a29dff",
+        "tonalRamp": [
+          "oklch(15% 0.140 284.8)",
+          "oklch(26% 0.140 284.8)",
+          "oklch(38% 0.140 284.8)",
+          "oklch(50% 0.140 284.8)",
+          "oklch(62% 0.140 284.8)",
+          "oklch(74% 0.140 284.8)",
+          "oklch(85% 0.140 284.8)",
+          "oklch(95% 0.140 284.8)"
+        ]
+      },
+      "sev-1": {
+        "role": "secondary",
+        "displayName": "Night Cobalt (S1 Cosmetic)",
+        "canonical": "#7894ff",
+        "tonalRamp": [
+          "oklch(15% 0.160 270.7)",
+          "oklch(26% 0.160 270.7)",
+          "oklch(38% 0.160 270.7)",
+          "oklch(50% 0.160 270.7)",
+          "oklch(62% 0.160 270.7)",
+          "oklch(74% 0.160 270.7)",
+          "oklch(85% 0.160 270.7)",
+          "oklch(95% 0.160 270.7)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headline (fluid clamp(44px, 6.2vw, 72px), 1.02 leading) and the report's headline finding count."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section heads in Geist: Recent runs, Findings, the how-it-works lede."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Run task in the run bar, finding titles, finding rank numbers."
+      },
+      "subheading": {
+        "displayName": "Subheading",
+        "purpose": "Ledes, accordion summaries, finding summaries."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Persona rows, current action, recommendations, run tasks."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "White pill, fields, nav wordmark."
+      },
+      "ui": {
+        "displayName": "UI",
+        "purpose": "Ghost pills, nav tabs, status pill, rationale, alert summaries."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Tags, badges, pane titles, timeline rows, meta. The smallest system size."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "URLs, run ids, selectors, clocks. Tracking reset to normal; numbers tabular."
+      }
+    },
+    "shadows": [
+      {
+        "name": "subtle",
+        "value": "inset 0 0 0 1px rgb(255 255 255 / 0.1)",
+        "purpose": "Inner hairline on the glass run form; reads as a border."
+      },
+      {
+        "name": "nav",
+        "value": "0 3px 4.5px rgb(255 255 255 / 0.02), 0 10px 8px rgb(0 0 0 / 0.04), 0 4px 3px rgb(0 0 0 / 0.1)",
+        "purpose": "The floating nav only; the one exterior shadow in the system."
+      },
+      {
+        "name": "evidence-mask",
+        "value": "0 0 0 9999px rgba(10, 10, 10, 0.42)",
+        "purpose": "Not elevation: dims a screenshot outside the target's bounding box."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Arrivals, presses, progress width."
+      },
+      {
+        "name": "control",
+        "value": "160ms ease-out",
+        "purpose": "Colour, border and background changes on pills and fields; press scales to 0.98 on the expo ease."
+      },
+      {
+        "name": "step-in",
+        "value": "420ms cubic-bezier(0.16, 1, 0.3, 1); from opacity 0, translateY(-6px), blur(3px)",
+        "purpose": "New steps, current actions and friction alerts arriving."
+      },
+      {
+        "name": "breathe",
+        "value": "1.6s ease-in-out infinite; opacity 1 to 0.55, scale 1 to 0.8",
+        "purpose": "Running glow dot; connecting, reconnecting and live lights."
+      },
+      {
+        "name": "wash-sweep",
+        "value": "1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite; violet band across a 250% background",
+        "purpose": "A persona thinking; the report building."
+      },
+      {
+        "name": "nav-surface",
+        "value": "300ms ease-out",
+        "purpose": "Nav swaps frosted to graphite as the hero scrolls away."
+      },
+      {
+        "name": "progress",
+        "value": "700ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Step-cap bar width."
+      },
+      {
+        "name": "disclosure",
+        "value": "300ms ease-out; plus rotates 45deg",
+        "purpose": "How-it-works accordion."
+      },
+      {
+        "name": "hero-preview-cadence",
+        "value": "520ms per event, 900ms lead-in, 5200ms hold",
+        "purpose": "Device preview replay loop; pauses off-screen."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "Stops step-in, breathe and wash-sweep; the wash freezes centred; smooth scroll off; the preview shows its final frame."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "2xl",
+        "value": "1536px"
+      },
+      {
+        "name": "short-laptop",
+        "value": "(min-width: 1024px) and (max-height: 860px)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "White Pill",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled button style: the primary verb of a region (Start run, Watch the demo, New run, Play).",
+      "html": "<button class=\"ds-pill-cta\">Start run <svg width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 10h12M11 5l5 5-5 5\"/></svg></button>",
+      "css": ".ds-pill-cta { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 18px; border: 0; border-radius: 9999px; background: var(--color-white, #ffffff); color: var(--color-graphite, #161616); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 15px; font-weight: 500; letter-spacing: 0.025em; white-space: nowrap; cursor: pointer; transition: background-color 160ms ease-out, opacity 160ms ease-out, transform 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-pill-cta:hover:not(:disabled) { background: var(--color-bone, #ededed); } .ds-pill-cta:active:not(:disabled) { transform: scale(0.98); } .ds-pill-cta:focus-visible { outline: 2px solid var(--color-white, #ffffff); outline-offset: 2px; } .ds-pill-cta:disabled { cursor: not-allowed; opacity: 0.35; }"
+    },
+    {
+      "name": "Ghost Pill",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Hairline pill for secondary actions, tabs and filters; selected via aria-pressed or aria-current.",
+      "html": "<div style=\"display:flex;gap:8px\"><button class=\"ds-pill-ghost\" aria-pressed=\"true\">All personas <span class=\"ds-count\">11</span></button><button class=\"ds-pill-ghost\" aria-pressed=\"false\">Keyboard-only user <span class=\"ds-count\">4</span></button></div>",
+      "css": ".ds-pill-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 9999px; border: 1px solid rgb(229 229 229 / 0.28); background: transparent; color: rgb(255 255 255 / 0.85); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 14px; font-weight: 500; letter-spacing: 0.025em; white-space: nowrap; cursor: pointer; transition: border-color 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out; } .ds-pill-ghost:hover:not(:disabled) { border-color: rgb(229 229 229 / 0.7); color: var(--color-white, #ffffff); } .ds-pill-ghost[aria-pressed=\"true\"], .ds-pill-ghost[aria-current=\"page\"] { border-color: var(--color-hairline, #e5e5e5); background: rgb(255 255 255 / 0.08); color: var(--color-white, #ffffff); } .ds-pill-ghost:focus-visible { outline: 2px solid var(--color-white, #ffffff); outline-offset: 2px; } .ds-pill-ghost:disabled { cursor: wait; opacity: 0.55; } .ds-pill-ghost .ds-count { color: var(--color-smoke, #b2b2b2); font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Pill text field on a translucent void fill; the URL field is set in Geist Mono.",
+      "html": "<div style=\"display:grid;gap:8px;width:360px\"><input class=\"ds-field ds-field-mono\" placeholder=\"https://your-store.com\" aria-label=\"Website URL\" /><input class=\"ds-field\" placeholder=\"Task, e.g. find a winter jacket and add it to cart\" aria-label=\"Task\" /></div>",
+      "css": ".ds-field { height: 46px; width: 100%; min-width: 0; box-sizing: border-box; padding: 0 18px; border-radius: 9999px; border: 1px solid rgb(229 229 229 / 0.22); background: rgb(10 10 10 / 0.42); color: var(--color-white, #ffffff); caret-color: var(--color-white, #ffffff); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 15px; font-weight: 500; letter-spacing: 0.025em; transition: border-color 160ms ease-out, background-color 160ms ease-out; } .ds-field::placeholder { color: var(--color-ash, #c2c2c2); } .ds-field:hover { border-color: rgb(229 229 229 / 0.4); } .ds-field:focus { border-color: var(--color-hairline, #e5e5e5); background: rgb(10 10 10 / 0.6); } .ds-field:focus-visible { outline: 2px solid var(--color-white, #ffffff); outline-offset: 2px; } .ds-field-mono { font-family: var(--font-mono, 'Geist Mono Variable', ui-monospace, Menlo, Consolas, monospace); font-size: 14px; letter-spacing: normal; }"
+    },
+    {
+      "name": "Floating Nav",
+      "kind": "nav",
+      "refersTo": "nav-solid",
+      "description": "Detached bar 16px off the top: logo and wordmark, ghost tabs, one white pill. Frosted over the hero, graphite over content.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main\"><a class=\"ds-nav-home\" href=\"#\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 28 28\" aria-hidden=\"true\"><rect width=\"28\" height=\"28\" rx=\"8\" fill=\"#ffffff\"/><path d=\"M7 9h14M7 14h4.5l2.5-3.5 2.5 3.5H21M7 19h14\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><span>Friction</span></a><a class=\"ds-nav-tab\" href=\"#\" aria-current=\"page\">Control room</a><a class=\"ds-nav-tab\" href=\"#\">Report</a><button class=\"ds-nav-cta\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M10 4v12M4 10h12\"/></svg> New run</button></nav>",
+      "css": ".ds-nav { display: inline-flex; align-items: center; gap: 4px; padding: 6px; border-radius: 19px; border: 1px solid rgb(229 229 229 / 0.15); background: rgb(22 22 22 / 0.9); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: 0 3px 4.5px rgb(255 255 255 / 0.02), 0 10px 8px rgb(0 0 0 / 0.04), 0 4px 3px rgb(0 0 0 / 0.1); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-weight: 500; letter-spacing: 0.025em; transition: background-color 300ms ease-out, border-color 300ms ease-out; } .ds-nav-home { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px 0 4px; border-radius: 9999px; color: var(--color-white, #ffffff); font-size: 15px; text-decoration: none; } .ds-nav-tab { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 9999px; border: 1px solid transparent; color: rgb(255 255 255 / 0.7); font-size: 14px; text-decoration: none; transition: border-color 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out; } .ds-nav-tab:hover { color: var(--color-white, #ffffff); } .ds-nav-tab[aria-current=\"page\"] { border-color: var(--color-hairline, #e5e5e5); background: rgb(255 255 255 / 0.08); color: var(--color-white, #ffffff); } .ds-nav-cta { display: inline-flex; align-items: center; gap: 6px; height: 34px; margin-left: 4px; padding: 0 16px; border: 0; border-radius: 9999px; background: var(--color-white, #ffffff); color: var(--color-graphite, #161616); font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 160ms ease-out; } .ds-nav-cta:hover { background: var(--color-bone, #ededed); } .ds-nav a:focus-visible, .ds-nav button:focus-visible { outline: 2px solid var(--color-white, #ffffff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tag and Chip",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "10px-cornered hairline label for verbs, sources and run status; a chip adds a 6px status light.",
+      "html": "<div style=\"display:flex;gap:8px;align-items:center\"><span class=\"ds-tag\">Click</span><span class=\"ds-tag\"><span class=\"ds-dot ds-dot-good\"></span>Replay</span><span class=\"ds-tag\"><span class=\"ds-dot ds-dot-warn\"></span>Fixture stream</span><span class=\"ds-tag\"><span class=\"ds-dot ds-dot-idle\"></span>queued</span></div>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 10px; border: 1px solid rgb(229 229 229 / 0.2); color: var(--color-smoke, #b2b2b2); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 13px; font-weight: 500; line-height: 1.5; letter-spacing: 0.33px; white-space: nowrap; } .ds-dot { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; flex-shrink: 0; } .ds-dot-good { background: var(--color-white, #ffffff); } .ds-dot-warn { background: var(--color-sev-4, #ff9e4f); } .ds-dot-idle { background: var(--color-slate, #686868); }"
+    },
+    {
+      "name": "State Badge",
+      "kind": "chip",
+      "refersTo": "badge-state",
+      "description": "Persona state readout: a pill with an 8px status light. Running is the breathing violet glow, never a solid violet dot.",
+      "html": "<div style=\"display:flex;gap:8px;flex-wrap:wrap\"><span class=\"ds-state\"><span class=\"ds-light ds-light-glow\"></span>Running</span><span class=\"ds-state\"><span class=\"ds-light ds-light-good\"></span>Succeeded</span><span class=\"ds-state\"><span class=\"ds-light ds-light-bad\"></span>Failed</span><span class=\"ds-state\"><span class=\"ds-light ds-light-warn\"></span>Timed out</span><span class=\"ds-state\"><span class=\"ds-light ds-light-idle\"></span>Idle</span></div>",
+      "css": ".ds-state { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 9999px; border: 1px solid rgb(229 229 229 / 0.15); color: var(--color-bone, #ededed); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 13px; font-weight: 500; letter-spacing: 0.33px; } .ds-light { display: inline-block; width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; } .ds-light-good { background: var(--color-white, #ffffff); } .ds-light-bad { background: var(--color-sev-5, #ff6b57); } .ds-light-warn { background: var(--color-sev-4, #ff9e4f); } .ds-light-idle { background: var(--color-slate, #686868); } .ds-light-glow { background: radial-gradient(circle, #ffffff 0%, #b9b3ff 35%, rgb(107 98 242 / 0.9) 60%, rgb(107 98 242 / 0) 100%); animation: ds-breathe 1.6s ease-in-out infinite; } @keyframes ds-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.8); } } @media (prefers-reduced-motion: reduce) { .ds-light-glow { animation: none; } }"
+    },
+    {
+      "name": "Severity Badge",
+      "kind": "chip",
+      "refersTo": "badge-severity-s5",
+      "description": "S5 coral to S1 cobalt: a pill outlined in the severity hue at 45% with a 6px dot; the label, when shown, is bone.",
+      "html": "<div style=\"display:flex;gap:8px;flex-wrap:wrap\"><span class=\"ds-sev ds-sev-5\"><span class=\"ds-sev-dot\"></span>S5</span><span class=\"ds-sev ds-sev-4\"><span class=\"ds-sev-dot\"></span>S4</span><span class=\"ds-sev ds-sev-3\"><span class=\"ds-sev-dot\"></span>S3</span><span class=\"ds-sev ds-sev-2\"><span class=\"ds-sev-dot\"></span>S2</span><span class=\"ds-sev ds-sev-1\"><span class=\"ds-sev-dot\"></span>S1</span><span class=\"ds-sev ds-sev-5\"><span class=\"ds-sev-dot\"></span>S5 <span class=\"ds-sev-label\">Blocker</span></span></div>",
+      "css": ".ds-sev { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 9999px; border: 1px solid color-mix(in srgb, currentColor 45%, transparent); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-size: 13px; font-weight: 500; letter-spacing: 0.33px; font-variant-numeric: tabular-nums; } .ds-sev-dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; } .ds-sev-label { color: var(--color-bone, #ededed); } .ds-sev-5 { color: var(--color-sev-5, #ff6b57); } .ds-sev-4 { color: var(--color-sev-4, #ff9e4f); } .ds-sev-3 { color: var(--color-sev-3, #f5cf7a); } .ds-sev-2 { color: var(--color-sev-2, #a29dff); } .ds-sev-1 { color: var(--color-sev-1, #7894ff); }"
+    },
+    {
+      "name": "Friction Alert",
+      "kind": "card",
+      "refersTo": "alert-friction",
+      "description": "A finding inside a persona column: severity badge, category in its hue, summary, and the fix. Arrives with step-in.",
+      "html": "<article class=\"ds-alert\"><div class=\"ds-alert-head\"><span class=\"ds-alert-sev\"><span></span>S5</span><h4>Dead click</h4><span class=\"ds-alert-meta\">step 11 · 93%</span></div><p class=\"ds-alert-summary\">Clicked \"Add to cart\" and nothing happened: no navigation, no DOM change.</p><p class=\"ds-alert-fix\"><b>Fix: </b>Never fail silently on the primary CTA.</p></article>",
+      "css": ".ds-alert { width: 380px; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid rgb(229 229 229 / 0.1); background: rgb(255 255 255 / 0.03); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-weight: 500; letter-spacing: 0.025em; animation: ds-step-in 420ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-alert-head { display: flex; align-items: center; gap: 8px; } .ds-alert-sev { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 9999px; border: 1px solid rgb(255 107 87 / 0.45); color: var(--color-sev-5, #ff6b57); font-size: 13px; } .ds-alert-sev span { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-sev-5, #ff6b57); } .ds-alert h4 { margin: 0; font-size: 16px; font-weight: 500; color: var(--color-sev-5, #ff6b57); } .ds-alert-meta { margin-left: auto; font-size: 13px; color: var(--color-smoke, #b2b2b2); font-variant-numeric: tabular-nums; } .ds-alert-summary { margin: 6px 0 0; font-size: 14px; line-height: 1.375; color: var(--color-bone, #ededed); } .ds-alert-fix { margin: 4px 0 0; font-size: 13px; color: var(--color-ash, #c2c2c2); } .ds-alert-fix b { font-weight: 500; color: var(--color-bone, #ededed); } @keyframes ds-step-in { from { opacity: 0; transform: translateY(-6px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } } @media (prefers-reduced-motion: reduce) { .ds-alert { animation: none; } }"
+    },
+    {
+      "name": "Horizon Hero",
+      "kind": "custom",
+      "refersTo": "card-glass",
+      "description": "Signature: the amber-to-cobalt horizon under a night scrim, with the frosted run form on its dusk pool. Landing hero only.",
+      "html": "<section class=\"ds-horizon\"><div class=\"ds-scrim\"></div><h1>Three users. One task.</h1><div class=\"ds-pool\"><form class=\"ds-glass\" onsubmit=\"return false\"><input class=\"ds-hero-field\" placeholder=\"https://your-store.com\" aria-label=\"Website URL\" /><div class=\"ds-hero-row\"><button type=\"button\" class=\"ds-hero-ghost\">Suggest tasks</button><button class=\"ds-hero-cta\">Start run <svg width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 10h12M11 5l5 5-5 5\"/></svg></button></div></form></div></section>",
+      "css": ".ds-horizon { position: relative; isolation: isolate; overflow: hidden; width: 560px; padding: 40px 32px 48px; border-radius: 0 0 42px 42px; background: linear-gradient(90deg, #f29a45 0%, #ea6a43 22%, #bf4a78 47%, #6b52dc 72%, #2447d4 100%); font-family: var(--font-sans, 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif); font-weight: 500; letter-spacing: 0.025em; } .ds-scrim { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgb(10 10 10 / 0.9) 0%, rgb(10 10 10 / 0.62) 38%, rgb(10 10 10 / 0.08) 78%, rgb(10 10 10 / 0) 100%); } .ds-horizon h1 { margin: 0 0 28px; color: var(--color-white, #ffffff); font-size: 44px; font-weight: 500; line-height: 1.02; letter-spacing: -0.035em; } .ds-pool { position: relative; } .ds-pool::before { content: \"\"; position: absolute; inset: -20px -24px -40px; z-index: -1; border-radius: 42px; background: rgb(10 10 10 / 0.45); filter: blur(28px); pointer-events: none; } .ds-glass { padding: 16px; border-radius: 24px; border: 1px solid rgb(229 229 229 / 0.15); background: rgb(212 212 212 / 0.1); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); } .ds-hero-field { width: 100%; box-sizing: border-box; height: 46px; padding: 0 18px; border-radius: 9999px; border: 1px solid rgb(229 229 229 / 0.22); background: rgb(10 10 10 / 0.42); color: var(--color-white, #ffffff); font-family: var(--font-mono, 'Geist Mono Variable', ui-monospace, Menlo, Consolas, monospace); font-size: 14px; } .ds-hero-field::placeholder { color: var(--color-ash, #c2c2c2); } .ds-hero-field:focus { border-color: var(--color-hairline, #e5e5e5); background: rgb(10 10 10 / 0.6); } .ds-hero-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; } .ds-hero-ghost { height: 40px; padding: 0 14px; border-radius: 9999px; border: 1px solid rgb(229 229 229 / 0.28); background: rgb(10 10 10 / 0.35); color: var(--color-white, #ffffff); font: inherit; font-size: 14px; cursor: pointer; transition: border-color 160ms ease-out; } .ds-hero-ghost:hover { border-color: rgb(229 229 229 / 0.7); } .ds-hero-cta { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; height: 40px; padding: 0 18px; border: 0; border-radius: 9999px; background: var(--color-white, #ffffff); color: var(--color-graphite, #161616); font: inherit; font-size: 15px; cursor: pointer; transition: background-color 160ms ease-out; } .ds-hero-cta:hover { background: var(--color-bone, #ededed); } .ds-horizon :focus-visible { outline: 2px solid var(--color-white, #ffffff); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Dusk-Lit Control Room",
+    "overview": "A dark workspace at the moment the sun goes down. The canvas is void; white and warm greys do all the talking; the only colour in the world is the horizon's, amber on the left burning through to cobalt on the right. That light owns the landing hero, and everywhere else it survives only as meaning: a finding glows hot coral when it blocks a user and cools toward cobalt as it gets cosmetic. Three users' struggles surface as warm light on a dark canvas. The confirmed anti-reference is the grey, light admin dashboard: no pale backgrounds, no grey card grids.\n\nThe world was pinned by the user from a \"Dimension\" style reference: a dusk-lit dark workspace built from frosted glass at 10%, 1px hairlines, pill-shaped controls, DM Sans at weight 500 for display and body, Geist for headings, Geist Mono for data, an amber-to-cobalt hero gradient, and violet that exists only as a wash or a glow. Depth is light passing through glass, never a card lifted on a shadow.\n\nDensity splits by surface. The landing hero is generous and cinematic (a 72px headline, a device frame rising off the bottom edge replaying a real run). The control room and report are dense instruments read from across a room: 13 to 14px labels, tabular numbers, mono for anything measured, a status light on everything that has a state. Motion is small and informative: new evidence steps in, a running persona breathes, a violet band sweeps while a persona thinks, and all of it stops under reduced motion.",
+    "keyCharacteristics": [
+      "Void canvas (#0a0a0a) with a dark colour scheme declared at the document level.",
+      "Frosted glass (10% frost, 4px backdrop blur) and 1px white-alpha hairlines instead of fills and shadows.",
+      "Pills for every control; a single filled style, the white pill.",
+      "DM Sans 500 speaks, Geist names things, Geist Mono measures.",
+      "One gradient (the horizon), one accent light (violet), one meaning for every other hue (severity).",
+      "Fonts and icons are bundled; the app renders with the wifi off."
+    ],
+    "rules": [
+      {
+        "name": "The Horizon Owns the Hero Rule",
+        "body": "The amber-to-cobalt gradient paints the landing hero and nothing else. Every other surface sits on void.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sampled Severity Rule",
+        "body": "Every hue outside white and grey is sampled from the horizon and means severity, S5 hot coral down to S1 cool cobalt. Persona states reuse the same lights: running is the violet glow dot, succeeded is white, failed is coral, timed out is amber, idle is slate. No new hues.",
+        "section": "colors"
+      },
+      {
+        "name": "The Violet Is Light Rule",
+        "body": "Violet appears only as a wash, a spotlight, or a glow. Never a solid violet dot, fill, border or word.",
+        "section": "colors"
+      },
+      {
+        "name": "The Slate Floor Rule",
+        "body": "Slate is 3.6:1 on void: dots and rules only, never text. The quietest text is smoke.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reset Palette Rule",
+        "body": "Tailwind's default palette is reset (`--color-*: initial`); only the tokens above exist as colour utilities. White-alpha layers are expressed as alphas of those tokens, not as new greys.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Voices Rule",
+        "body": "DM Sans speaks (display, body, controls), Geist names (headings), Geist Mono measures (URLs, ids, selectors, clocks). A string that is copied, compared or timed is mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Numbers Rule",
+        "body": "Every count, duration, step number, percentage and clock is set with tabular figures, so live numbers never jitter.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Weight Rule",
+        "body": "DM Sans runs at 500 everywhere; hierarchy comes from size, colour (white, bone, ash, smoke) and family, not from bolding. Emphasis inside a line is a colour step up (\"Heads up.\" in white, \"Fix:\" in bone), and rationale is italic ash in curly quotes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Bundled Type Rule",
+        "body": "All three families ship through `@fontsource-variable`; the app must render with the wifi off. No CDN font links.",
+        "section": "typography"
+      },
+      {
+        "name": "The Light, Not Lift Rule",
+        "body": "No card, panel or popover is raised on a drop shadow. Separate with glass, a white-alpha step or a hairline; the nav's whisper is the only exterior shadow in the system.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Tag Is Not a Button Rule",
+        "body": "The tag is the label shape: action verbs, data-source and run-status chips, persona names on findings. Its 10px corner is deliberately not a pill, so a label never reads as pressable. Controls are full pills; persona-state and severity badges are pills too, marked as readouts by their leading light.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** keep the canvas void (#0a0a0a) and let white and the warm greys carry hierarchy: white for what matters, bone for body, ash for secondary, smoke for meta.",
+      "**Do** take every state or severity colour from the existing tokens: S5 coral through S1 cobalt; running is the violet glow dot, succeeded white, failed coral, timed out amber, idle slate.",
+      "**Do** make every new control a pill, and use the white pill for the primary verb of its region.",
+      "**Do** separate surfaces with 10% frosted glass, a white-alpha step (3% to 12%) or a 1px hairline.",
+      "**Do** put a dusk pool behind any text cluster that sits on the horizon, holding at least 4.5:1 (the hero form cluster measures 5.4:1 or better).",
+      "**Do** set URLs, ids, selectors and clocks in Geist Mono with normal tracking, and every number in tabular figures.",
+      "**Do** write labels in sentence case and keep DM Sans at weight 500.",
+      "**Do** keep the 2px white focus ring (2px offset) visible on every interactive element, and make every animation stop under reduced motion.",
+      "**Do** label where the data on screen comes from (Live, Replay, Fixture stream, Offline fixture) with a status-light chip."
+    ],
+    "donts": [
+      "**Don't** build the grey, light admin dashboard: no light backgrounds, no grey card grids.",
+      "**Don't** introduce a hue outside the horizon. The Tailwind palette is reset; don't bring colours back through arbitrary values.",
+      "**Don't** use the horizon gradient anywhere but the landing hero.",
+      "**Don't** fill, border or write in violet, and never draw a solid violet dot; violet is only a wash, a spotlight or a glow.",
+      "**Don't** set text in slate (#686868, 3.6:1 on void); it is for dots and rules only.",
+      "**Don't** raise cards or panels on drop shadows; the nav's whisper is the only exterior shadow.",
+      "**Don't** add a second filled button colour; white is the only filled style.",
+      "**Don't** add CDN font, icon or image links; fonts are bundled via `@fontsource-variable` and the app must render with the wifi off.",
+      "**Don't** place the run form outside the landing hero; run views get the floating nav with tabs and a white \"New run\" pill."
+    ]
+  }
+}

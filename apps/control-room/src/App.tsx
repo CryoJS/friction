@@ -1,18 +1,21 @@
 import { useCallback, useMemo, useState } from "react";
-import { PERSONA_IDS, type PersonaId, type StepPayload } from "@friction/shared";
-import { Header, type StartedRun } from "./components/Header";
+import { GOLDEN_RUN_ID, PERSONA_IDS, type PersonaId, type StepPayload } from "@friction/shared";
 import { Landing } from "./components/Landing";
+import { Nav } from "./components/Nav";
 import { PersonaColumn } from "./components/PersonaColumn";
 import { ReportView } from "./components/ReportView";
 import { RunBar } from "./components/RunBar";
+import type { StartedRun } from "./components/RunForm";
+import { Play, Plus, Sparkle } from "./components/icons";
 import { useReport } from "./hooks/useReport";
 import { useRunStream } from "./hooks/useRunStream";
 import { snapshotFromView, summarize } from "./lib/runState";
-import { useQuery } from "./lib/useQuery";
+import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
   const [query, setQuery] = useQuery();
   const [startNotice, setStartNotice] = useState<string | null>(null);
+  const [overHero, setOverHero] = useState(true);
 
   const stream = useRunStream(query.run, { replay: query.replay });
   const { view } = stream;
@@ -43,60 +46,119 @@ export default function App() {
     [setQuery],
   );
 
+  const open = useCallback(
+    (runId: string, replay: boolean) => {
+      setStartNotice(null);
+      setQuery({ run: runId, replay, tab: "room" });
+    },
+    [setQuery],
+  );
+
+  const goHome = useCallback(() => {
+    setStartNotice(null);
+    setQuery({ run: null, replay: false, tab: "room" });
+  }, [setQuery]);
+
   const notice = startNotice ?? stream.notice;
+
+  if (!query.run) {
+    return (
+      <div className="flex h-full flex-col">
+        <Nav
+          onHome={goHome}
+          frosted={overHero}
+          action={
+            <button type="button" onClick={() => open(GOLDEN_RUN_ID, true)} className="pill-cta h-8.5 px-4 text-ui">
+              <Play size={12} />
+              Watch the demo
+            </button>
+          }
+        >
+          <a href="#how" className="pill-ghost hidden border-transparent md:inline-flex">
+            How it works
+          </a>
+          <a href="#runs" className="pill-ghost hidden border-transparent md:inline-flex">
+            Recent runs
+          </a>
+        </Nav>
+        <Landing onOpen={open} onStarted={onStarted} onOverHero={setOverHero} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <Header
-        onStarted={onStarted}
-        onHome={() => {
+      <Nav
+        onHome={goHome}
+        compact
+        action={
+          <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New run">
+            <Plus size={14} />
+            <span className="hidden sm:inline">New run</span>
+          </button>
+        }
+      >
+        <TabButton tab="room" current={query.tab} onTab={(tab) => setQuery({ tab })}>
+          <span className="sm:hidden">Room</span>
+          <span className="hidden sm:inline">Control room</span>
+        </TabButton>
+        <TabButton tab="report" current={query.tab} onTab={(tab) => setQuery({ tab })}>
+          Report
+          {summary.frictionCount > 0 && (
+            <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/12 px-1.5 text-[12px] tabular-nums text-white">
+              {summary.frictionCount}
+            </span>
+          )}
+        </TabButton>
+      </Nav>
+
+      <RunBar
+        view={view}
+        origin={stream.origin}
+        connection={stream.connection}
+        elapsedMs={stream.elapsedMs}
+        replay={stream.replay}
+        isReplay={query.replay}
+        onToggleReplay={() => {
           setStartNotice(null);
-          setQuery({ run: null, replay: false, tab: "room" });
+          setQuery({ replay: !query.replay });
         }}
       />
 
-      {query.run ? (
-        <>
-          <RunBar
-            view={view}
-            origin={stream.origin}
-            connection={stream.connection}
-            elapsedMs={stream.elapsedMs}
-            replay={stream.replay}
-            tab={query.tab}
-            onTab={(tab) => setQuery({ tab })}
-            isReplay={query.replay}
-            onToggleReplay={() => {
-              setStartNotice(null);
-              setQuery({ replay: !query.replay });
-            }}
-          />
+      {notice && (
+        <div className="flex shrink-0 justify-center px-4 pt-4">
+          <p role="status" className="glass inline-flex max-w-3xl items-start gap-2.5 rounded-nav border border-hairline/20 px-4 py-2 text-ui text-bone">
+            <Sparkle size={14} className="mt-0.75 shrink-0 text-white" />
+            <span>
+              <span className="text-white">Heads up.</span> {notice}
+            </span>
+          </p>
+        </div>
+      )}
 
-          {notice && (
-            <div className="flex shrink-0 items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
-              <span className="font-semibold">Heads up:</span>
-              <span className="min-w-0 flex-1">{notice}</span>
-            </div>
-          )}
-
-          {query.tab === "report" ? (
-            <ReportView report={report.report} loading={report.loading} local={report.local} findStep={findStep} />
-          ) : (
-            <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:overflow-hidden">
-              {PERSONA_IDS.map((id) => (
-                <PersonaColumn key={id} persona={view.personas[id]} allowLiveView={stream.origin === "live"} startTs={view.firstTs} />
-              ))}
-            </main>
-          )}
-        </>
+      {query.tab === "report" ? (
+        <ReportView report={report.report} loading={report.loading} local={report.local} findStep={findStep} />
       ) : (
-        <Landing
-          onOpen={(runId, replay) => {
-            setStartNotice(null);
-            setQuery({ run: runId, replay, tab: "room" });
-          }}
-        />
+        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 lg:grid-cols-3 lg:overflow-hidden">
+          {PERSONA_IDS.map((id) => (
+            <PersonaColumn key={id} persona={view.personas[id]} allowLiveView={stream.origin === "live"} startTs={view.firstTs} />
+          ))}
+        </main>
       )}
     </div>
+  );
+}
+
+function TabButton({ tab, current, onTab, children }: { tab: Tab; current: Tab; onTab: (tab: Tab) => void; children: React.ReactNode }) {
+  const active = tab === current;
+  return (
+    <button
+      type="button"
+      onClick={() => onTab(tab)}
+      aria-current={active ? "page" : undefined}
+      className={`pill-ghost ${active ? "" : "border-transparent text-white/70"}`}
+    >
+      {children}
+    </button>
   );
 }

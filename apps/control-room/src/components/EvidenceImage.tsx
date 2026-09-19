@@ -27,14 +27,14 @@ function firstStage(source: EvidenceSource): Stage {
 
 interface Props {
   source: EvidenceSource;
-  /** Tailwind border colour class for the bbox, e.g. "border-red-500". */
+  /** Tailwind border colour class for the bbox, e.g. "border-sev-5". */
   boxClass?: string;
   label?: string;
   className?: string;
 }
 
 /** A screenshot with the target's bbox drawn over it as an overlay rectangle. */
-export function EvidenceImage({ source, boxClass = "border-indigo-500", label, className = "" }: Props) {
+export function EvidenceImage({ source, boxClass = "border-white", label, className = "" }: Props) {
   const [stage, setStage] = useState<Stage>(() => firstStage(source));
   useEffect(() => setStage(firstStage(source)), [source.screenshotKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -49,7 +49,7 @@ export function EvidenceImage({ source, boxClass = "border-indigo-500", label, c
 
   return (
     <div
-      className={`relative w-full overflow-hidden bg-slate-200 ${className}`}
+      className={`relative w-full overflow-hidden bg-graphite ${className}`}
       style={{ aspectRatio: `${viewport.w} / ${viewport.h}` }}
     >
       {src ? (
@@ -61,11 +61,11 @@ export function EvidenceImage({ source, boxClass = "border-indigo-500", label, c
           onError={() => setStage(canWireframe && stage === "network" ? "wireframe" : "missing")}
         />
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">Screenshot unavailable</div>
+        <div className="absolute inset-0 flex items-center justify-center text-caption text-smoke">Screenshot unavailable</div>
       )}
       {box && (
         <div
-          className={`pointer-events-none absolute rounded-sm border-2 ${boxClass}`}
+          className={`pointer-events-none absolute rounded-[3px] border-2 ${boxClass}`}
           style={{
             left: `${box.left}%`,
             top: `${box.top}%`,
@@ -73,7 +73,7 @@ export function EvidenceImage({ source, boxClass = "border-indigo-500", label, c
             height: `${box.height}%`,
             // Dims everything except the target. (A Tailwind ring is also a box-shadow
             // and would be overwritten by this, which is why the rectangle is a border.)
-            boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.28)",
+            boxShadow: "0 0 0 9999px rgba(10, 10, 10, 0.42)",
           }}
         />
       )}

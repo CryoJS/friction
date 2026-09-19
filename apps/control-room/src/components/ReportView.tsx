@@ -3,6 +3,7 @@ import { FRICTION_LABELS, SEVERITY_LABELS, type PersonaId, type ReportFinding, t
 import { ACTION_VERBS, formatDuration, percent } from "../lib/format";
 import { EvidenceImage } from "./EvidenceImage";
 import { SEVERITY_STYLES, SeverityBadge, StateBadge, categoryLabel } from "./badges";
+import { ArrowUpRight } from "./icons";
 
 interface Props {
   report: ReportResponse | null;
@@ -24,58 +25,80 @@ export function ReportView({ report, loading, local, findStep }: Props) {
   );
 
   if (!report) {
-    return <main className="flex flex-1 items-center justify-center text-sm text-slate-400">{loading ? "Building the report…" : "No report available for this run."}</main>;
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 text-body text-smoke" aria-busy={loading}>
+        {loading && <div className="wash wash-sweep h-px w-56" aria-hidden="true" />}
+        {loading ? "Building the report…" : "No report available for this run."}
+      </main>
+    );
   }
 
   return (
-    <main className="pane flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-4 py-4">
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
-            <div>
-              <div className="text-3xl font-bold tabular-nums leading-none text-slate-900">{report.totals.findings}</div>
-              <div className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">friction findings</div>
+    <main className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-300 px-4 pb-20 pt-5 sm:px-6">
+        <section className="relative isolate overflow-hidden rounded-large border border-hairline/10 bg-white/4 p-6 sm:p-8" aria-label="Summary">
+          <div aria-hidden="true" className="spotlight pointer-events-none absolute -left-40 -top-48 -z-10 h-[480px] w-[480px]" />
+
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="flex items-end gap-5">
+              <span className="text-display tabular-nums text-white">{report.totals.findings}</span>
+              <span className="pb-2 text-subheading text-ash">
+                friction {report.totals.findings === 1 ? "finding" : "findings"}
+                <br />
+                across {report.personas.length} personas
+              </span>
             </div>
-            <div className="flex items-end gap-1.5">
-              {SEVERITIES.map((severity) => (
-                <div key={severity} className="text-center" title={SEVERITY_LABELS[severity]}>
-                  <div className={`min-w-9 rounded px-2 py-1 text-sm font-bold tabular-nums ${report.totals.bySeverity[severity] > 0 ? SEVERITY_STYLES[severity].solid : "bg-slate-100 text-slate-400"}`}>
-                    {report.totals.bySeverity[severity]}
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500">S{severity}</div>
-                </div>
-              ))}
-            </div>
-            <div className="ml-auto grid gap-1.5">
+
+            <ul className="grid gap-2" aria-label="Personas">
               {report.personas.map((section) => (
-                <div key={section.personaId} className="flex items-center justify-end gap-2 text-xs">
-                  <span className="text-slate-600">{section.displayName}</span>
-                  <span className="tabular-nums text-slate-400">
-                    {section.stepCount} steps{section.durationMs !== null && ` · ${formatDuration(section.durationMs)}`}
+                <li key={section.personaId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-ui lg:justify-end">
+                  <span className="text-bone">{section.displayName}</span>
+                  <span className="flex items-center gap-3">
+                    <span className="tabular-nums text-smoke">
+                      {section.stepCount} steps{section.durationMs !== null && ` · ${formatDuration(section.durationMs)}`}
+                    </span>
+                    <StateBadge state={section.state} />
                   </span>
-                  <StateBadge state={section.state} />
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
+
+          <SeveritySpectrum counts={report.totals.bySeverity} total={report.totals.findings} />
+
           {(local || report.source === "fixture") && (
-            <p className="mt-3 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+            <p className="mt-6 border-t border-hairline/10 pt-4 text-caption text-smoke">
               {local && "The Worker did not answer, so this report was assembled in the browser from the events on screen. "}
               {report.source === "fixture" && "Data source: the golden fixture, not a live site."}
             </p>
           )}
         </section>
 
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Ranked by severity, then confidence</span>
-          <Filter active={persona === "all"} onClick={() => setPersona("all")} label="All personas" count={report.totals.findings} />
-          {report.personas.map((section) => (
-            <Filter key={section.personaId} active={persona === section.personaId} onClick={() => setPersona(section.personaId)} label={section.displayName} count={section.findings.length} />
-          ))}
+        <div className="mt-14 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Findings</h2>
+            <p className="mt-1 text-caption text-smoke">Ranked by severity, then confidence.</p>
+          </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by persona">
+            <Filter active={persona === "all"} onClick={() => setPersona("all")} label="All personas" count={report.totals.findings} />
+            {report.personas.map((section) => (
+              <Filter
+                key={section.personaId}
+                active={persona === section.personaId}
+                onClick={() => setPersona(section.personaId)}
+                label={section.displayName}
+                count={section.findings.length}
+              />
+            ))}
+          </div>
         </div>
 
-        <div className="mt-3 space-y-3 pb-8">
-          {findings.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-400">No friction found{persona === "all" ? " yet" : " for this persona"}.</p>}
+        <div className="mt-6 space-y-4">
+          {findings.length === 0 && (
+            <p className="rounded-card border border-dashed border-hairline/20 px-6 py-12 text-center text-body text-smoke">
+              No friction found{persona === "all" ? " yet" : " for this persona"}.
+            </p>
+          )}
           {findings.map((finding, index) => (
             <FindingCard
               key={finding.id}
@@ -91,14 +114,36 @@ export function ReportView({ report, loading, local, findStep }: Props) {
   );
 }
 
+/** Findings laid out hot to cool, like the horizon they are sampled from. Each segment labels itself. */
+function SeveritySpectrum({ counts, total }: { counts: Record<Severity, number>; total: number }) {
+  const present = SEVERITIES.filter((severity) => counts[severity] > 0);
+  if (total === 0) {
+    return (
+      <div className="mt-8">
+        <div className="h-2 rounded-full bg-hairline/10" />
+        <p className="mt-3 text-caption text-smoke">No friction at any severity.</p>
+      </div>
+    );
+  }
+  return (
+    <ul className="mt-8 flex gap-1" aria-label="Findings by severity">
+      {present.map((severity) => (
+        <li key={severity} className="min-w-[104px]" style={{ flexGrow: counts[severity], flexBasis: 0 }} title={`Severity ${severity} of 5`}>
+          <span aria-hidden="true" className={`block h-2 rounded-full ${SEVERITY_STYLES[severity].dot}`} />
+          <span className="mt-3 flex items-baseline gap-2 whitespace-nowrap">
+            <span className="text-heading-sm tabular-nums text-white">{counts[severity]}</span>
+            <span className={`text-ui ${SEVERITY_STYLES[severity].text}`}>{SEVERITY_LABELS[severity]}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Filter({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${active ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-600 ring-slate-200 hover:ring-slate-300"}`}
-    >
-      {label} <span className="tabular-nums opacity-70">{count}</span>
+    <button type="button" onClick={onClick} aria-pressed={active} className="pill-ghost">
+      {label} <span className="tabular-nums text-smoke">{count}</span>
     </button>
   );
 }
@@ -108,72 +153,72 @@ function FindingCard({ finding, rank, personaName, payload }: { finding: ReportF
   const evidence = finding.evidence;
 
   return (
-    <article className={`overflow-hidden rounded-lg border border-l-4 border-slate-200 bg-white shadow-sm ${style.border}`}>
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
-        <div className="border-b border-slate-100 bg-slate-50 lg:border-b-0 lg:border-r">
+    <article className="overflow-hidden rounded-card border border-hairline/10 bg-white/4">
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+        <div className="p-3 pb-0 lg:pb-3">
           {evidence ? (
-            <EvidenceImage
-              source={{ screenshotKey: evidence.screenshotKey, bbox: evidence.bbox, viewport: evidence.viewport, payload }}
-              boxClass={style.box}
-              label={evidence.targetLabel}
-            />
+            <div className="overflow-hidden rounded-[14px]">
+              <EvidenceImage
+                source={{ screenshotKey: evidence.screenshotKey, bbox: evidence.bbox, viewport: evidence.viewport, payload }}
+                boxClass={style.box}
+                label={evidence.targetLabel}
+              />
+            </div>
           ) : (
-            <div className="flex aspect-video items-center justify-center text-xs text-slate-400">The evidence step was never received.</div>
+            <div className="flex aspect-video items-center justify-center rounded-[14px] bg-graphite px-6 text-center text-caption text-smoke">
+              The evidence step was never received.
+            </div>
           )}
         </div>
 
-        <div className="min-w-0 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold tabular-nums text-slate-400">#{rank}</span>
+        <div className="min-w-0 p-5 sm:p-7">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="mr-1 font-heading text-heading-sm tabular-nums leading-none text-ash">{String(rank).padStart(2, "0")}</span>
             <SeverityBadge severity={finding.severity} withLabel />
-            <h3 className={`text-sm font-semibold ${style.text}`} title={FRICTION_LABELS[finding.category].blurb}>
-              {categoryLabel(finding.category)}
-            </h3>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">{personaName}</span>
+            <span className="tag">{personaName}</span>
             <Confidence value={finding.confidence} />
           </div>
 
-          {finding.summary && <p className="mt-2 text-sm font-medium leading-snug text-slate-900">{finding.summary}</p>}
-          {finding.whyItMatters && <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">{finding.whyItMatters}</p>}
+          <h3 className="mt-4 font-heading text-heading-sm font-medium tracking-[-0.02em] text-white" title={FRICTION_LABELS[finding.category].blurb}>
+            {categoryLabel(finding.category)}
+          </h3>
+          {finding.summary && <p className="mt-2 max-w-[65ch] text-subheading leading-snug text-bone">{finding.summary}</p>}
+          {finding.whyItMatters && <p className="mt-2 max-w-[65ch] text-body text-ash">{finding.whyItMatters}</p>}
 
-          <div className={`mt-3 rounded-md px-3 py-2 ${style.bg}`}>
-            <div className={`text-[10px] font-bold uppercase tracking-wider ${style.text}`}>Recommendation</div>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-slate-800">{finding.recommendation}</p>
+          <div className="mt-5 rounded-ui border border-hairline/15 px-4 py-3">
+            <div className="text-caption text-smoke">Recommendation</div>
+            <p className="mt-1 max-w-[65ch] text-body text-bone">{finding.recommendation}</p>
           </div>
 
           {evidence && (
-            <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-slate-400">URL</dt>
-              <dd className="truncate font-mono text-slate-700" title={evidence.url}>
+            <dl className="mt-5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-1.5 text-ui">
+              <dt className="text-smoke">URL</dt>
+              <dd className="truncate font-mono text-[13px] tracking-normal text-bone" title={evidence.url}>
                 {evidence.url}
               </dd>
-              <dt className="text-slate-400">Selector</dt>
-              <dd className="truncate font-mono text-slate-700" title={evidence.selector}>
+              <dt className="text-smoke">Selector</dt>
+              <dd className="truncate font-mono text-[13px] tracking-normal text-bone" title={evidence.selector}>
                 {evidence.selector || "n/a"}
               </dd>
-              <dt className="text-slate-400">Action</dt>
-              <dd className="text-slate-700">
+              <dt className="text-smoke">Action</dt>
+              <dd className="text-bone">
                 {ACTION_VERBS[evidence.actionType]} {evidence.targetLabel && `“${evidence.targetLabel}”`}
-                {evidence.value && evidence.actionType !== "navigate" && <span className="text-slate-500"> ({evidence.value})</span>}
-                <span className="text-slate-400"> · {formatDuration(evidence.durationMs)} · event #{evidence.seq}</span>
+                {evidence.value && evidence.actionType !== "navigate" && <span className="text-ash"> ({evidence.value})</span>}
+                <span className="tabular-nums text-smoke"> · {formatDuration(evidence.durationMs)} · event #{evidence.seq}</span>
               </dd>
-              <dt className="text-slate-400">Thinking</dt>
-              <dd className="italic text-slate-600">“{evidence.rationale}”</dd>
+              <dt className="text-smoke">Thinking</dt>
+              <dd className="italic text-ash">“{evidence.rationale}”</dd>
             </dl>
           )}
 
-          <div className="mt-3">
+          <div className="mt-6">
             {finding.replayUrl ? (
-              <a
-                href={finding.replayUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-indigo-400 hover:text-indigo-700"
-              >
-                Watch the Browserbase session replay <span aria-hidden>↗</span>
+              <a href={finding.replayUrl} target="_blank" rel="noreferrer" className="pill-ghost">
+                Watch the Browserbase session replay
+                <ArrowUpRight size={14} />
               </a>
             ) : (
-              <span className="text-[11px] text-slate-400">No Browserbase session replay for this run (fixture or mock data).</span>
+              <span className="text-caption text-smoke">No Browserbase session replay for this run (fixture or mock data).</span>
             )}
           </div>
         </div>
@@ -184,9 +229,9 @@ function FindingCard({ finding, rank, personaName, payload }: { finding: ReportF
 
 function Confidence({ value }: { value: number }) {
   return (
-    <span className="ml-auto flex items-center gap-1.5 text-[11px] text-slate-500" title="How sure the judgement is that this is real friction">
-      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200">
-        <span className="block h-full rounded-full bg-slate-700" style={{ width: percent(value) }} />
+    <span className="ml-auto flex items-center gap-2 text-caption text-smoke" title="How sure the judgement is that this is real friction">
+      <span className="h-0.5 w-16 overflow-hidden rounded-full bg-hairline/15">
+        <span className="block h-full rounded-full bg-bone" style={{ width: percent(value) }} />
       </span>
       <span className="tabular-nums">{percent(value)} confident</span>
     </span>
