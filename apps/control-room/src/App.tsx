@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { GOLDEN_RUN_ID, PERSONA_IDS, type PersonaId, type StepPayload } from "@friction/shared";
 import { Landing } from "./components/Landing";
 import { Nav } from "./components/Nav";
@@ -16,6 +16,7 @@ export default function App() {
   const [query, setQuery] = useQuery();
   const [startNotice, setStartNotice] = useState<string | null>(null);
   const [overHero, setOverHero] = useState(true);
+  const landingScroller = useRef<HTMLElement>(null);
 
   const stream = useRunStream(query.run, { replay: query.replay });
   const { view } = stream;
@@ -56,6 +57,7 @@ export default function App() {
 
   const goHome = useCallback(() => {
     setStartNotice(null);
+    landingScroller.current?.scrollTo({ top: 0, behavior: "smooth" });
     setQuery({ run: null, replay: false, tab: "room" });
   }, [setQuery]);
 
@@ -81,7 +83,7 @@ export default function App() {
             Recent runs
           </a>
         </Nav>
-        <Landing onOpen={open} onStarted={onStarted} onOverHero={setOverHero} />
+        <Landing onOpen={open} onStarted={onStarted} onOverHero={setOverHero} scrollerRef={landingScroller} />
       </div>
     );
   }

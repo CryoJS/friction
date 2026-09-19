@@ -102,7 +102,7 @@ export function RunForm({ onStarted }: Props) {
   return (
     <form
       onSubmit={(event) => void start(event)}
-      className="glass rounded-card border border-hairline/15 p-3 shadow-subtle sm:p-4"
+      className="glass rounded-card border border-hairline/15 p-3 sm:p-4"
       aria-label="Start a run"
       noValidate
     >
