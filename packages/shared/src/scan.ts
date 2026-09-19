@@ -35,8 +35,16 @@ export function isScanFinished(status: ScanStatus): boolean {
 
 /* ---------------------------------------------------------------- requests */
 
+/** "owner/name". The orchestrator only accepts slugs on its allow-list (GITHUB_REPO, GITHUB_ALLOWED_REPOS). */
+export const REPO_SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+export const RepoSlugSchema = z.string().trim().max(200).regex(REPO_SLUG, "expected owner/name");
+
 export const CreateScanRequestSchema = z.object({
   url: z.string().trim().min(1).max(2000),
+  /** The repository verified fixes are mapped to. Omitted: no repository, exactly as before. */
+  repo: RepoSlugSchema.optional(),
+  /** Open one draft pull request per fixable task when the runs finish. Only meaningful with `repo`. */
+  autoPr: z.boolean().optional(),
 });
 export type CreateScanRequest = z.infer<typeof CreateScanRequestSchema>;
 
@@ -52,6 +60,13 @@ export const ScanTaskLinkSchema = z.object({
   successCheck: z.string().max(500),
 });
 export type ScanTaskLink = z.infer<typeof ScanTaskLinkSchema>;
+
+/** GET /api/runs/:id/scan: the scan a run is a task of. 404 for a run started on its own. */
+export interface RunScanLink {
+  scanId: string;
+  taskIndex: number;
+  repo: string | null;
+}
 
 export const CrawledPageSchema = z.object({
   url: z.string().min(1).max(2000),
@@ -80,7 +95,55 @@ export interface ScanRecord {
   taskSource: TaskSource | null;
   createdAt: number;
   completedAt: number | null;
+  /** "owner/name" the scan was started with. Absent on scans from before repositories could be chosen. */
+  repo?: string | null;
+  /** Whether the scan opens its draft pull requests by itself. */
+  autoPr?: boolean;
 }
+
+/* ------------------------------------------------------- task pull requests */
+
+/**
+ * opened          a draft PR exists (prUrl)
+ * dry_run         everything but the network writes happened; `preview` is the would-be PR
+ * covered         every fix maps to a file another PR already changes (coveredBy)
+ * nothing_to_fix  no fix of this task was both verified and mapped to source
+ * skipped         there was something to commit, but none of it could be (reason)
+ * failed          GitHub refused or could not be reached (reason)
+ */
+export const TASK_PR_STATUSES = ["opened", "dry_run", "covered", "nothing_to_fix", "skipped", "failed"] as const;
+export const TaskPullRequestStatusSchema = z.enum(TASK_PR_STATUSES);
+export type TaskPullRequestStatus = (typeof TASK_PR_STATUSES)[number];
+
+/** A PR URL (an open Friction PR from an earlier scan) or the 0-based index of the task whose PR claims the file. */
+export const CoveredBySchema = z.union([z.string().min(1).max(500), z.number().int().min(0).max(MAX_SCAN_TASKS - 1)]);
+export type CoveredBy = z.infer<typeof CoveredBySchema>;
+
+export const TaskPullRequestPreviewSchema = z.object({
+  title: z.string().max(300),
+  body: z.string().max(60_000),
+  files: z.array(z.object({ path: z.string().min(1).max(500), addedLines: z.number().int().nonnegative(), removedLines: z.number().int().nonnegative() })).max(10),
+});
+export type TaskPullRequestPreview = z.infer<typeof TaskPullRequestPreviewSchema>;
+
+/** One task's pull request outcome. POST /api/scans/:id/pull-requests upserts it, keyed by (scanId, runId). */
+export const TaskPullRequestSchema = z.object({
+  scanId: z.string().min(1),
+  runId: z.string().min(1),
+  taskIndex: z.number().int().min(0).max(MAX_SCAN_TASKS - 1),
+  status: TaskPullRequestStatusSchema,
+  prUrl: z.string().max(500).optional(),
+  branch: z.string().max(300).optional(),
+  coveredBy: CoveredBySchema.optional(),
+  /** Findings whose fix was committed (or would be, in a dry run). */
+  findingIds: z.array(z.string().min(1)).max(20),
+  /** The rest of the task's story: every fix that did not ship, and why. */
+  notFixed: z.array(z.object({ findingId: z.string().min(1), reason: z.string().max(500), coveredBy: CoveredBySchema.optional() })).max(20),
+  /** One human sentence: why it was skipped or failed. */
+  reason: z.string().max(500).optional(),
+  preview: TaskPullRequestPreviewSchema.optional(),
+});
+export type TaskPullRequest = z.infer<typeof TaskPullRequestSchema>;
 
 /* ----------------------------------------------------------- generated tasks */
 
@@ -137,6 +200,8 @@ export interface ScanTreeTask {
 export interface ScanTreeResponse {
   scan: ScanRecord;
   tasks: ScanTreeTask[];
+  /** Task order. Absent from Workers that predate scan pull requests. */
+  pullRequests?: TaskPullRequest[];
 }
 
 export interface ScanListItem extends ScanRecord {
@@ -281,6 +346,14 @@ export interface ScanIssue {
 export interface ScanReportSummary {
   verdicts: Record<TaskVerdict, number>;
   issuesBySeverity: Record<Severity, number>;
+  /** Only when the scan recorded any pull request outcome. */
+  pullRequests?: TaskPullRequestTotals;
+}
+
+export interface TaskPullRequestTotals {
+  counts: Record<TaskPullRequestStatus, number>;
+  /** "4 draft PRs opened, 2 tasks covered, 4 had nothing to fix." */
+  text: string;
 }
 
 export interface ScanReportTask {
@@ -288,6 +361,7 @@ export interface ScanReportTask {
   runId: string;
   title: string;
   verdict: TaskVerdict;
+  pullRequest?: TaskPullRequest;
 }
 
 /** GET /api/scans/:id/report */

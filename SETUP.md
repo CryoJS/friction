@@ -64,10 +64,13 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
 | `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
 | `VERIFY_TOP_N` | | `2` | How many top findings (by severity) get a fix proposed and verified. Each is a full extra browser run. `0` turns verification off |
-| `GITHUB_TOKEN` | PRs | | Personal access token with contents and pull-request write access to the one repository below. No GitHub App, no OAuth |
+| `GITHUB_TOKEN` | PRs | | Personal access token. Use a **fine-grained** one scoped to exactly the repositories below, with Contents and Pull requests set to read and write and nothing else. It never leaves the orchestrator. No GitHub App, no OAuth |
 | `GITHUB_OWNER` | PRs | | Owner (user or org) of the repository verified fixes are mapped to |
 | `GITHUB_REPO` | PRs | | Repository name |
 | `GITHUB_BASE_BRANCH` | | repo default | Branch that fix branches start from and draft PRs target |
+| `GITHUB_ALLOWED_REPOS` | | | More repositories a scan may choose, comma-separated `owner/name`. With `GITHUB_OWNER/GITHUB_REPO` they are the whole list: the scan form offers them (from `GET /health`, which never carries the token) and the orchestrator refuses any other with 400 |
+| `GITHUB_DRY_RUN` | | off | `1`: pull requests are previewed, never pushed. GitHub is still read (the file, open PRs); nothing is written, by a scan or by a click. Mock mode and a missing token are dry runs too |
+| `GITHUB_API_URL` | | api.github.com | REST base URL, for GitHub Enterprise Server |
 | `STAGEHAND_MODEL` | | `OPENAI_MODEL` | Model for Stagehand's `observe()` fallback |
 | `OPENAI_REASONING_EFFORT` | | unset | Only for reasoning models that accept it |
 | `OPENAI_IMAGE_DETAIL` | | `high` | `high`, `low` or `auto` |
@@ -80,6 +83,12 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 After the run, the top `VERIFY_TOP_N` findings each get a proposed fix: a small JavaScript patch. It is installed with `page.addInitScript()` into a **brand-new** Browserbase session (fresh context, clean cookies) before the first page loads, and the same task is re-run in the `verify` lane. The patch only ever changes the DOM inside Friction's own disposable browser; it never touches your site, server or repository. The fix is **verified** when the task went from failure/timeout to success, or the finding's category no longer fires on the page where it happened; otherwise it is **rejected**, and says why.
 
 With `GITHUB_*` set, a verified fix is mapped to a source file with GitHub code search (from the element's selector and visible text, never from the browser's DOM), and a model writes the complete new file (never a diff). Nothing is committed until someone clicks **Open pull request** in the report: that creates `friction/fix-<findingId>`, commits the one file (refusing if the file changed since), and opens a **draft** PR. Friction never merges or force-pushes. Without `GITHUB_*` set, verified fixes simply stay unmapped.
+
+**Scan pull requests.** With a repository connected, the scan form shows a **Repository** select (with "None") and, once one is chosen, "Open draft pull requests automatically", ticked by default. Such a scan maps its fixes to that repository and, when every run is over, opens one draft PR per task that has a verified, mapped fix: `friction/scan-<scanId>-task-<n>`, one commit per file, serially, in task order. Unticked, it behaves as above: a click per fix. A file already rewritten by an earlier task's PR, or by an open `friction/` PR from an earlier scan, is recorded as covered and not committed again. Each task's outcome is stored in the Worker (`task_pull_requests`), so the canvas shows it with the orchestrator down.
+
+**The orchestrator has no auth.** Anyone who can reach it can start scans, and with a write token configured, make it open draft PRs against any repository on the allow-list. That is why a scan picks from an allow-list instead of typing `owner/repo`, why the token should be fine-grained and scoped to exactly those repositories, and why **the orchestrator must not be exposed publicly while `GITHUB_TOKEN` can write**. Run it on localhost or a private network, or set `GITHUB_DRY_RUN=1`.
+
+**No GitHub call has run against the real API.** Make the first one deliberate: a throwaway repository, `GITHUB_DRY_RUN=1` first (reads only), then one scan without it.
 
 Mock mode verifies too: it replays the golden run's recorded verification runs through the real detectors, so the verdicts are computed, not copied.
 
@@ -99,7 +108,7 @@ pnpm db:migrate:local    # wrangler d1 migrations apply friction --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply friction --remote
 ```
 
-Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`; `0004_scans.sql` adds `scans` and `scan_tasks`.
+Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`; `0004_scans.sql` adds `scans` and `scan_tasks`; `0005_task_pull_requests.sql` adds `task_pull_requests` and the nullable `scans.repo` and `scans.auto_pr`.
 
 `0002_lanes.sql` replaces the three-persona schema with lanes. It is lossy for runs recorded before it: their "cautious" persona becomes the primary lane and the other two personas' events are dropped (R2 screenshots are untouched). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { normalizeTargetUrl } from "@friction/shared";
+import { normalizeTargetUrl, type OrchestratorHealth } from "@friction/shared";
 import { api } from "../lib/api";
 import { ArrowRight } from "./icons";
 
@@ -11,6 +11,15 @@ interface Props {
 const STORAGE_KEY = "friction:last-scan-url";
 /** The URL + task form's key; its URL seeds the field once. */
 const LEGACY_KEY = "friction:last-run-form";
+const REPO_KEY = "friction:last-scan-repo";
+
+function loadRepo(): string {
+  try {
+    return window.localStorage.getItem(REPO_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 function loadUrl(): string {
   try {
@@ -31,6 +40,33 @@ export function ScanForm({ onStarted, onReplayGolden }: Props) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  // Null until the orchestrator answers; if it never does, the form is the URL field alone, as before.
+  const [health, setHealth] = useState<OrchestratorHealth | null>(null);
+  const [wantedRepo, setWantedRepo] = useState(loadRepo);
+  const [autoPr, setAutoPr] = useState(true);
+  const repos = health?.repos ?? [];
+  // Only ever a repository the orchestrator offers: a remembered one that is gone reads as None.
+  const repo = repos.includes(wantedRepo) ? wantedRepo : "";
+
+  useEffect(() => {
+    let live = true;
+    api
+      .orchestratorHealth()
+      .then((answer) => live && setHealth(answer))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  function chooseRepo(next: string): void {
+    setWantedRepo(next);
+    try {
+      window.localStorage.setItem(REPO_KEY, next);
+    } catch {
+      /* private mode: not worth failing over */
+    }
+  }
 
   useEffect(() => {
     try {
@@ -51,7 +87,7 @@ export function ScanForm({ onStarted, onReplayGolden }: Props) {
     setBusy(true);
     setFailure(null);
     try {
-      const { scanId } = await api.startScan(target);
+      const { scanId } = await api.startScan(target, repo ? { repo, autoPr } : {});
       onStarted(scanId);
     } catch (err) {
       setFailure({ kind: "unreachable", detail: err instanceof Error ? err.message : "unknown error" });
@@ -87,6 +123,39 @@ export function ScanForm({ onStarted, onReplayGolden }: Props) {
       </div>
 
       <p className="mt-3 px-2 text-caption text-ash">Friction reads the site, picks its 10 most critical tasks and has the agent attempt each one.</p>
+
+      {health && repos.length === 0 && (
+        <p className="mt-2 px-2 text-caption text-smoke">
+          To get draft pull requests for what it finds, connect a repository: set <span className="font-mono tracking-normal">GITHUB_TOKEN</span> and{" "}
+          <span className="font-mono tracking-normal">GITHUB_REPO</span> for the orchestrator.
+        </p>
+      )}
+      {repos.length > 0 && (
+        <div className="mt-3 space-y-2 px-2">
+          <label className="flex min-w-0 items-center gap-3 text-caption text-ash">
+            <span className="shrink-0">Repository</span>
+            <select
+              value={repo}
+              onChange={(event) => chooseRepo(event.target.value)}
+              className="field h-9 min-w-0 flex-1 px-4 font-mono text-caption tracking-normal"
+            >
+              <option value="">None</option>
+              {repos.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {repo && (
+            <label className="flex items-center gap-2 text-caption text-ash">
+              <input type="checkbox" checked={autoPr} onChange={(event) => setAutoPr(event.target.checked)} className="h-4 w-4 shrink-0 accent-white" />
+              Open draft pull requests automatically
+            </label>
+          )}
+          {repo && health?.githubDryRun && <p className="text-caption text-smoke">Preview only, nothing will be pushed.</p>}
+        </div>
+      )}
 
       {failure && (
         <p id="scan-form-error" role="alert" className="mt-2 px-2 text-caption text-sev-5">
