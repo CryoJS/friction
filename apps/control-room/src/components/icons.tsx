@@ -91,6 +91,19 @@ export const Plus = (p: IconProps) => (
   </Icon>
 );
 
+/** A persona that failed or timed out, on a task node's mark strip. */
+export const Cross = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />
+  </Icon>
+);
+
+export const Minus = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 10h12" />
+  </Icon>
+);
+
 export const Wand = (p: IconProps) => (
   <Icon {...p}>
     <path d="m3.5 16.5 9-9M11 6l3 3" />

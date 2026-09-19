@@ -11,9 +11,11 @@ interface Props {
   /** Only a genuinely live run has a Browserbase session worth embedding. */
   allowLiveView: boolean;
   startTs: number | null;
+  /** Label for the idle state; a scan shows its queued personas as "Queued". */
+  idleLabel?: string;
 }
 
-export function PersonaColumn({ persona, allowLiveView, startTs }: Props) {
+export function PersonaColumn({ persona, allowLiveView, startTs, idleLabel }: Props) {
   const latest = persona.steps[persona.steps.length - 1] ?? null;
   const worst = persona.frictions.reduce<Map<number, FrictionEvent>>((map, friction) => {
     const current = map.get(friction.payload.evidenceSeq);
@@ -36,7 +38,7 @@ export function PersonaColumn({ persona, allowLiveView, startTs }: Props) {
           <span className="hidden text-caption tabular-nums text-smoke 2xl:inline" title="Steps taken of the 15-step hard cap">
             {persona.steps.length}/{MAX_STEPS}
           </span>
-          <StateBadge state={persona.state} />
+          <StateBadge state={persona.state} idleLabel={idleLabel} />
         </div>
       </header>
 
