@@ -1,0 +1,26 @@
+{
+  "name": "@friction/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --import tsx src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "tsx scripts/smoke-local.ts"
+  },
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.16.0",
+    "@browserbasehq/stagehand": "3.7.3",
+    "@friction/shared": "workspace:*",
+    "express": "^5.2.1",
+    "openai": "^6.49.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

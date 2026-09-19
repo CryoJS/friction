@@ -1,0 +1,29 @@
+name = "friction-worker"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Lets the Worker import migrations/*.sql as text, so it can create its own
+# schema on a fresh database (see src/db.ts ensureSchema).
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
+# Run metadata, events and findings.
+# Local dev ignores database_id. Before the first deploy run
+#   pnpm --filter @friction/worker exec wrangler d1 create friction
+# and paste the id it prints here.
+[[d1_databases]]
+binding = "DB"
+database_name = "friction"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Evidence screenshots. Before the first deploy run
+#   pnpm --filter @friction/worker exec wrangler r2 bucket create friction-evidence
+[[r2_buckets]]
+binding = "EVIDENCE"
+bucket_name = "friction-evidence"
+
+[observability]
+enabled = true

@@ -1,0 +1,1747 @@
+{
+  "run": {
+    "id": "golden",
+    "url": "https://shop.northpeak.example/",
+    "task": "Find a winter jacket and add it to cart",
+    "status": "completed",
+    "createdAt": 1789826400000,
+    "completedAt": 1789826489770
+  },
+  "personas": [
+    {
+      "id": "golden:impatient",
+      "runId": "golden",
+      "personaId": "impatient",
+      "state": "failed",
+      "stepCount": 12,
+      "liveViewUrl": null,
+      "sessionId": null,
+      "replayUrl": null
+    },
+    {
+      "id": "golden:cautious",
+      "runId": "golden",
+      "personaId": "cautious",
+      "state": "succeeded",
+      "stepCount": 15,
+      "liveViewUrl": null,
+      "sessionId": null,
+      "replayUrl": null
+    },
+    {
+      "id": "golden:keyboard",
+      "runId": "golden",
+      "personaId": "keyboard",
+      "state": "succeeded",
+      "stepCount": 15,
+      "liveViewUrl": null,
+      "sessionId": null,
+      "replayUrl": null
+    }
+  ],
+  "events": [
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 1,
+      "ts": 1789826400060,
+      "type": "status",
+      "payload": {
+        "state": "idle",
+        "currentSeq": 1,
+        "message": "Queued. Starting a Browserbase session."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 1,
+      "ts": 1789826400060,
+      "type": "status",
+      "payload": {
+        "state": "idle",
+        "currentSeq": 1,
+        "message": "Queued. Starting a Browserbase session."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 1,
+      "ts": 1789826400060,
+      "type": "status",
+      "payload": {
+        "state": "idle",
+        "currentSeq": 1,
+        "message": "Queued. Starting a Browserbase session."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 2,
+      "ts": 1789826402800,
+      "type": "status",
+      "payload": {
+        "state": "running",
+        "currentSeq": 2,
+        "message": "Session is up."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 2,
+      "ts": 1789826403100,
+      "type": "status",
+      "payload": {
+        "state": "running",
+        "currentSeq": 2,
+        "message": "Session is up."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 2,
+      "ts": 1789826403400,
+      "type": "status",
+      "payload": {
+        "state": "running",
+        "currentSeq": 2,
+        "message": "Session is up."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 3,
+      "ts": 1789826405850,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "navigate",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "Open the store.",
+        "screenshotKey": "golden/impatient/01.svg",
+        "bbox": null,
+        "durationMs": 1900,
+        "domChanged": true,
+        "value": "https://shop.northpeak.example/",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 3,
+      "ts": 1789826406300,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "navigate",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "Loading the store; I'll start tabbing from the top.",
+        "screenshotKey": "golden/keyboard/01.svg",
+        "bbox": null,
+        "durationMs": 1950,
+        "domChanged": true,
+        "value": "https://shop.northpeak.example/",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 3,
+      "ts": 1789826406850,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "navigate",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "I'm opening the shop's home page to get my bearings.",
+        "screenshotKey": "golden/cautious/01.svg",
+        "bbox": null,
+        "durationMs": 2000,
+        "domChanged": true,
+        "value": "https://shop.northpeak.example/",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 4,
+      "ts": 1789826408040,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "click",
+        "targetLabel": "Accept all cookies",
+        "selector": "xpath=/html/body/div[3]/div/div[2]/button[2]",
+        "rationale": "Cookie wall. Accept, whatever, move.",
+        "screenshotKey": "golden/impatient/02.svg",
+        "bbox": {
+          "x": 1068,
+          "y": 652,
+          "w": 180,
+          "h": 42
+        },
+        "durationMs": 240,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 4,
+      "ts": 1789826409790,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "press",
+        "targetLabel": "Accept all cookies",
+        "selector": "xpath=/html/body/div[3]/div/div[2]/button[2]",
+        "rationale": "Tab lands on 'Accept all cookies' first; Enter to dismiss the banner.",
+        "screenshotKey": "golden/keyboard/02.svg",
+        "bbox": {
+          "x": 1068,
+          "y": 652,
+          "w": 180,
+          "h": 42
+        },
+        "durationMs": 340,
+        "domChanged": true,
+        "value": "Tab Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/",
+          "keysPressed": [
+            "Tab",
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Accept all cookies"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 4,
+      "ts": 1789826411560,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "click",
+        "targetLabel": "Accept all cookies",
+        "selector": "xpath=/html/body/div[3]/div/div[2]/button[2]",
+        "rationale": "The banner says cookies are for personalisation; 'Accept all cookies' is clear enough, so I'll accept to get it out of the way.",
+        "screenshotKey": "golden/cautious/02.svg",
+        "bbox": {
+          "x": 1068,
+          "y": 652,
+          "w": 180,
+          "h": 42
+        },
+        "durationMs": 260,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 5,
+      "ts": 1789826412390,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "click",
+        "targetLabel": "Shop the Winter Edit",
+        "selector": "xpath=/html/body/main/section[1]/div/a",
+        "rationale": "Big button says winter. That's my jacket.",
+        "screenshotKey": "golden/impatient/03.svg",
+        "bbox": {
+          "x": 96,
+          "y": 336,
+          "w": 268,
+          "h": 54
+        },
+        "durationMs": 2300,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/winter-edit"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 5,
+      "ts": 1789826413900,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "press",
+        "targetLabel": "Search",
+        "selector": "xpath=/html/body/header/div/div[2]/button[1]",
+        "rationale": "There's no skip link, so I'm tabbing through the logo and the whole menu to reach Search.",
+        "screenshotKey": "golden/keyboard/03.svg",
+        "bbox": {
+          "x": 1088,
+          "y": 14,
+          "w": 38,
+          "h": 38
+        },
+        "durationMs": 760,
+        "domChanged": false,
+        "value": "Tab Tab Tab Tab Tab Tab",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/",
+          "keysPressed": [
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Search"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 6,
+      "ts": 1789826414660,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/winter-edit",
+        "actionType": "scroll",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "No products up here, just photos. Scrolling.",
+        "screenshotKey": "golden/impatient/04.svg",
+        "bbox": null,
+        "durationMs": 420,
+        "domChanged": false,
+        "value": "down",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/winter-edit"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 7,
+      "ts": 1789826416820,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/winter-edit",
+        "actionType": "scroll",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "Still a photo essay. Where's the stuff I can buy?",
+        "screenshotKey": "golden/impatient/05.svg",
+        "bbox": null,
+        "durationMs": 410,
+        "domChanged": false,
+        "value": "down",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/winter-edit"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 6,
+      "ts": 1789826416880,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "press",
+        "targetLabel": "Search",
+        "selector": "xpath=/html/body/header/div/div[2]/button[1]",
+        "rationale": "Focus is on the Search button; Enter should open the search field.",
+        "screenshotKey": "golden/keyboard/04.svg",
+        "bbox": {
+          "x": 1088,
+          "y": 14,
+          "w": 38,
+          "h": 38
+        },
+        "durationMs": 330,
+        "domChanged": true,
+        "value": "Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/",
+          "keysPressed": [
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Search products"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 5,
+      "ts": 1789826418210,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "click",
+        "targetLabel": "Men",
+        "selector": "xpath=/html/body/header/div/nav/ul/li[1]/a",
+        "rationale": "I'd rather browse than search, and 'Men' is the most specific menu item for a men's winter jacket.",
+        "screenshotKey": "golden/cautious/03.svg",
+        "bbox": {
+          "x": 252,
+          "y": 18,
+          "w": 52,
+          "h": 30
+        },
+        "durationMs": 1800,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/men"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 8,
+      "ts": 1789826419280,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/winter-edit",
+        "actionType": "click",
+        "targetLabel": "Search",
+        "selector": "xpath=/html/body/header/div/div[2]/button[1]",
+        "rationale": "Forget this page, I'll search.",
+        "screenshotKey": "golden/impatient/06.svg",
+        "bbox": {
+          "x": 1088,
+          "y": 14,
+          "w": 38,
+          "h": 38
+        },
+        "durationMs": 310,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/winter-edit"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 7,
+      "ts": 1789826420070,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "type",
+        "targetLabel": "Search products",
+        "selector": "xpath=/html/body/header/div/form/input",
+        "rationale": "Focus moved into the search field, so I'm typing my query.",
+        "screenshotKey": "golden/keyboard/05.svg",
+        "bbox": {
+          "x": 320,
+          "y": 12,
+          "w": 640,
+          "h": 42
+        },
+        "durationMs": 640,
+        "domChanged": true,
+        "value": "winter jacket",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 9,
+      "ts": 1789826421650,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/winter-edit",
+        "actionType": "type",
+        "targetLabel": "Search products",
+        "selector": "xpath=/html/body/header/div/form/input",
+        "rationale": "Typing what I want.",
+        "screenshotKey": "golden/impatient/07.svg",
+        "bbox": {
+          "x": 320,
+          "y": 12,
+          "w": 640,
+          "h": 42
+        },
+        "durationMs": 620,
+        "domChanged": true,
+        "value": "winter jacket",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/winter-edit"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 6,
+      "ts": 1789826424460,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/men",
+        "actionType": "click",
+        "targetLabel": "Jackets & Coats",
+        "selector": "xpath=/html/body/main/div[2]/a[1]",
+        "rationale": "'Jackets & Coats' says exactly what I'm looking for, so I feel confident clicking it.",
+        "screenshotKey": "golden/cautious/04.svg",
+        "bbox": {
+          "x": 32,
+          "y": 150,
+          "w": 292,
+          "h": 300
+        },
+        "durationMs": 2100,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/mens-jackets"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 8,
+      "ts": 1789826424620,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/",
+        "actionType": "press",
+        "targetLabel": "Search products",
+        "selector": "xpath=/html/body/header/div/form/input",
+        "rationale": "Enter to submit the search.",
+        "screenshotKey": "golden/keyboard/06.svg",
+        "bbox": {
+          "x": 320,
+          "y": 12,
+          "w": 640,
+          "h": 42
+        },
+        "durationMs": 2200,
+        "domChanged": true,
+        "value": "Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/search?q=winter+jacket",
+          "keysPressed": [
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Northpeak home"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 10,
+      "ts": 1789826425300,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/winter-edit",
+        "actionType": "press",
+        "targetLabel": "Search products",
+        "selector": "xpath=/html/body/header/div/form/input",
+        "rationale": "Enter to search.",
+        "screenshotKey": "golden/impatient/08.svg",
+        "bbox": {
+          "x": 320,
+          "y": 12,
+          "w": 640,
+          "h": 42
+        },
+        "durationMs": 2100,
+        "domChanged": true,
+        "value": "Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/search?q=winter+jacket",
+          "keysPressed": [
+            "Enter"
+          ],
+          "focusMoved": true
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 11,
+      "ts": 1789826428130,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/search?q=winter+jacket",
+        "actionType": "click",
+        "targetLabel": "Jackets & Coats",
+        "selector": "xpath=/html/body/main/div[1]/div/button[1]",
+        "rationale": "Narrow it to jackets, one tap.",
+        "screenshotKey": "golden/impatient/09.svg",
+        "bbox": {
+          "x": 32,
+          "y": 150,
+          "w": 154,
+          "h": 34
+        },
+        "durationMs": 680,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/search?q=winter+jacket"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 9,
+      "ts": 1789826429270,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/search?q=winter+jacket",
+        "actionType": "press",
+        "targetLabel": "Select options",
+        "selector": "xpath=/html/body/main/div[2]/article[1]/button",
+        "rationale": "Tabbing past the header and filters again to reach the first result; it's announced only as 'Select options'.",
+        "screenshotKey": "golden/keyboard/07.svg",
+        "bbox": {
+          "x": 32,
+          "y": 578,
+          "w": 292,
+          "h": 38
+        },
+        "durationMs": 1100,
+        "domChanged": false,
+        "value": "Tab Tab Tab Tab Tab Tab Tab Tab Tab",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/search?q=winter+jacket",
+          "keysPressed": [
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Select options",
+          "sameLabelCount": 4
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 7,
+      "ts": 1789826429630,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/mens-jackets",
+        "actionType": "scroll",
+        "targetLabel": "",
+        "selector": "",
+        "rationale": "I want to read through the jackets on offer before I open any of them.",
+        "screenshotKey": "golden/cautious/05.svg",
+        "bbox": null,
+        "durationMs": 520,
+        "domChanged": true,
+        "value": "down",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/mens-jackets",
+          "modalAppeared": true,
+          "modalLabel": "Get 10% off your first order"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 10,
+      "ts": 1789826430670,
+      "type": "friction",
+      "payload": {
+        "category": "ambiguous_label",
+        "severity": 3,
+        "evidenceSeq": 9,
+        "recommendation": "Give each control a unique accessible name, e.g. aria-label=\"Select options for Alpine Down Parka\", or make the product title the link and drop the generic button.",
+        "confidence": 0.87,
+        "summary": "4 controls on this page share the accessible name \"Select options\".",
+        "whyItMatters": "A keyboard or screen-reader user tabbing through the results hears \"Select options\" four times with no product name, so they cannot tell which jacket each button belongs to without backtracking.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 8,
+      "ts": 1789826431130,
+      "type": "friction",
+      "payload": {
+        "category": "modal_interrupt",
+        "severity": 3,
+        "evidenceSeq": 7,
+        "recommendation": "Delay the newsletter prompt until the visitor has shown intent (added to cart, or viewed two products), or use a non-blocking banner. Make the decline action a clearly labelled button, not a small text link.",
+        "confidence": 0.84,
+        "summary": "An overlay (\"Get 10% off your first order\") appeared and covered the page.",
+        "whyItMatters": "A first-time visitor was interrupted twenty seconds into browsing, before seeing a single product in detail. They had to stop, read the offer and hunt for the decline link before they could carry on.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 11,
+      "ts": 1789826435220,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/search?q=winter+jacket",
+        "actionType": "press",
+        "targetLabel": "Select options",
+        "selector": "xpath=/html/body/main/div[2]/article[1]/button",
+        "rationale": "Every card says 'Select options', so I'm assuming the first one belongs to the first jacket. Enter.",
+        "screenshotKey": "golden/keyboard/08.svg",
+        "bbox": {
+          "x": 32,
+          "y": 578,
+          "w": 292,
+          "h": 38
+        },
+        "durationMs": 3100,
+        "domChanged": true,
+        "value": "Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Northpeak home",
+          "sameLabelCount": 4
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 9,
+      "ts": 1789826435380,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/mens-jackets",
+        "actionType": "click",
+        "targetLabel": "No thanks",
+        "selector": "xpath=/html/body/div[5]/div/div/button[2]",
+        "rationale": "A pop-up is asking for my email; I didn't ask for this, and 'No thanks' seems the safest way to close it.",
+        "screenshotKey": "golden/cautious/06.svg",
+        "bbox": {
+          "x": 586,
+          "y": 488,
+          "w": 108,
+          "h": 30
+        },
+        "durationMs": 300,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/mens-jackets"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 12,
+      "ts": 1789826436480,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/search?q=winter+jacket",
+        "actionType": "click",
+        "targetLabel": "Alpine Down Parka",
+        "selector": "xpath=/html/body/main/div[2]/article[1]/a",
+        "rationale": "First result looks right. Open it.",
+        "screenshotKey": "golden/impatient/10.svg",
+        "bbox": {
+          "x": 32,
+          "y": 520,
+          "w": 292,
+          "h": 24
+        },
+        "durationMs": 6400,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 13,
+      "ts": 1789826437780,
+      "type": "friction",
+      "payload": {
+        "category": "long_wait",
+        "severity": 3,
+        "evidenceSeq": 12,
+        "recommendation": "Get the product page interactive in under 2.5s: server-render the above-the-fold content, defer the reviews and recommendations widgets, and show a skeleton immediately on navigation.",
+        "confidence": 0.86,
+        "summary": "click on \"Alpine Down Parka\" took 6.4s to settle.",
+        "whyItMatters": "A shopper who has already found the product is left staring at an unresponsive page for more than six seconds. Most will assume the click failed and either click again or leave.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 14,
+      "ts": 1789826438920,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "click",
+        "targetLabel": "Add to cart",
+        "selector": "xpath=/html/body/main/div/div[2]/form/button",
+        "rationale": "Add to cart. Done.",
+        "screenshotKey": "golden/impatient/11.svg",
+        "bbox": {
+          "x": 680,
+          "y": 424,
+          "w": 504,
+          "h": 56
+        },
+        "durationMs": 190,
+        "domChanged": false,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 12,
+      "ts": 1789826439290,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Colour: Black",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[1]/label[1]",
+        "rationale": "Tabbing towards the size options; a dialog just appeared, but my focus didn't move into it.",
+        "screenshotKey": "golden/keyboard/09.svg",
+        "bbox": {
+          "x": 680,
+          "y": 252,
+          "w": 44,
+          "h": 44
+        },
+        "durationMs": 820,
+        "domChanged": true,
+        "value": "Tab Tab Tab Tab",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "modalAppeared": true,
+          "modalLabel": "Get 10% off your first order",
+          "keysPressed": [
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Colour: Black"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 15,
+      "ts": 1789826440320,
+      "type": "friction",
+      "payload": {
+        "category": "dead_click",
+        "severity": 5,
+        "evidenceSeq": 14,
+        "recommendation": "Never fail silently on the primary CTA. Disable \"Add to cart\" with a visible \"Select a size\" hint until a size is chosen, or on click scroll to the size selector, outline it in red and announce \"Please select a size\".",
+        "confidence": 0.93,
+        "summary": "Clicked \"Add to cart\" and nothing happened: no navigation, no DOM change.",
+        "whyItMatters": "The primary conversion button silently ignores the click when no size is selected. There is no error, no highlight and no disabled state, so the shopper cannot tell what is wrong.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 13,
+      "ts": 1789826440590,
+      "type": "friction",
+      "payload": {
+        "category": "modal_interrupt",
+        "severity": 4,
+        "evidenceSeq": 12,
+        "recommendation": "When a dialog opens, move focus into it, keep Tab cycling inside it, and return focus to the previous element on close. Better still, do not open marketing dialogs on a timer at all.",
+        "confidence": 0.85,
+        "summary": "An overlay (\"Get 10% off your first order\") appeared and covered the page.",
+        "whyItMatters": "The dialog opened on a timer without moving keyboard focus into it. A keyboard-only user is now behind an overlay they did not ask for and cannot see where their focus is.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 16,
+      "ts": 1789826440850,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "click",
+        "targetLabel": "Add to cart",
+        "selector": "xpath=/html/body/main/div/div[2]/form/button",
+        "rationale": "Nothing happened? Clicking it again.",
+        "screenshotKey": "golden/impatient/12.svg",
+        "bbox": {
+          "x": 680,
+          "y": 424,
+          "w": 504,
+          "h": 56
+        },
+        "durationMs": 180,
+        "domChanged": false,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 17,
+      "ts": 1789826442050,
+      "type": "friction",
+      "payload": {
+        "category": "retry",
+        "severity": 4,
+        "evidenceSeq": 16,
+        "recommendation": "Give instant feedback on every press of the primary button (pressed state, spinner or inline validation) so a retry is never needed.",
+        "confidence": 0.9,
+        "summary": "Repeated click on \"Add to cart\" straight after the first attempt.",
+        "whyItMatters": "A second identical click confirms the user believed the first one failed. This persona abandons after two failed attempts, so this is the exact moment the sale is lost.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 18,
+      "ts": 1789826442400,
+      "type": "status",
+      "payload": {
+        "state": "failed",
+        "currentSeq": 18,
+        "message": "Abandoned: \"Add to cart\" did nothing, twice."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "impatient",
+      "seq": 19,
+      "ts": 1789826442500,
+      "type": "done",
+      "payload": {
+        "outcome": "failure",
+        "totalSteps": 12,
+        "frictionCount": 3,
+        "durationMs": 42500,
+        "summary": "Gave up after two dead clicks on Add to cart. Never learned a size was required."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 14,
+      "ts": 1789826442500,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Colour: Black",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[1]/label[1]",
+        "rationale": "Pressing Tab to get into the dialog, but focus is not moving at all; this is a keyboard trap.",
+        "screenshotKey": "golden/keyboard/10.svg",
+        "bbox": {
+          "x": 680,
+          "y": 252,
+          "w": 44,
+          "h": 44
+        },
+        "durationMs": 260,
+        "domChanged": false,
+        "value": "Tab",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "Tab"
+          ],
+          "focusMoved": false,
+          "focusLabel": "Colour: Black"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 15,
+      "ts": 1789826443700,
+      "type": "friction",
+      "payload": {
+        "category": "keyboard_trap",
+        "severity": 5,
+        "evidenceSeq": 14,
+        "recommendation": "Build the dialog on the native <dialog> element or a tested focus-trap: focus moves into the dialog, Tab cycles within it, and Escape closes it and restores focus.",
+        "confidence": 0.95,
+        "summary": "Pressed Tab and focus did not move (stuck on \"Colour: Black\").",
+        "whyItMatters": "With the dialog open, Tab does nothing: focus is stuck on an element hidden behind the overlay. A keyboard-only user has no way forward except guessing that Escape might work. This fails WCAG 2.1.2 (No Keyboard Trap).",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 10,
+      "ts": 1789826443930,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/mens-jackets",
+        "actionType": "click",
+        "targetLabel": "Alpine Down Parka",
+        "selector": "xpath=/html/body/main/div[2]/article[1]/a",
+        "rationale": "'Alpine Down Parka' sounds like a proper winter jacket, so I'll look at its details.",
+        "screenshotKey": "golden/cautious/07.svg",
+        "bbox": {
+          "x": 32,
+          "y": 520,
+          "w": 292,
+          "h": 24
+        },
+        "durationMs": 4200,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 16,
+      "ts": 1789826445560,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Get 10% off your first order",
+        "selector": "xpath=/html/body/div[5]/div",
+        "rationale": "Trying Escape to get rid of the dialog I can't reach.",
+        "screenshotKey": "golden/keyboard/11.svg",
+        "bbox": {
+          "x": 390,
+          "y": 170,
+          "w": 500,
+          "h": 380
+        },
+        "durationMs": 310,
+        "domChanged": true,
+        "value": "Escape",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "Escape"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Northpeak home"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 11,
+      "ts": 1789826449190,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "select",
+        "targetLabel": "Size",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[2]/label[3]",
+        "rationale": "I'll choose my size before anything else; M is what I normally wear.",
+        "screenshotKey": "golden/cautious/08.svg",
+        "bbox": {
+          "x": 824,
+          "y": 346,
+          "w": 64,
+          "h": 46
+        },
+        "durationMs": 210,
+        "domChanged": true,
+        "value": "M",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 17,
+      "ts": 1789826450410,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Size: XS",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[2]/label[1]",
+        "rationale": "The dialog closed but focus was reset to the top of the page, so I'm tabbing all the way back down to Size.",
+        "screenshotKey": "golden/keyboard/12.svg",
+        "bbox": {
+          "x": 680,
+          "y": 346,
+          "w": 64,
+          "h": 46
+        },
+        "durationMs": 1400,
+        "domChanged": false,
+        "value": "Tab Tab Tab Tab Tab Tab Tab Tab Tab Tab Tab Tab",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab",
+            "Tab"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Size: XS"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 18,
+      "ts": 1789826453480,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Size: L",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[2]/label[4]",
+        "rationale": "Focus is on the size group; arrow keys to move from XS to L.",
+        "screenshotKey": "golden/keyboard/13.svg",
+        "bbox": {
+          "x": 896,
+          "y": 346,
+          "w": 64,
+          "h": 46
+        },
+        "durationMs": 420,
+        "domChanged": true,
+        "value": "ArrowRight ArrowRight ArrowRight",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "ArrowRight",
+            "ArrowRight",
+            "ArrowRight"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Size: L"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 12,
+      "ts": 1789826453680,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "click",
+        "targetLabel": "Add to cart",
+        "selector": "xpath=/html/body/main/div/div[2]/form/button",
+        "rationale": "Size is selected and the price is shown, so 'Add to cart' should be safe now.",
+        "screenshotKey": "golden/cautious/09.svg",
+        "bbox": {
+          "x": 680,
+          "y": 424,
+          "w": 504,
+          "h": 56
+        },
+        "durationMs": 640,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "errorTexts": [
+            "Sorry, size M is out of stock in Black. Please choose another size or colour."
+          ]
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 19,
+      "ts": 1789826454780,
+      "type": "friction",
+      "payload": {
+        "category": "step_budget",
+        "severity": 3,
+        "evidenceSeq": 18,
+        "recommendation": "Add a \"Skip to main content\" link as the first focusable element, and keep the focus position after closing overlays instead of resetting it to the top of the page.",
+        "confidence": 0.8,
+        "summary": "13 steps taken without completing the task (budget: 12).",
+        "whyItMatters": "With no skip link, every page load costs this user six to twelve Tab presses through the header before reaching content, and the modal forced a full restart of the tab order.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 13,
+      "ts": 1789826455080,
+      "type": "friction",
+      "payload": {
+        "category": "error_text",
+        "severity": 4,
+        "evidenceSeq": 12,
+        "recommendation": "Show availability before the click: grey out or strike through sold-out sizes per colour, and offer \"Notify me\" in place of \"Add to cart\" for unavailable combinations.",
+        "confidence": 0.88,
+        "summary": "Error shown after click on \"Add to cart\": \"Sorry, size M is out of stock in Black. Please choose another size or colour.\"",
+        "whyItMatters": "Stock status is only revealed after the shopper has picked a size and tried to buy. The size looked available, so the error reads as the site rejecting them rather than as helpful information.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 20,
+      "ts": 1789826457110,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "Add to cart",
+        "selector": "xpath=/html/body/main/div/div[2]/form/button",
+        "rationale": "Two Tabs to reach 'Add to cart', then Enter.",
+        "screenshotKey": "golden/keyboard/14.svg",
+        "bbox": {
+          "x": 680,
+          "y": 424,
+          "w": 504,
+          "h": 56
+        },
+        "durationMs": 780,
+        "domChanged": true,
+        "value": "Tab Tab Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/alpine-down-parka",
+          "keysPressed": [
+            "Tab",
+            "Tab",
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "View cart"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 14,
+      "ts": 1789826461230,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "click",
+        "targetLabel": "Jackets & Coats",
+        "selector": "xpath=/html/body/main/nav/ol/li[3]/a",
+        "rationale": "It says M is out of stock in Black and I'm not sure about the other colours, so I'll go back to the list and look at another jacket.",
+        "screenshotKey": "golden/cautious/10.svg",
+        "bbox": {
+          "x": 146,
+          "y": 78,
+          "w": 124,
+          "h": 24
+        },
+        "durationMs": 1900,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/mens-jackets"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 21,
+      "ts": 1789826462060,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/alpine-down-parka",
+        "actionType": "press",
+        "targetLabel": "View cart",
+        "selector": "xpath=/html/body/div[7]/aside/a",
+        "rationale": "A cart panel opened and took focus; Tab to 'View cart' and Enter to confirm the jacket is in there.",
+        "screenshotKey": "golden/keyboard/15.svg",
+        "bbox": {
+          "x": 840,
+          "y": 604,
+          "w": 400,
+          "h": 52
+        },
+        "durationMs": 1900,
+        "domChanged": true,
+        "value": "Tab Enter",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/cart",
+          "keysPressed": [
+            "Tab",
+            "Enter"
+          ],
+          "focusMoved": true,
+          "focusLabel": "Northpeak home"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 22,
+      "ts": 1789826462410,
+      "type": "status",
+      "payload": {
+        "state": "succeeded",
+        "currentSeq": 22,
+        "message": "Task complete: the cart shows 1 item."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "keyboard",
+      "seq": 23,
+      "ts": 1789826462510,
+      "type": "done",
+      "payload": {
+        "outcome": "success",
+        "totalSteps": 15,
+        "frictionCount": 4,
+        "durationMs": 62510,
+        "summary": "Added the parka to the cart on the 15th and last allowed step, after escaping a focus trap."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 15,
+      "ts": 1789826467880,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/mens-jackets",
+        "actionType": "click",
+        "targetLabel": "Summit Insulated Jacket",
+        "selector": "xpath=/html/body/main/div[2]/article[2]/a",
+        "rationale": "'Insulated' suggests it's warm enough for winter, so I'll check this one.",
+        "screenshotKey": "golden/cautious/11.svg",
+        "bbox": {
+          "x": 340,
+          "y": 520,
+          "w": 292,
+          "h": 24
+        },
+        "durationMs": 2600,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/summit-insulated-jacket"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 16,
+      "ts": 1789826473730,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/summit-insulated-jacket",
+        "actionType": "click",
+        "targetLabel": "Jackets & Coats",
+        "selector": "xpath=/html/body/main/nav/ol/li[3]/a",
+        "rationale": "I can see M is greyed out on this jacket too, so it's back to the list again.",
+        "screenshotKey": "golden/cautious/12.svg",
+        "bbox": {
+          "x": 146,
+          "y": 78,
+          "w": 124,
+          "h": 24
+        },
+        "durationMs": 1700,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/collections/mens-jackets"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 17,
+      "ts": 1789826479880,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/collections/mens-jackets",
+        "actionType": "click",
+        "targetLabel": "Glacier 3-in-1 Jacket",
+        "selector": "xpath=/html/body/main/div[2]/article[3]/a",
+        "rationale": "Third try: '3-in-1' should cover winter, and I hope this one has my size.",
+        "screenshotKey": "golden/cautious/13.svg",
+        "bbox": {
+          "x": 648,
+          "y": 520,
+          "w": 292,
+          "h": 24
+        },
+        "durationMs": 2400,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/glacier-3-in-1-jacket"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 18,
+      "ts": 1789826480980,
+      "type": "friction",
+      "payload": {
+        "category": "step_budget",
+        "severity": 3,
+        "evidenceSeq": 17,
+        "recommendation": "Shorten the happy path: surface size availability on the listing cards and remove interruptions before the first add-to-cart.",
+        "confidence": 0.78,
+        "summary": "13 steps taken without completing the task (budget: 12).",
+        "whyItMatters": "Adding one jacket to the cart should take a careful user six to eight steps. Needing more than twelve means the path is padded with detours: a marketing modal and two out-of-stock dead ends.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 19,
+      "ts": 1789826481580,
+      "type": "friction",
+      "payload": {
+        "category": "loop",
+        "severity": 4,
+        "evidenceSeq": 17,
+        "recommendation": "Add a size filter and per-card availability (\"M in stock\") to the collection page so shoppers can rule products out without opening them.",
+        "confidence": 0.82,
+        "summary": "Landed on /collections/mens-jackets for the 3rd time.",
+        "whyItMatters": "The shopper is pogo-sticking between the listing and product pages because the listing does not show which jackets are available in their size. Every round trip costs two page loads and a little more confidence.",
+        "judgedBy": "model"
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 20,
+      "ts": 1789826484650,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/glacier-3-in-1-jacket",
+        "actionType": "select",
+        "targetLabel": "Size",
+        "selector": "xpath=/html/body/main/div/div[2]/form/fieldset[2]/label[3]",
+        "rationale": "M isn't greyed out here, so I'm selecting it.",
+        "screenshotKey": "golden/cautious/14.svg",
+        "bbox": {
+          "x": 824,
+          "y": 346,
+          "w": 64,
+          "h": 46
+        },
+        "durationMs": 220,
+        "domChanged": true,
+        "value": "M",
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/glacier-3-in-1-jacket"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 21,
+      "ts": 1789826489320,
+      "type": "step",
+      "payload": {
+        "url": "https://shop.northpeak.example/products/glacier-3-in-1-jacket",
+        "actionType": "click",
+        "targetLabel": "Add to cart",
+        "selector": "xpath=/html/body/main/div/div[2]/form/button",
+        "rationale": "Size M is selected and the colour and price look right, so I'll add it to the cart.",
+        "screenshotKey": "golden/cautious/15.svg",
+        "bbox": {
+          "x": 680,
+          "y": 424,
+          "w": 504,
+          "h": 56
+        },
+        "durationMs": 720,
+        "domChanged": true,
+        "viewport": {
+          "w": 1280,
+          "h": 720
+        },
+        "signals": {
+          "urlAfter": "https://shop.northpeak.example/products/glacier-3-in-1-jacket"
+        }
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 22,
+      "ts": 1789826489670,
+      "type": "status",
+      "payload": {
+        "state": "succeeded",
+        "currentSeq": 22,
+        "message": "Task complete: the cart shows 1 item."
+      }
+    },
+    {
+      "runId": "golden",
+      "personaId": "cautious",
+      "seq": 23,
+      "ts": 1789826489770,
+      "type": "done",
+      "payload": {
+        "outcome": "success",
+        "totalSteps": 15,
+        "frictionCount": 4,
+        "durationMs": 89770,
+        "summary": "Added the Glacier 3-in-1 Jacket (M) to the cart after two out-of-stock dead ends."
+      }
+    }
+  ],
+  "source": "fixture"
+}

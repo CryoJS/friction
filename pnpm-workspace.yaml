@@ -1,0 +1,26 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+# pnpm 11 refuses to finish an install while a dependency has an unreviewed
+# install script. Every package that ships one must be listed here with an
+# explicit decision, otherwise `pnpm install` exits 1 for the whole team.
+# true  = native binary we actually need (bundlers, local Workers runtime)
+# false = not needed: optional speed-ups, and Stagehand's Google provider
+#         (we only ever talk to OpenAI)
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: true
+  bufferutil: false
+  utf-8-validate: false
+  "@google/genai": false
+  protobufjs: false
+
+# Stagehand bundles a legacy openai@4 client whose optional zod peer is ^3.
+# We never touch that code path (Stagehand itself supports zod 4 and we drive
+# it through its AI-SDK provider), so accept zod 4 there instead of warning on
+# every install.
+peerDependencyRules:
+  allowedVersions:
+    "openai@4>zod": "4"

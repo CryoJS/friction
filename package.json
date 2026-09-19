@@ -1,0 +1,28 @@
+{
+  "name": "friction",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Friction: three AI personas stress-test a website's UX in parallel Browserbase sessions and report where it hurts.",
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "dev:worker": "pnpm --filter @friction/worker dev",
+    "dev:orchestrator": "pnpm --filter @friction/orchestrator dev",
+    "dev:control-room": "pnpm --filter @friction/control-room dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @friction/shared test",
+    "build": "pnpm --filter @friction/control-room build",
+    "golden:generate": "tsx scripts/generate-golden.ts",
+    "db:migrate:local": "pnpm --filter @friction/worker db:migrate:local",
+    "db:migrate:remote": "pnpm --filter @friction/worker db:migrate:remote",
+    "deploy:worker": "pnpm --filter @friction/worker deploy",
+    "deploy:pages": "pnpm --filter @friction/control-room deploy"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

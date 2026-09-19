@@ -1,0 +1,483 @@
+/**
+ * Friction detection. Hybrid on purpose:
+ *
+ *   1. detectFriction()  PURE, deterministic, fast. An ordered event array in,
+ *                        candidate findings out. No clock, no network, no
+ *                        mutation, so it is unit-testable offline against the
+ *                        fixture, and safe to re-run after every step.
+ *   2. judgeCandidate()  One Structured Outputs call per candidate. The model
+ *                        never decides WHETHER something happened or WHAT it
+ *                        was; it only writes the judgement: severity, why it
+ *                        matters, recommendation, confidence.
+ *
+ * The model call is injected (StructuredCaller) so this package stays free of
+ * SDKs and API keys. If the call fails, times out, or returns junk, the
+ * candidate's heuristic judgement is used instead: a run never loses a finding
+ * because the model hiccuped.
+ */
+import { z } from "zod";
+import {
+  FRICTION_CATEGORIES,
+  FrictionCategorySchema,
+  PERSONA_IDS,
+  SeveritySchema,
+  isDoneEvent,
+  isStepEvent,
+  type ActionType,
+  type FrictionCategory,
+  type FrictionPayload,
+  type PersonaId,
+  type RunEvent,
+  type Severity,
+  type StepEvent,
+} from "./events";
+import type { PersonaDefinition } from "./personas";
+import { clamp, normalizeUrlForVisit } from "./util";
+
+/* --------------------------------------------------------------- thresholds */
+
+/** step_budget fires on the first step beyond this many. */
+export const STEP_BUDGET = 12;
+/** long_wait fires when a single action takes longer than this. */
+export const LONG_WAIT_MS = 5000;
+/** loop fires when the same URL is visited this many times. */
+export const LOOP_VISITS = 3;
+
+/** Repeating these means something did not work. Repeated scrolls, waits and key presses are normal. */
+const RETRYABLE: ReadonlySet<ActionType> = new Set<ActionType>(["click", "type", "select", "navigate"]);
+
+/* --------------------------------------------------------------- candidates */
+
+export interface HeuristicJudgement {
+  severity: Severity;
+  confidence: number;
+  whyItMatters: string;
+  recommendation: string;
+}
+
+export interface FrictionCandidate {
+  /**
+   * Stable identity. Detectors are re-run over a growing event array after
+   * every step; callers emit each key once.
+   */
+  key: string;
+  personaId: PersonaId;
+  category: FrictionCategory;
+  /** seq of the step event that evidences the finding. */
+  evidenceSeq: number;
+  /** Deterministic one-line description of what was observed. */
+  summary: string;
+  /** Used verbatim when no model judgement is available. */
+  heuristic: HeuristicJudgement;
+  /** Observations handed to the judge. Facts only, never conclusions. */
+  facts: Record<string, string | number | boolean>;
+}
+
+const DEFAULTS: Readonly<Record<FrictionCategory, HeuristicJudgement>> = {
+  dead_click: {
+    severity: 4,
+    confidence: 0.8,
+    whyItMatters: "The control looked clickable but gave no feedback, so the user cannot tell whether the site registered the click.",
+    recommendation: "Make the control respond to every click: perform the action, or show a visible disabled state or an inline message that says what is missing.",
+  },
+  loop: {
+    severity: 3,
+    confidence: 0.7,
+    whyItMatters: "Coming back to the same page again and again means the user is not finding a way forward from it.",
+    recommendation: "Review the ways out of this page: make the next step obvious, and carry filters and selections across the round trip.",
+  },
+  retry: {
+    severity: 3,
+    confidence: 0.75,
+    whyItMatters: "Repeating the same action signals that the first attempt produced no result the user could perceive.",
+    recommendation: "Give immediate feedback for the action (loading state, confirmation or error) so nobody needs to repeat it.",
+  },
+  step_budget: {
+    severity: 3,
+    confidence: 0.7,
+    whyItMatters: "The task is taking more steps than a typical user will tolerate, which drives abandonment.",
+    recommendation: "Shorten the path: remove interstitials, surface key options earlier and cut the number of page loads.",
+  },
+  error_text: {
+    severity: 3,
+    confidence: 0.75,
+    whyItMatters: "An error interrupted the flow. When it only appears after the user commits, it reads as a rejection.",
+    recommendation: "Prevent the error earlier (disable invalid options, validate inline) and make the message say how to fix the problem.",
+  },
+  modal_interrupt: {
+    severity: 3,
+    confidence: 0.7,
+    whyItMatters: "An overlay the user did not ask for covered the page and had to be dealt with before they could continue.",
+    recommendation: "Delay or remove the overlay during task flows, and make dismissing it a single obvious action.",
+  },
+  long_wait: {
+    severity: 3,
+    confidence: 0.85,
+    whyItMatters: "Waits over five seconds break the user's flow; many assume the site is broken and leave.",
+    recommendation: "Speed up the response, or acknowledge the wait immediately with a skeleton or progress indicator.",
+  },
+  keyboard_trap: {
+    severity: 5,
+    confidence: 0.85,
+    whyItMatters: "A keyboard-only user cannot move focus, so they cannot continue at all. This fails WCAG 2.1.2 (No Keyboard Trap).",
+    recommendation: "Manage focus explicitly: move it into overlays when they open, keep Tab cycling inside them, and restore it on close.",
+  },
+  ambiguous_label: {
+    severity: 2,
+    confidence: 0.7,
+    whyItMatters: "Several controls share one accessible name, so assistive-technology users cannot tell them apart.",
+    recommendation: "Give each control a unique accessible name that includes its context, for example the product it belongs to.",
+  },
+};
+
+function pathOf(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}` || "/";
+  } catch {
+    return url;
+  }
+}
+
+function ordinal(n: number): string {
+  const tail = n % 100;
+  if (tail >= 11 && tail <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+function isTab(key: string): boolean {
+  return /(^|\+)tab$/i.test(key.trim());
+}
+
+/** Did the page URL change as a result of this step? Falls back to the next step's URL. */
+function urlChanged(step: StepEvent, next: StepEvent | undefined): boolean {
+  const before = normalizeUrlForVisit(step.payload.url);
+  const after = step.payload.signals?.urlAfter;
+  if (after !== undefined) return normalizeUrlForVisit(after) !== before;
+  return next ? normalizeUrlForVisit(next.payload.url) !== before : false;
+}
+
+function isDeadClick(step: StepEvent, next: StepEvent | undefined): boolean {
+  const p = step.payload;
+  return p.actionType === "click" && !p.domChanged && !p.signals?.actionFailed && !urlChanged(step, next);
+}
+
+function sameAction(a: StepEvent | undefined, b: StepEvent | undefined): boolean {
+  if (!a || !b) return false;
+  return (
+    a.payload.actionType === b.payload.actionType &&
+    a.payload.targetLabel.trim() !== "" &&
+    a.payload.targetLabel.trim().toLowerCase() === b.payload.targetLabel.trim().toLowerCase()
+  );
+}
+
+function detectForPersona(personaId: PersonaId, events: readonly RunEvent[]): FrictionCandidate[] {
+  const steps = events.filter(isStepEvent).sort((a, b) => a.seq - b.seq);
+  const success = events.find((e) => isDoneEvent(e) && e.payload.outcome === "success");
+  const out: FrictionCandidate[] = [];
+
+  const add = (
+    category: FrictionCategory,
+    step: StepEvent,
+    discriminator: string | number,
+    summary: string,
+    facts: FrictionCandidate["facts"],
+    override: Partial<HeuristicJudgement> = {},
+  ): void => {
+    out.push({
+      key: `${personaId}:${category}:${discriminator}`,
+      personaId,
+      category,
+      evidenceSeq: step.seq,
+      summary,
+      heuristic: { ...DEFAULTS[category], ...override },
+      facts: {
+        url: step.payload.url,
+        actionType: step.payload.actionType,
+        targetLabel: step.payload.targetLabel,
+        durationMs: step.payload.durationMs,
+        domChanged: step.payload.domChanged,
+        ...facts,
+      },
+    });
+  };
+
+  const visits = new Map<string, number>();
+  const ambiguousSeen = new Set<string>();
+  let lastUrl: string | null = null;
+
+  steps.forEach((step, index) => {
+    const p = step.payload;
+    const signals = p.signals ?? {};
+    const previous = steps[index - 1];
+    const beforePrevious = steps[index - 2];
+    const next = steps[index + 1];
+    const label = p.targetLabel.trim();
+
+    // dead_click: a click executed, and neither the URL nor the DOM changed.
+    // A second dead click on the same target is reported as the retry it is.
+    if (isDeadClick(step, next) && !(sameAction(previous, step) && previous && isDeadClick(previous, step))) {
+      add("dead_click", step, step.seq, `Clicked "${label || "an unlabelled element"}" and nothing happened: no navigation, no DOM change.`, {
+        urlAfter: signals.urlAfter ?? p.url,
+      });
+    }
+
+    // retry: identical actionType + targetLabel twice in a row. Reported once per streak.
+    if (RETRYABLE.has(p.actionType) && sameAction(previous, step) && !sameAction(beforePrevious, previous)) {
+      add("retry", step, step.seq, `Repeated ${p.actionType} on "${label}" straight after the first attempt.`, {
+        firstAttemptSeq: previous?.seq ?? -1,
+        firstAttemptChangedDom: previous?.payload.domChanged ?? false,
+      });
+    }
+
+    // long_wait: one action took longer than five seconds to settle.
+    if (p.durationMs > LONG_WAIT_MS) {
+      add(
+        "long_wait",
+        step,
+        step.seq,
+        `${p.actionType} on "${label || pathOf(p.url)}" took ${(p.durationMs / 1000).toFixed(1)}s to settle.`,
+        { thresholdMs: LONG_WAIT_MS },
+        p.durationMs > 2 * LONG_WAIT_MS ? { severity: 4 } : {},
+      );
+    }
+
+    // error_text: error / validation text that was not already showing before this step.
+    const before = new Set((previous?.payload.signals?.errorTexts ?? []).map((t) => t.trim().toLowerCase()));
+    const fresh = (signals.errorTexts ?? []).filter((t) => t.trim() !== "" && !before.has(t.trim().toLowerCase()));
+    const firstError = fresh[0];
+    if (firstError !== undefined) {
+      add("error_text", step, step.seq, `Error shown after ${p.actionType} on "${label || pathOf(p.url)}": "${firstError}"`, {
+        errorText: firstError,
+        errorCount: fresh.length,
+      });
+    }
+
+    // modal_interrupt: an overlay that was not there before now covers the page.
+    if (signals.modalAppeared === true) {
+      add("modal_interrupt", step, step.seq, `An overlay ("${signals.modalLabel ?? "untitled dialog"}") appeared and covered the page.`, {
+        modalLabel: signals.modalLabel ?? "",
+        triggeredBy: p.actionType,
+      });
+    }
+
+    // keyboard_trap: the keyboard persona pressed Tab and focus stayed where it was.
+    if (personaId === "keyboard" && signals.focusMoved === false && (signals.keysPressed ?? []).some(isTab)) {
+      // An empty label means focus never left the page body (e.g. an overlay swallows Tab).
+      const stuckOn = signals.focusLabel || label;
+      const where = stuckOn ? `stuck on "${stuckOn}"` : "stuck on the page body: nothing focusable could be reached";
+      add("keyboard_trap", step, step.seq, `Pressed Tab and focus did not move (${where}).`, {
+        keysPressed: (signals.keysPressed ?? []).join(" "),
+        focusLabel: signals.focusLabel ?? "",
+      });
+    }
+
+    // ambiguous_label: the target shares its accessible name with other controls. Once per name.
+    const twins = signals.sameLabelCount ?? 0;
+    if (twins >= 2 && label !== "" && !ambiguousSeen.has(label.toLowerCase())) {
+      ambiguousSeen.add(label.toLowerCase());
+      add("ambiguous_label", step, label.toLowerCase(), `${twins} controls on this page share the accessible name "${label}".`, {
+        sameLabelCount: twins,
+      });
+    }
+
+    // loop: a visit is a run of consecutive steps on one URL; the third visit is a loop. Once per URL.
+    const url = normalizeUrlForVisit(p.url);
+    if (url !== lastUrl) {
+      const count = (visits.get(url) ?? 0) + 1;
+      visits.set(url, count);
+      if (count === LOOP_VISITS) {
+        add("loop", step, url, `Landed on ${pathOf(p.url)} for the ${ordinal(count)} time.`, { visits: count, page: pathOf(p.url) });
+      }
+      lastUrl = url;
+    }
+
+    // step_budget: the first step past the budget, with the task still not done.
+    if (index === STEP_BUDGET && !(success && success.seq < step.seq)) {
+      add("step_budget", step, "exceeded", `${index + 1} steps taken without completing the task (budget: ${STEP_BUDGET}).`, {
+        stepsTaken: index + 1,
+        budget: STEP_BUDGET,
+      });
+    }
+  });
+
+  return out;
+}
+
+/**
+ * Every friction candidate evidenced by these events. Pure: same input, same
+ * output, input untouched. Accepts one persona's events or a whole run; events
+ * may arrive in any order (they are ordered by seq per persona internally).
+ * Result order: persona (PERSONA_IDS order), then evidence seq.
+ */
+export function detectFriction(events: readonly RunEvent[]): FrictionCandidate[] {
+  const out: FrictionCandidate[] = [];
+  for (const personaId of PERSONA_IDS) {
+    const mine = events.filter((e) => e.personaId === personaId);
+    if (mine.length > 0) out.push(...detectForPersona(personaId, mine));
+  }
+  return out.sort((a, b) =>
+    a.personaId === b.personaId ? a.evidenceSeq - b.evidenceSeq : PERSONA_IDS.indexOf(a.personaId) - PERSONA_IDS.indexOf(b.personaId),
+  );
+}
+
+/** Candidates whose key is not in `alreadyEmitted`. Convenience for the per-step loop. */
+export function newCandidates(events: readonly RunEvent[], alreadyEmitted: ReadonlySet<string>): FrictionCandidate[] {
+  return detectFriction(events).filter((candidate) => !alreadyEmitted.has(candidate.key));
+}
+
+/* ------------------------------------------------------ error text matching */
+
+export interface A11yTextNode {
+  role: string;
+  name: string;
+  /** aria-invalid on the node (or its control). */
+  invalid?: boolean;
+}
+
+const ALERT_ROLES = new Set(["alert", "alertdialog", "status", "log"]);
+const LOOSE_ERROR = /\b(error|invalid|incorrect|fail(ed|ure)?|unable|cannot|can(')?t|couldn(')?t|not (valid|available|found)|unavailable|out of stock|sold out|required|try again|went wrong|oops|sorry|expired|declined|denied|too (short|long|many)|must (be|contain|have|include)|please (enter|select|choose|provide|check|fix|correct))\b/i;
+const STRICT_ERROR = /\b(out of stock|sold out|went wrong|try again|(is|are) required|not valid|invalid|incorrect|an error|error:)\b/i;
+
+/**
+ * Error / validation strings in a pruned a11y tree. Pure, so error_text is as
+ * deterministic as the rest. Live regions are matched loosely (they exist to
+ * announce problems); ordinary text only on unambiguous wording, so marketing
+ * copy like "Sorry we missed you" does not become a finding.
+ */
+export function findErrorTexts(nodes: readonly A11yTextNode[], limit = 5): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const node of nodes) {
+    const text = node.name.replace(/\s+/g, " ").trim();
+    if (text.length < 4 || text.length > 240) continue;
+    const role = node.role.toLowerCase();
+    const hit = node.invalid === true || (ALERT_ROLES.has(role) ? LOOSE_ERROR.test(text) : STRICT_ERROR.test(text));
+    if (!hit || seen.has(text.toLowerCase())) continue;
+    seen.add(text.toLowerCase());
+    found.push(text);
+    if (found.length >= limit) break;
+  }
+  return found;
+}
+
+/* ---------------------------------------------------------------- judgement */
+
+export const FrictionJudgementSchema = z.object({
+  category: FrictionCategorySchema,
+  severity: SeveritySchema,
+  whyItMatters: z.string().min(1),
+  recommendation: z.string().min(1),
+  confidence: z.number(),
+});
+export type FrictionJudgement = z.infer<typeof FrictionJudgementSchema>;
+
+/**
+ * JSON Schema for OpenAI Structured Outputs (strict mode: every key required,
+ * additionalProperties false, no numeric range keywords). Ranges are enforced
+ * by FrictionJudgementSchema + clamping after the call.
+ */
+export const FRICTION_JUDGEMENT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["category", "severity", "whyItMatters", "recommendation", "confidence"],
+  properties: {
+    category: { type: "string", enum: [...FRICTION_CATEGORIES], description: "Echo the category you were given." },
+    severity: { type: "integer", enum: [1, 2, 3, 4, 5], description: "1 cosmetic, 2 minor, 3 moderate, 4 major, 5 blocks the task." },
+    whyItMatters: { type: "string", description: "Two sentences at most: the impact on this kind of user." },
+    recommendation: { type: "string", description: "A concrete fix a front-end developer could ship this week." },
+    confidence: { type: "number", description: "0 to 1: how sure you are that this is real friction and not an artefact." },
+  },
+} as const;
+
+export interface StructuredRequest {
+  instructions: string;
+  input: string;
+  schemaName: string;
+  schema: typeof FRICTION_JUDGEMENT_JSON_SCHEMA;
+}
+
+/** Performs one Structured Outputs call and returns the parsed JSON. May throw. */
+export type StructuredCaller = (request: StructuredRequest) => Promise<unknown>;
+
+export interface JudgeContext {
+  task: string;
+  persona: PersonaDefinition;
+  /** Recent steps of this persona, oldest first, for context. */
+  recentSteps: readonly StepEvent[];
+}
+
+export function buildJudgeRequest(candidate: FrictionCandidate, context: JudgeContext): StructuredRequest {
+  const trail = context.recentSteps
+    .slice(-6)
+    .map((s) => {
+      const p = s.payload;
+      const marker = s.seq === candidate.evidenceSeq ? "  <-- evidence" : "";
+      return `  #${s.seq} ${p.actionType} "${p.targetLabel}" on ${pathOf(p.url)} (${p.durationMs}ms, domChanged=${p.domChanged}) thinking: ${p.rationale}${marker}`;
+    })
+    .join("\n");
+
+  return {
+    schemaName: "friction_judgement",
+    schema: FRICTION_JUDGEMENT_JSON_SCHEMA,
+    instructions:
+      "You are a senior UX researcher reviewing an automated usability session. " +
+      "A deterministic detector has already established WHAT happened; do not dispute it and do not change the category. " +
+      "Your job is the judgement: how bad it is for this kind of user, why, and what to fix. " +
+      "Be specific to the page and element involved, never generic. Lower your confidence if the evidence could be an automation artefact rather than a real usability problem.",
+    input: [
+      `Task the user was attempting: ${context.task}`,
+      `Persona: ${context.persona.displayName}. ${context.persona.description}`,
+      `Detected category: ${candidate.category}`,
+      `What the detector observed: ${candidate.summary}`,
+      `Facts: ${JSON.stringify(candidate.facts)}`,
+      "Recent steps:",
+      trail || "  (none)",
+    ].join("\n"),
+  };
+}
+
+export type JudgedBy = "model" | "heuristic";
+
+export interface JudgedFinding extends FrictionJudgement {
+  judgedBy: JudgedBy;
+}
+
+function heuristicFinding(candidate: FrictionCandidate): JudgedFinding {
+  return { category: candidate.category, ...candidate.heuristic, judgedBy: "heuristic" };
+}
+
+/**
+ * The judgement for one candidate. Never throws and never returns nothing: on
+ * any failure the heuristic judgement stands in. The category always stays the
+ * detector's, whatever the model says.
+ */
+export async function judgeCandidate(candidate: FrictionCandidate, context: JudgeContext, call?: StructuredCaller): Promise<JudgedFinding> {
+  if (!call) return heuristicFinding(candidate);
+  try {
+    const parsed = FrictionJudgementSchema.safeParse(await call(buildJudgeRequest(candidate, context)));
+    if (!parsed.success) return heuristicFinding(candidate);
+    return {
+      ...parsed.data,
+      category: candidate.category,
+      confidence: clamp(parsed.data.confidence, 0, 1),
+      judgedBy: "model",
+    };
+  } catch {
+    return heuristicFinding(candidate);
+  }
+}
+
+/** The friction event payload for a judged candidate. */
+export function toFrictionPayload(candidate: FrictionCandidate, finding: JudgedFinding): FrictionPayload {
+  return {
+    category: candidate.category,
+    severity: finding.severity,
+    evidenceSeq: candidate.evidenceSeq,
+    recommendation: finding.recommendation,
+    confidence: Math.round(clamp(finding.confidence, 0, 1) * 100) / 100,
+    summary: candidate.summary,
+    whyItMatters: finding.whyItMatters,
+    judgedBy: finding.judgedBy,
+  };
+}

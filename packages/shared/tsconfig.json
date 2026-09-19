@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Shared code runs in the browser, in Workers and in Node. "WebWorker" is
+    // the closest common denominator: URL / fetch types, but no document/window.
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src"]
+}
