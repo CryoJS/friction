@@ -17,6 +17,7 @@ import {
   type Severity,
   type Viewport,
 } from "./events";
+import { ScanTaskLinkSchema } from "./scan";
 
 /* -------------------------------------------------------------------- runs */
 
@@ -30,6 +31,8 @@ export const GOLDEN_RUN_ID = "golden";
 export const CreateRunRequestSchema = z.object({
   url: z.string().trim().min(1).max(2000),
   task: z.string().trim().min(1).max(500),
+  /** Set when the run is one task of a scan. */
+  scan: ScanTaskLinkSchema.optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
 
