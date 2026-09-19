@@ -1,6 +1,5 @@
 /** Small, pure helpers the scan page, its nodes and its panels share. */
 import {
-  isTerminalState,
   taskVerdict,
   type AgentState,
   type ScanNode,
@@ -25,6 +24,7 @@ export const SCAN_STATUS: Readonly<Record<ScanStatus, { label: string; tone: Ton
   running: { label: "Running", tone: "glow" },
   completed: { label: "Completed", tone: "good" },
   failed: { label: "Failed", tone: "bad" },
+  cancelled: { label: "Stopped", tone: "warn" },
 };
 
 export const VERDICT: Readonly<Record<TaskVerdict, { label: string; tone: Tone }>> = {
@@ -44,9 +44,9 @@ export const SCAN_STATE_LABELS: Readonly<Record<AgentState, string>> = {
   timeout: "Timed out",
 };
 
-/** Runs (one per task) whose agent has finished vs. total. */
+/** Runs (one per task) whose full pipeline has finished vs. total. */
 export function runProgress(tree: ScanTreeResponse): { done: number; total: number } {
-  return { done: tree.tasks.filter((task) => isTerminalState(task.state)).length, total: tree.tasks.length };
+  return { done: tree.tasks.filter((task) => task.status === "completed").length, total: tree.tasks.length };
 }
 
 export function totalFindings(tree: ScanTreeResponse): number {

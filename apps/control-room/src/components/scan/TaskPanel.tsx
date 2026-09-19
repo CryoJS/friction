@@ -31,7 +31,7 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
     <div className="space-y-5">
       <header>
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-caption tabular-nums tracking-normal text-ash">T{task.index + 1}</span>
+          <span className="font-mono text-caption tabular-nums tracking-normal text-ash">Task {task.index + 1}</span>
           <Chip tone={verdict.tone}>{verdict.label}</Chip>
           {task.status === "verifying" && <Chip tone="glow">Verifying fixes</Chip>}
         </div>

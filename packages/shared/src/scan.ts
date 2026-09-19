@@ -12,7 +12,7 @@ import type { AgentState, FrictionCategory, Severity } from "./events";
 
 /* ------------------------------------------------------------------ enums */
 
-export const SCAN_STATUSES = ["crawling", "running", "completed", "failed"] as const;
+export const SCAN_STATUSES = ["crawling", "running", "completed", "failed", "cancelled"] as const;
 export const ScanStatusSchema = z.enum(SCAN_STATUSES);
 export type ScanStatus = (typeof SCAN_STATUSES)[number];
 
@@ -30,7 +30,7 @@ export const MAX_SCAN_TASKS = 5;
 export const MAX_CRAWL_LINKS = 5;
 
 export function isScanFinished(status: ScanStatus): boolean {
-  return status === "completed" || status === "failed";
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 /* ---------------------------------------------------------------- requests */

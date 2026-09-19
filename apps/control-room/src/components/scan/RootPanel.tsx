@@ -40,6 +40,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
       </header>
 
       {scan.status === "failed" && <Notice tone="bad">{scan.message ?? "The scan failed."}</Notice>}
+      {scan.status === "cancelled" && <Notice tone="warn">{scan.message ?? "The scan was stopped."}</Notice>}
       {scan.taskSource === "fallback" && <Notice tone="warn">Couldn't read the site, so these tasks are generic.</Notice>}
       {scan.taskSource === "mock" && (
         <Notice tone="warn">Mock scan: no API keys, so every run replays the golden run.</Notice>
@@ -53,7 +54,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
       {!hasTasks ? (
         <PageList
           pages={scan.pages}
-          title={scan.status === "failed" ? "Pages read before the scan failed" : "Pages read so far"}
+          title={scan.status === "failed" ? "Pages read before the scan failed" : scan.status === "cancelled" ? "Pages read before the scan stopped" : "Pages read so far"}
           reading={scan.status === "crawling"}
         />
       ) : report ? (

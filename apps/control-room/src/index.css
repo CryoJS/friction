@@ -263,6 +263,7 @@ a {
 }
 .hero-typewriter-character--selected::before {
   position: absolute;
+  box-sizing: border-box;
   top: var(--typewriter-selection-top);
   right: 0;
   left: 0;
@@ -275,20 +276,21 @@ a {
 .hero-typewriter-character--selection-start::after,
 .hero-typewriter-character--selection-end::after {
   position: absolute;
-  /* Center each 4px handle on the middle of the 1px selection border. */
-  top: calc(var(--typewriter-selection-top) - 1.5px);
-  height: calc(var(--typewriter-selection-height) + 3px);
-  box-sizing: border-box;
-  width: 4px;
-  border-block: 4px solid var(--color-sev-1);
+  /* Two square shadows make each endpoint's top and bottom handles share the exact border center. */
+  top: calc(var(--typewriter-selection-top) - 2.5px);
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--color-sev-1);
+  box-shadow: 0 var(--typewriter-selection-height) 0 var(--color-sev-1);
   content: "";
   pointer-events: none;
 }
 .hero-typewriter-character--selection-start::after {
-  left: -1.5px;
+  left: -2.5px;
 }
 .hero-typewriter-character--selection-end::after {
-  right: -1.5px;
+  right: -2.5px;
 }
 .hero-typewriter-character--selection-start::before {
   border-left: 1px solid var(--color-sev-1);

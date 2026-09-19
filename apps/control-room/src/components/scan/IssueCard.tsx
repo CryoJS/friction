@@ -83,7 +83,7 @@ export function IssueCard({ issue, rank, onSelect }: Props) {
               onClick={() => onSelect(scanNodeId({ kind: "task", index: taskIndex }))}
               className="pill-ghost h-7 px-2.5 text-caption tabular-nums"
             >
-              T{taskIndex + 1}
+              Task {taskIndex + 1}
             </button>
           ))}
         </div>

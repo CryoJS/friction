@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isScanFinished, type ScanTreeResponse } from "@friction/shared";
+import { api } from "../../lib/api";
 import { formatElapsed, shortUrl } from "../../lib/format";
 import { SCAN_STATUS, hostOf, runProgress } from "../../lib/scan";
 import { Chip, Dot } from "../badges";
@@ -20,10 +21,13 @@ function useNow(active: boolean): number {
 export function ScanBar({ tree }: { tree: ScanTreeResponse }) {
   const { scan } = tree;
   const finished = isScanFinished(scan.status);
-  const now = useNow(!finished);
-  const status = SCAN_STATUS[scan.status];
   const progress = runProgress(tree);
-  const elapsed = (finished ? (scan.completedAt ?? now) : now) - scan.createdAt;
+  const allRunsDone = progress.total > 0 && progress.done >= progress.total;
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState(false);
+  const now = useNow(!finished && !allRunsDone && !stopping);
+  const status = SCAN_STATUS[scan.status];
+  const elapsed = (finished || allRunsDone || stopping ? (scan.completedAt ?? now) : now) - scan.createdAt;
   const line =
     progress.total > 0
       ? `${progress.done}/${progress.total} runs done`
@@ -64,13 +68,34 @@ export function ScanBar({ tree }: { tree: ScanTreeResponse }) {
         </div>
 
         <div className="shrink-0 text-right max-sm:text-left">
-          <div className="font-mono text-[32px] leading-none tabular-nums tracking-[-0.02em] text-white" title="Elapsed">
-            {formatElapsed(elapsed)}
+          <div className="flex items-center justify-end gap-3 max-sm:justify-start">
+            <div className="font-mono text-[32px] leading-none tabular-nums tracking-[-0.02em] text-white" title="Elapsed">
+              {formatElapsed(elapsed)}
+            </div>
+            {!finished && !allRunsDone && (
+              <button
+                type="button"
+                disabled={stopping}
+                onClick={() => {
+                  setStopping(true);
+                  setStopError(false);
+                  void api.stopScan(scan.id).catch(() => {
+                    setStopping(false);
+                    setStopError(true);
+                  });
+                }}
+                className="pill-ghost h-8.5 px-3 text-caption disabled:cursor-wait disabled:opacity-60"
+                aria-label="Stop scan"
+              >
+                {stopping ? "Stopping…" : "Stop"}
+              </button>
+            )}
           </div>
           <div className="mt-1.5 flex items-center justify-end gap-2 text-caption tabular-nums text-ash max-sm:justify-start">
             <Dot tone={status.tone} size={7} />
             {line}
           </div>
+          {stopError && <p role="alert" className="mt-1 text-caption text-sev-5">Couldn’t stop the scan. Try again.</p>}
         </div>
       </div>
     </div>

@@ -182,6 +182,7 @@ describe("scan contracts", () => {
   it("knows when a scan is finished", () => {
     expect(isScanFinished("completed")).toBe(true);
     expect(isScanFinished("failed")).toBe(true);
+    expect(isScanFinished("cancelled")).toBe(true);
     expect(isScanFinished("crawling")).toBe(false);
     expect(isScanFinished("running")).toBe(false);
   });

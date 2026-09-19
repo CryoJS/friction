@@ -197,6 +197,8 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
                           </>
                         ) : scan.status === "failed" ? (
                           "No tasks ran"
+                        ) : scan.status === "cancelled" ? (
+                          "Scan stopped"
                         ) : (
                           "Reading the site"
                         )}
