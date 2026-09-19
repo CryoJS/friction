@@ -31,7 +31,7 @@ export async function retry<T>(attempts: number, baseDelayMs: number, work: (att
   throw lastError;
 }
 
-/** Caps how many personas hold a browser at once (Browserbase plans limit concurrency). */
+/** Caps how many browser sessions are open at once, process-wide (Browserbase plans limit concurrency). Waiters are served first in, first out. */
 export class Semaphore {
   private waiting: Array<() => void> = [];
   private available: number;

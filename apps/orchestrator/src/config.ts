@@ -55,7 +55,8 @@ export interface Config {
   browserbaseRegion: string | null;
   localBrowserPath: string | null;
   maxSteps: number;
-  personaConcurrency: number;
+  /** Browser sessions open at once, across every run and scan. Browserbase plans cap concurrency. */
+  maxSessions: number;
   personaTimeoutMs: number;
   /** Mock mode plays the golden run this many times faster than it was recorded. */
   mockSpeed: number;
@@ -84,7 +85,8 @@ function load(): Config {
     browserbaseRegion: text("BROWSERBASE_REGION"),
     localBrowserPath: text("LOCAL_BROWSER_PATH"),
     maxSteps: int("MAX_STEPS", HARD_STEP_CAP, 1, HARD_STEP_CAP),
-    personaConcurrency: int("PERSONA_CONCURRENCY", 3, 1, 3),
+    // PERSONA_CONCURRENCY is the old name, still honoured so existing .env files keep working.
+    maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 3, 1, 100), 1, 100),
     personaTimeoutMs: int("PERSONA_TIMEOUT_MS", 300_000, 30_000, 900_000),
     mockSpeed: int("MOCK_SPEED", 3, 1, 50),
   };

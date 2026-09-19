@@ -17,11 +17,13 @@ import {
 import { config } from "./config";
 import { RunManager } from "./runManager";
 import { suggestTasks } from "./suggest";
-import { errorMessage, log } from "./util";
+import { Semaphore, errorMessage, log } from "./util";
 import { WorkerClient } from "./workerClient";
 
 const worker = new WorkerClient(config.workerUrl);
-const runs = new RunManager(config, worker);
+/** One pool for every browser this process opens: persona runs and scan crawls alike. */
+const sessions = new Semaphore(config.maxSessions);
+const runs = new RunManager(config, worker, sessions);
 const app = express();
 
 app.use(express.json({ limit: "64kb" }));
@@ -93,7 +95,7 @@ app.listen(config.port, () => {
     const why = config.missingEnv.length > 0 ? `missing ${config.missingEnv.join(", ")}` : "FRICTION_MOCK is set";
     log("http", `MOCK MODE (${why}): runs replay the golden fixture through the real pipeline.`);
   } else {
-    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL, ${config.personaConcurrency} personas at a time.`);
+    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL, ${config.maxSessions} browser sessions at a time.`);
   }
   void worker.healthy().then((ok) => {
     if (!ok) log("http", `WARNING: the Worker at ${config.workerUrl} is not answering. Start it with: pnpm dev:worker`);

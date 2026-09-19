@@ -2,7 +2,7 @@
  * The orchestrator's only way to talk to the data plane. Everything is
  * best-effort with retries: a Worker hiccup must never crash a persona.
  */
-import type { CreateRunResponse, PersonaPatch, RunEvent } from "@friction/shared";
+import type { CreateRunResponse, CreateScanResponse, PersonaPatch, RunEvent, ScanPatch, ScanTaskLink } from "@friction/shared";
 import { errorMessage, log, retry } from "./util";
 
 export class WorkerClient {
@@ -22,9 +22,25 @@ export class WorkerClient {
   }
 
   /** The one call that is allowed to fail loudly: without a run there is nothing to do. */
-  async createRun(url: string, task: string): Promise<string> {
-    const response = await retry(3, 300, () => this.request("/api/runs", this.json("POST", { url, task }), 8000));
+  async createRun(url: string, task: string, scan?: ScanTaskLink): Promise<string> {
+    const body = scan ? { url, task, scan } : { url, task };
+    const response = await retry(3, 300, () => this.request("/api/runs", this.json("POST", body), 8000));
     return ((await response.json()) as CreateRunResponse).runId;
+  }
+
+  /** Fails loudly too: no scan, nothing to show. */
+  async createScan(url: string): Promise<string> {
+    const response = await retry(3, 300, () => this.request("/api/scans", this.json("POST", { url }), 8000));
+    return ((await response.json()) as CreateScanResponse).scanId;
+  }
+
+  /** Progress and status. Best-effort: a lost progress message must never stop a scan. */
+  async patchScan(scanId: string, patch: ScanPatch): Promise<void> {
+    try {
+      await retry(3, 300, () => this.request(`/api/scans/${scanId}`, this.json("PATCH", patch), 8000));
+    } catch (err) {
+      log("worker", `PATCH scan ${scanId} failed: ${errorMessage(err)}`);
+    }
   }
 
   async patchPersona(runId: string, patch: PersonaPatch): Promise<void> {

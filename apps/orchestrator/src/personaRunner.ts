@@ -20,6 +20,8 @@ export interface PersonaRun {
   runId: string;
   url: string;
   task: string;
+  /** From a scan's generated task; the planner judges taskComplete against it. */
+  successCheck?: string;
   persona: PersonaDefinition;
   config: Config;
   worker: WorkerClient;
@@ -88,7 +90,7 @@ export async function runPersona(run: PersonaRun): Promise<Outcome> {
       }
 
       const observation = await observe(session.page);
-      const plan = await run.planner.plan({ persona, task: run.task, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history });
+      const plan = await run.planner.plan({ persona, task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history });
       if (plan.taskComplete) {
         outcome = "success";
         summary = plan.rationale || "Task complete.";
@@ -106,7 +108,7 @@ export async function runPersona(run: PersonaRun): Promise<Outcome> {
       } else {
         const observation = await observe(session.page);
         const verdict = await run.planner
-          .plan({ persona, task: run.task, startUrl: run.url, step: emitter.stepCount, maxSteps: config.maxSteps, observation, history, finalCheck: true })
+          .plan({ persona, task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount, maxSteps: config.maxSteps, observation, history, finalCheck: true })
           .catch(() => null);
         if (verdict?.taskComplete) {
           outcome = "success";
