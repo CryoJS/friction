@@ -60,12 +60,25 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `MOCK_SPEED` | | `3` | Mock mode playback speed |
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
 | `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
+| `VERIFY_TOP_N` | | `2` | How many top findings (by severity) get a fix proposed and verified. Each is a full extra browser run. `0` turns verification off |
+| `GITHUB_TOKEN` | PRs | | Personal access token with contents and pull-request write access to the one repository below. No GitHub App, no OAuth |
+| `GITHUB_OWNER` | PRs | | Owner (user or org) of the repository verified fixes are mapped to |
+| `GITHUB_REPO` | PRs | | Repository name |
+| `GITHUB_BASE_BRANCH` | | repo default | Branch that fix branches start from and draft PRs target |
 | `STAGEHAND_MODEL` | | `OPENAI_MODEL` | Model for Stagehand's `observe()` fallback |
 | `OPENAI_REASONING_EFFORT` | | unset | Only for reasoning models that accept it |
 | `OPENAI_IMAGE_DETAIL` | | `high` | `high`, `low` or `auto` |
 | `BROWSERBASE_REGION` | | unset | e.g. `us-east-1` |
 
 `GET http://localhost:8788/health` tells you the mode and exactly which variables are missing.
+
+### Fix verification and pull requests
+
+After the run, the top `VERIFY_TOP_N` findings each get a proposed fix: a small JavaScript patch. It is installed with `page.addInitScript()` into a **brand-new** Browserbase session (fresh context, clean cookies) before the first page loads, and the same task is re-run in the `verify` lane. The patch only ever changes the DOM inside Friction's own disposable browser; it never touches your site, server or repository. The fix is **verified** when the task went from failure/timeout to success, or the finding's category no longer fires on the page where it happened; otherwise it is **rejected**, and says why.
+
+With `GITHUB_*` set, a verified fix is mapped to a source file with GitHub code search (from the element's selector and visible text, never from the browser's DOM), and a model writes the complete new file (never a diff). Nothing is committed until someone clicks **Open pull request** in the report: that creates `friction/fix-<findingId>`, commits the one file (refusing if the file changed since), and opens a **draft** PR. Friction never merges or force-pushes. Without `GITHUB_*` set, verified fixes simply stay unmapped.
+
+Mock mode verifies too: it replays the golden run's recorded verification runs through the real detectors, so the verdicts are computed, not copied.
 
 Control room (`apps/control-room/.env.local`, build-time):
 
@@ -83,7 +96,7 @@ pnpm db:migrate:local    # wrangler d1 migrations apply friction --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply friction --remote
 ```
 
-Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order.
+Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`.
 
 `0002_lanes.sql` replaces the three-persona schema with lanes. It is lossy for runs recorded before it: their "cautious" persona becomes the primary lane and the other two personas' events are dropped (R2 screenshots are untouched). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
 

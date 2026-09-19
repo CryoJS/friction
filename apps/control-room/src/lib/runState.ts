@@ -229,9 +229,11 @@ export function summarize(view: RunView): RunSummary {
     return { ...base, phase: "verifying", tone: "active", label: fixes.length > 0 ? `Verifying fixes · ${decided}/${fixes.length} decided` : "Proposing fixes" };
   }
   if (isTerminalState(p.state)) {
-    if (p.state === "succeeded") return { ...base, phase: "complete", tone: "good", label: "Complete · task succeeded" };
-    if (p.state === "timeout") return { ...base, phase: "complete", tone: "mixed", label: "Complete · timed out" };
-    return { ...base, phase: "complete", tone: "bad", label: "Complete · task failed" };
+    const verified = fixes.filter((f) => f.payload.stage === "verified" || f.payload.stage === "pr_opened").length;
+    const tally = fixes.length > 0 ? ` · ${verified}/${fixes.length} fixes verified` : "";
+    if (p.state === "succeeded") return { ...base, phase: "complete", tone: "good", label: `Complete · task succeeded${tally}` };
+    if (p.state === "timeout") return { ...base, phase: "complete", tone: "mixed", label: `Complete · timed out${tally}` };
+    return { ...base, phase: "complete", tone: "bad", label: `Complete · task failed${tally}` };
   }
   if (p.state === "idle" && p.steps.length === 0) return { ...base, phase: "waiting", tone: "neutral", label: "Starting a session" };
   return { ...base, phase: "running", tone: "active", label: `Running · step ${p.steps.length}` };
