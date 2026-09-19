@@ -117,7 +117,10 @@ export class OpenAIPlanner implements Planner {
   private readonly client: OpenAI;
 
   constructor(private readonly config: Config) {
-    this.client = new OpenAI({ apiKey: config.openaiApiKey ?? undefined, maxRetries: 2, timeout: 60_000 });
+    // Bounded on purpose: the retry() below already covers a malformed tool call,
+    // and multiplying the two put the worst case at 6 x 60s, more than the whole
+    // agent budget. Matches the client in suggest.ts.
+    this.client = new OpenAI({ apiKey: config.openaiApiKey ?? undefined, maxRetries: 1, timeout: 30_000 });
   }
 
   async plan(request: PlanRequest): Promise<PlannedAction> {

@@ -1,5 +1,5 @@
 /**
- * A scan: one URL -> crawl -> up to ten generated tasks -> one run per task.
+ * A scan: one URL -> crawl -> up to MAX_SCAN_TASKS generated tasks -> one run per task.
  *
  *   crawling   one browser session reads the landing page and up to five nav pages
  *   running    every task is a normal run (the agent, then its fix
@@ -10,6 +10,7 @@
  * The background work never throws: whatever goes wrong ends as a `failed`
  * scan with a message, which the root node shows.
  */
+import { MAX_SCAN_TASKS } from "@friction/shared";
 import type { Config } from "./config";
 import { crawlSite } from "./crawl";
 import type { PreparedRun, RunManager } from "./runManager";
@@ -96,7 +97,7 @@ export class ScanManager {
         this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) }),
       ),
     );
-    await this.worker.patchScan(scanId, { message: "Choosing the 10 most critical tasks." });
+    await this.worker.patchScan(scanId, { message: `Choosing the ${MAX_SCAN_TASKS} most critical tasks.` });
     return generateTasks(this.config, url, crawl);
   }
 

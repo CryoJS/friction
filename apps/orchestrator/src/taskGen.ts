@@ -1,12 +1,13 @@
 /**
  * The scan's second stage: ONE Structured Outputs call turns the crawl into
- * up to ten tasks, most critical first. The model comes from OPENAI_MODEL only.
+ * up to MAX_SCAN_TASKS tasks, most critical first. The model comes from
+ * OPENAI_MODEL only.
  *
  * Degrades instead of failing: an unreadable site, a model error or an empty
- * answer all end in ten generic tasks, with a note saying so.
+ * answer all end in the same number of generic tasks, with a note saying so.
  */
 import OpenAI from "openai";
-import { parseGeneratedTasks, type GeneratedTask, type TaskSource } from "@friction/shared";
+import { MAX_SCAN_TASKS, parseGeneratedTasks, type GeneratedTask, type TaskSource } from "@friction/shared";
 import type { Config } from "./config";
 import type { CrawlResult } from "./crawl";
 import { errorMessage, log } from "./util";
@@ -25,7 +26,7 @@ const TASKS_JSON_SCHEMA = {
   properties: {
     tasks: {
       type: "array",
-      description: "Exactly ten tasks, most critical first.",
+      description: `Exactly ${MAX_SCAN_TASKS} tasks, most critical first.`,
       items: {
         type: "object",
         additionalProperties: false,
@@ -41,7 +42,7 @@ const TASKS_JSON_SCHEMA = {
 };
 
 const INSTRUCTIONS = [
-  "You plan QA for a website. From what a crawler saw on its landing page and main navigation pages, choose the 10 most critical tasks a real visitor must be able to complete, ranked most critical first.",
+  `You plan QA for a website. From what a crawler saw on its landing page and main navigation pages, choose the ${MAX_SCAN_TASKS} most critical tasks a real visitor must be able to complete, ranked most critical first.`,
   "Critical means the flows this site exists for: buying or converting, finding key information (products, pricing, policies, opening hours), and getting help.",
   "Each title is one imperative sentence of at most 14 words, specific to this site, achievable in about ten clicks from the landing page, and verifiable by looking at the final page.",
   "Cover different flows: never propose two variations of the same task.",
@@ -56,7 +57,10 @@ function hostOf(url: string): string {
   }
 }
 
-/** Ten tasks that make sense on most sites. Used when the site or the model lets us down, and in mock mode. */
+/**
+ * The MAX_SCAN_TASKS flows that make sense on most sites, most critical first.
+ * Used when the site or the model lets us down, and in mock mode.
+ */
 export function fallbackScanTasks(url: string): GeneratedTask[] {
   const host = hostOf(url);
   return [
@@ -65,11 +69,6 @@ export function fallbackScanTasks(url: string): GeneratedTask[] {
     { title: `Find the price of the main product or plan on ${host}`, whyCritical: "Unclear pricing is a leading reason visitors leave.", successCheck: "A price is visible on the page." },
     { title: `Find how to contact support on ${host}`, whyCritical: "Stuck visitors who cannot reach help are lost.", successCheck: "A contact form, email address, phone number or chat is visible." },
     { title: `Find the return or refund policy on ${host}`, whyCritical: "Buyers check returns before committing to a purchase.", successCheck: "The return or refund policy text is visible." },
-    { title: `Browse a product category on ${host} and open an item`, whyCritical: "Browsing is how undecided visitors discover what to buy.", successCheck: "An item detail page reached from a category is open." },
-    { title: `Find shipping costs or delivery times on ${host}`, whyCritical: "Surprise shipping costs are a top cause of abandoned carts.", successCheck: "Shipping costs or delivery times are visible." },
-    { title: `Find the answer to a common question in the ${host} help center`, whyCritical: "Self-service help keeps visitors moving without a support ticket.", successCheck: "An FAQ or help article is open." },
-    { title: `Find out who is behind ${host} on its About page`, whyCritical: "Visitors trust a site more when they know who runs it.", successCheck: "An About or company page is open." },
-    { title: `Find the terms of service or privacy policy on ${host}`, whyCritical: "Legal pages must be reachable for trust and compliance.", successCheck: "Terms of service or privacy policy text is visible." },
   ];
 }
 

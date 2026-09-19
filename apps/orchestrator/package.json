@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke": "tsx scripts/smoke-local.ts",
-    "smoke:scan": "tsx scripts/smoke-scan.ts"
+    "smoke:scan": "tsx scripts/smoke-scan.ts",
+    "test": "node --test --import tsx \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.16.0",

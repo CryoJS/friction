@@ -10,6 +10,13 @@ export function errorMessage(err: unknown): string {
   return String(err).slice(0, 300);
 }
 
+/** Runs work and reports how long it took, so one log line can account for a whole step. */
+export async function timed<T>(work: Promise<T>): Promise<[T, number]> {
+  const startedAt = Date.now();
+  const value = await work;
+  return [value, Date.now() - startedAt];
+}
+
 /** Every call that leaves this process gets a deadline. A hung SDK must not hang a run. */
 export async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -20,6 +27,29 @@ export async function withTimeout<T>(work: Promise<T>, ms: number, label: string
     return await Promise.race([work, deadline]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * withTimeout for work that OWNS a resource once it finishes.
+ *
+ * Promise.race abandons the loser but cannot cancel it. An `openBrowser` that
+ * finishes after its deadline still created a real remote browser session, and
+ * nobody is left holding it: it stays live, burning a slot in the provider's
+ * concurrency cap, until the provider's own timeout reaps it. So dispose
+ * whatever arrives late.
+ *
+ * Work that REJECTS before the deadline produced no resource; nothing to dispose.
+ */
+export async function withTimeoutDisposing<T>(work: Promise<T>, ms: number, label: string, dispose: (value: T) => Promise<void>): Promise<T> {
+  try {
+    return await withTimeout(work, ms, label);
+  } catch (err) {
+    // Detached on purpose: the caller already has its failure and must not wait for the cleanup.
+    void work
+      .then((late) => dispose(late))
+      .catch((cleanupError: unknown) => log("browser", `late ${label} could not be disposed: ${errorMessage(cleanupError)}`));
+    throw err;
   }
 }
 

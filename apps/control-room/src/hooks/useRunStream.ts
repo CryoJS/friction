@@ -18,6 +18,7 @@ import {
   SSE,
   compareEvents,
   safeParseEvent,
+  type LiveViewResponse,
   type RunRecord,
   type RunSnapshot,
   type StreamHello,
@@ -27,6 +28,7 @@ import { api } from "../lib/api";
 import {
   applyEvent,
   applyHello,
+  applyLiveView,
   applyRunRecord,
   emptyRunView,
   summarize,
@@ -75,6 +77,8 @@ const BACKOFF_BASE_MS = 400;
 const BACKOFF_MAX_MS = 5000;
 /** Events arriving within this window share one render. */
 const FLUSH_MS = 40;
+/** How often the open browser session is re-checked. Mostly a liveness check; see useLiveView. */
+const LIVE_VIEW_POLL_MS = 20_000;
 
 /* -------------------------------------------------------------------- live */
 
@@ -283,6 +287,53 @@ function useReplay(runId: string | null, enabled: boolean, bundledOnly: boolean)
   return { snapshot, bundled, loading: enabled && !snapshot, view, controls };
 }
 
+/* --------------------------------------------------------------- live view */
+
+/**
+ * The Browserbase live view URL, asked for rather than remembered.
+ *
+ * It is signed, pinned to one page target and only valid while that session is
+ * open, so the orchestrator mints it on demand. The poll's real job is liveness:
+ * it is how the UI finds out a session has ENDED, so the iframe comes down
+ * instead of sitting there showing DevTools' "connection was closed".
+ *
+ * The URL is kept for as long as the session id is unchanged. Re-minting would
+ * hand back a different signature every poll, and the iframe is keyed on the
+ * URL, so it would reload every few seconds.
+ */
+function useLiveView(runId: string | null, active: boolean): LiveViewResponse | null {
+  const [live, setLive] = useState<LiveViewResponse | null>(null);
+
+  useEffect(() => {
+    if (!active || !runId) {
+      setLive(null);
+      return;
+    }
+    let cancelled = false;
+    const keepIfSameSession = (next: LiveViewResponse | null) => (current: LiveViewResponse | null) =>
+      current && next && current.sessionId === next.sessionId ? current : next;
+    const poll = (): void => {
+      api
+        .liveView(runId)
+        .then((next) => {
+          if (!cancelled) setLive(keepIfSameSession(next));
+        })
+        // Orchestrator down or unreachable: no live view, fall back to the step screenshots.
+        .catch(() => {
+          if (!cancelled) setLive(null);
+        });
+    };
+    poll();
+    const timer = window.setInterval(poll, LIVE_VIEW_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [runId, active]);
+
+  return live;
+}
+
 /* ------------------------------------------------------------------- clock */
 
 function useNow(active: boolean): number {
@@ -310,6 +361,9 @@ export function useRunStream(runId: string | null, options: { replay: boolean })
   if (replaying) origin = replay.snapshot ? (replay.bundled ? "bundled" : "replay") : null;
   else if (view.source) origin = view.source;
 
+  // Only a genuinely live, unfinished run can have a browser session open.
+  const liveView = useLiveView(runId, origin === "live" && phase !== "complete");
+
   // Wall clock only for genuinely live runs; fixture and replay time is event time.
   const wallClock = origin === "live" && phase !== "complete";
   const now = useNow(wallClock);
@@ -331,5 +385,13 @@ export function useRunStream(runId: string | null, options: { replay: boolean })
   let connection: Connection = live.connection;
   if (replaying) connection = replay.loading ? "connecting" : "local";
 
-  return { view, origin, connection, notice, elapsedMs, replay: replaying ? replay.controls : null, snapshot: replaying ? replay.snapshot : null };
+  return {
+    view: applyLiveView(view, liveView),
+    origin,
+    connection,
+    notice,
+    elapsedMs,
+    replay: replaying ? replay.controls : null,
+    snapshot: replaying ? replay.snapshot : null,
+  };
 }
