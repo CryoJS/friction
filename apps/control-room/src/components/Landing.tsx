@@ -13,6 +13,7 @@ interface Props {
   onStarted: (run: StartedRun) => void;
   /** Whether the floating nav currently sits over the hero. */
   onOverHero?: (over: boolean) => void;
+  scrollerRef: React.RefObject<HTMLElement | null>;
 }
 
 type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "down" };
@@ -41,13 +42,12 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
   },
 ];
 
-export function Landing({ onOpen, onStarted, onOverHero }: Props) {
+export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
   const [runs, setRuns] = useState<Probe<RunRecord[]>>({ status: "loading" });
-  const scroller = useRef<HTMLElement>(null);
   const hero = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const main = scroller.current;
+    const main = scrollerRef.current;
     if (!main || !onOverHero) return;
     let frame = 0;
     const check = (): void => {
@@ -65,7 +65,7 @@ export function Landing({ onOpen, onStarted, onOverHero }: Props) {
       if (frame) window.cancelAnimationFrame(frame);
       onOverHero(true);
     };
-  }, [onOverHero]);
+  }, [onOverHero, scrollerRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +79,7 @@ export function Landing({ onOpen, onStarted, onOverHero }: Props) {
   }, []);
 
   return (
-    <main ref={scroller} className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth motion-reduce:scroll-auto">
+    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth motion-reduce:scroll-auto">
       {/* ---------------------------------------------------------------- hero */}
       <section ref={hero} className="horizon relative isolate overflow-hidden rounded-b-panel">
         <div aria-hidden="true" className="horizon-scrim pointer-events-none absolute inset-0 -z-10" />
@@ -87,8 +87,14 @@ export function Landing({ onOpen, onStarted, onOverHero }: Props) {
 
         <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
           <h1 className="max-w-[21ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
-            <span className="lg:block">Three users. One task. </span>
-            <span className="lg:block">Every place your site fights back.</span>
+            <span className="lg:block">
+              <HeadlineTarget className="hero-headline-target--users">Three users.</HeadlineTarget>{" "}
+              <HeadlineTarget className="hero-headline-target--task">One task.</HeadlineTarget>
+            </span>
+            <span className="lg:block">
+              <HeadlineTarget className="hero-headline-target--site">Every place</HeadlineTarget>{" "}
+              your site fights back.
+            </span>
           </h1>
 
           <div className="mt-10 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
@@ -195,6 +201,25 @@ export function Landing({ onOpen, onStarted, onOverHero }: Props) {
         </div>
       </footer>
     </main>
+  );
+}
+
+function HeadlineTarget({ children, className }: { children: React.ReactNode; className: string }) {
+  return (
+    <span className={`hero-headline-target ${className}`}>
+      <span className="relative z-[1]">{children}</span>
+      <span className="hero-headline-selection" aria-hidden="true">
+        <span className="hero-headline-handle hero-headline-handle--top-left" />
+        <span className="hero-headline-handle hero-headline-handle--top-right" />
+        <span className="hero-headline-handle hero-headline-handle--bottom-left" />
+        <span className="hero-headline-handle hero-headline-handle--bottom-right" />
+      </span>
+      <span className="hero-headline-label" aria-hidden="true">
+        <span className="hero-headline-label-dot" />
+        agent focus
+      </span>
+      <span className="hero-headline-cursor" aria-hidden="true" />
+    </span>
   );
 }
 

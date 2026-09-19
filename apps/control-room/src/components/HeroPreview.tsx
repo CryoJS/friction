@@ -64,9 +64,9 @@ export function HeroPreview() {
       ref={frame}
       role="img"
       aria-label="Preview: the control room replaying the bundled golden run, three personas side by side with friction appearing as it is detected."
-      className="relative w-full rounded-t-large border border-b-0 border-white/25 bg-white/10 p-2 pb-0 backdrop-blur-[4px]"
+      className="hero-preview-frame relative w-full rounded-t-large border border-b-0 border-white/25 bg-white/10 p-2 pb-0 backdrop-blur-[4px]"
     >
-      <div className="overflow-hidden rounded-t-[32px] border border-b-0 border-hairline/10 bg-void">
+      <div className="hero-preview-screen overflow-hidden rounded-t-[32px] border border-b-0 border-hairline/10 bg-void">
         <div className="flex items-center gap-3 px-5 pb-2.5 pt-4">
           <span className="shrink-0">
             <Chip tone="good">Golden run · replay</Chip>

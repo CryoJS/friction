@@ -241,6 +241,191 @@ a {
   background: linear-gradient(180deg, rgb(10 10 10 / 0.9) 0%, rgb(10 10 10 / 0.62) 38%, rgb(10 10 10 / 0.08) 78%, rgb(10 10 10 / 0) 100%);
 }
 
+/* A small agent selection pass over the first headline phrase. */
+.hero-headline-target {
+  --headline-accent: var(--color-sev-1);
+  --headline-accent-rgb: 120 148 255;
+  --headline-delay: 0s;
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+.hero-headline-target--users {
+  --headline-accent: var(--color-sev-5);
+  --headline-accent-rgb: 255 107 87;
+  --headline-delay: 0s;
+}
+.hero-headline-target--task {
+  --headline-accent: var(--color-sev-4);
+  --headline-accent-rgb: 255 158 79;
+  --headline-delay: -2.65s;
+}
+.hero-headline-target--site {
+  --headline-accent: var(--color-sev-1);
+  --headline-accent-rgb: 120 148 255;
+  --headline-delay: -5.3s;
+}
+.hero-headline-selection {
+  position: absolute;
+  inset: -0.06em -0.1em 0.08em;
+  z-index: 0;
+  border: 1px solid rgb(var(--headline-accent-rgb) / 0.62);
+  border-radius: 5px;
+  background: rgb(var(--headline-accent-rgb) / 0.09);
+  opacity: 0;
+  transform: scaleX(0.2);
+  transform-origin: left center;
+  animation: headline-selection 8s var(--ease-out-expo) var(--headline-delay) infinite;
+}
+.hero-headline-handle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--headline-accent);
+}
+.hero-headline-handle--top-left {
+  top: -3px;
+  left: -3px;
+}
+.hero-headline-handle--top-right {
+  top: -3px;
+  right: -3px;
+}
+.hero-headline-handle--bottom-left {
+  bottom: -3px;
+  left: -3px;
+}
+.hero-headline-handle--bottom-right {
+  right: -3px;
+  bottom: -3px;
+}
+.hero-headline-label {
+  position: absolute;
+  top: -1.8em;
+  left: 0.1em;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgb(var(--headline-accent-rgb) / 0.34);
+  border-radius: 9999px;
+  background: rgb(10 10 10 / 0.72);
+  color: rgb(237 237 237 / 0.74);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: headline-label 8s ease-out var(--headline-delay) infinite;
+}
+.hero-headline-label-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--headline-accent);
+}
+.hero-headline-cursor {
+  position: absolute;
+  top: 116%;
+  left: -8%;
+  z-index: 4;
+  width: 21px;
+  height: 28px;
+  background: var(--headline-accent);
+  clip-path: polygon(0 0, 100% 37%, 57% 46%, 43% 100%);
+  filter: drop-shadow(0 0 6px rgb(var(--headline-accent-rgb) / 0.24));
+  opacity: 0;
+  transform-origin: 14% 12%;
+  animation: headline-cursor 8s cubic-bezier(0.16, 1, 0.3, 1) var(--headline-delay) infinite;
+}
+
+@keyframes headline-selection {
+  0%,
+  18% {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+  25%,
+  43% {
+    opacity: 0.76;
+    transform: scaleX(1);
+  }
+  52%,
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+@keyframes headline-label {
+  0%,
+  22% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  28%,
+  43% {
+    opacity: 0.88;
+    transform: translateY(0);
+  }
+  52%,
+  100% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+@keyframes headline-cursor {
+  0%,
+  12% {
+    top: 116%;
+    left: -8%;
+    opacity: 0;
+    transform: rotate(-15deg) scale(0.8);
+  }
+  20% {
+    top: 92%;
+    left: 2%;
+    opacity: 0.92;
+    transform: rotate(-8deg) scale(0.92);
+  }
+  35%,
+  48% {
+    top: 76%;
+    left: 98%;
+    opacity: 0.96;
+    transform: rotate(8deg) scale(1);
+  }
+  56% {
+    top: 76%;
+    left: 98%;
+    opacity: 0.68;
+    transform: rotate(8deg) scale(0.82);
+  }
+  65%,
+  100% {
+    top: 92%;
+    left: 108%;
+    opacity: 0;
+    transform: rotate(10deg) scale(0.82);
+  }
+}
+
+/* The replay content changes every event; keep its frame from reflowing the hero. */
+.hero-preview-frame {
+  height: clamp(240px, 34vw, 360px);
+  overflow: hidden;
+}
+.hero-preview-screen {
+  height: 100%;
+}
+
 /*
  * Ambient agent traces: small browser wireframes that sit behind the hero
  * content. They borrow the severity lights for meaning and stay quiet enough
@@ -620,8 +805,25 @@ a {
   .agent-live-dot,
   .agent-pointer,
   .agent-target,
-  .agent-callout {
+  .agent-callout,
+  .hero-headline-selection,
+  .hero-headline-label,
+  .hero-headline-cursor {
     animation: none;
+  }
+  .hero-headline-selection {
+    opacity: 0.72;
+    transform: scaleX(1);
+  }
+  .hero-headline-label {
+    opacity: 0.84;
+    transform: none;
+  }
+  .hero-headline-cursor {
+    top: 76%;
+    left: 98%;
+    opacity: 0.9;
+    transform: rotate(8deg) scale(0.82);
   }
   .wash {
     background-position: 50% 0;
