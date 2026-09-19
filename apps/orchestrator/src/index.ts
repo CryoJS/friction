@@ -3,6 +3,7 @@
  *   POST /scans          { url, repo?, autoPr? }
  *                                      -> { scanId } at once; crawl, then up to MAX_SCAN_TASKS tasks, one run each, in the background.
  *                                         `repo` must be on the allow-list; with `autoPr`, one draft PR per fixable task at the end
+ *   POST /scans/:scanId/stop           -> stops an active scan
  *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
  *   POST /runs/:runId/fixes/:findingId/pull-request
@@ -124,6 +125,15 @@ app.post("/scans", async (req, res) => {
     log("http", `could not start a scan: ${errorMessage(err)}`);
     res.status(502).json({ error: `Worker unreachable at ${config.workerUrl}: ${errorMessage(err)}` });
   }
+});
+
+app.post("/scans/:scanId/stop", async (req, res) => {
+  const stopped = await scans.stop(req.params.scanId);
+  if (!stopped) {
+    res.status(409).json({ error: "This scan is no longer running." });
+    return;
+  }
+  res.status(202).json({ scanId: req.params.scanId });
 });
 
 app.post("/suggest-tasks", async (req, res) => {

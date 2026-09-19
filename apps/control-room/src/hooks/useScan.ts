@@ -14,7 +14,7 @@ export interface ScanPoll {
 }
 
 /**
- * Polls GET /api/scans/:id every 2s until the scan completes or fails. One
+ * Polls GET /api/scans/:id every 2s until the scan completes, fails, or is stopped. One
  * small request per poll; the selected task streams its run on its own.
  */
 export function useScan(scanId: string): ScanPoll {

@@ -139,7 +139,7 @@ export async function patchScan(db: D1Database, scanId: string, patch: ScanPatch
   if (patch.status !== undefined) {
     sets.push("status = ?");
     binds.push(patch.status);
-    if (patch.status === "completed" || patch.status === "failed") {
+    if (patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled") {
       sets.push("completed_at = ?");
       binds.push(Date.now());
     }
@@ -157,7 +157,11 @@ export async function patchScan(db: D1Database, scanId: string, patch: ScanPatch
     binds.push(JSON.stringify(patch.page));
   }
   if (sets.length > 0) {
-    await db.prepare(`UPDATE scans SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, scanId).run();
+    // A stop is terminal. Late crawl/run progress is allowed to finish in the
+    // background, but it must not resurrect a stopped scan or replace its
+    // message after the user has pressed Stop.
+    const where = patch.status === "cancelled" ? "WHERE id = ? AND status IN ('crawling', 'running', 'cancelled')" : "WHERE id = ? AND status != 'cancelled'";
+    await db.prepare(`UPDATE scans SET ${sets.join(", ")} ${where}`).bind(...binds, scanId).run();
   }
   return getScan(db, scanId);
 }

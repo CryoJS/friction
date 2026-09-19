@@ -54,6 +54,12 @@ const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+const patchJson = (body: unknown): RequestInit => ({
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
 /**
  * The UI starts scans only. The orchestrator's POST /runs and POST
  * /suggest-tasks remain for scripts (smoke-local.ts); nothing here calls them.
@@ -65,6 +71,21 @@ export const api = {
    */
   startScan: (url: string, options: { repo?: string; autoPr?: boolean } = {}) =>
     request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url, ...options }), 12_000),
+
+  /** Cooperatively stops an active scan and leaves its partial results available. */
+  stopScan: async (scanId: string): Promise<{ scanId: string }> => {
+    const encoded = encodeURIComponent(scanId);
+    try {
+      return await request<{ scanId: string }>(`${ORCHESTRATOR_URL}/scans/${encoded}/stop`, json({}), 12_000);
+    } catch (err) {
+      // The orchestrator's active-scan registry is intentionally in memory. If
+      // it restarted while this scan was running, stop it at the Worker too.
+      if (!(err instanceof ApiError) || (err.status !== null && err.status !== 404 && err.status !== 409 && err.status !== 502 && err.status !== 503)) throw err;
+      const scan = await request<{ id: string; status: string }>(`${WORKER_URL}/api/scans/${encoded}`, patchJson({ status: "cancelled", message: "Stopped by user." }), 12_000);
+      if (scan.status !== "cancelled") throw new ApiError("This scan is no longer running.", 409);
+      return { scanId: scan.id };
+    }
+  },
 
   /** The user's click on one fix. Opens it as a draft; a fix its task's pull request already covers answers with that one. */
   openPullRequest: (runId: string, findingId: string) =>

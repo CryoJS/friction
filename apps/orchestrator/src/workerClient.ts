@@ -50,11 +50,25 @@ export class WorkerClient {
   }
 
   /** Progress and status. Best-effort: a lost progress message must never stop a scan. */
-  async patchScan(scanId: string, patch: ScanPatch): Promise<void> {
+  async patchScan(scanId: string, patch: ScanPatch): Promise<boolean> {
     try {
       await retry(3, 300, () => this.request(`/api/scans/${scanId}`, this.json("PATCH", patch), 8000));
+      return true;
     } catch (err) {
       log("worker", `PATCH scan ${scanId} failed: ${errorMessage(err)}`);
+      return false;
+    }
+  }
+
+  /** Stops a scan even when this orchestrator process did not create it. */
+  async stopScan(scanId: string): Promise<boolean> {
+    try {
+      const response = await retry(3, 300, () => this.request(`/api/scans/${scanId}`, this.json("PATCH", { status: "cancelled", message: "Stopped by user." }), 8000));
+      const scan = (await response.json()) as { status?: string };
+      return scan.status === "cancelled";
+    } catch (err) {
+      log("worker", `STOP scan ${scanId} failed: ${errorMessage(err)}`);
+      return false;
     }
   }
 

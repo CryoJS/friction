@@ -8,7 +8,9 @@
  *   (still running) for a scan started with a repository and automatic
  *              pull requests: one draft PR per fixable task, one at a time,
  *              in task-rank order (scanPullRequests.ts)
- *   completed  every run is over, and so are the pull requests
+ *   completed  every run is over
+ *   cancelled  the user stopped the scan; in-flight work may wind down, but
+ *              no new scan stage is started
  *
  * The background work never throws: whatever goes wrong ends as a `failed`
  * scan with a message, which the root node shows.
@@ -44,6 +46,9 @@ export interface ScanOptions {
 }
 
 export class ScanManager {
+  private readonly activeScans = new Set<string>();
+  private readonly stoppedScans = new Set<string>();
+
   constructor(
     private readonly config: Config,
     private readonly worker: WorkerClient,
@@ -54,11 +59,33 @@ export class ScanManager {
   /** Creates the scan and returns its id at once; everything else happens in the background. */
   async start(url: string, options: ScanOptions = {}): Promise<string> {
     const scanId = await this.worker.createScan(url, options);
+    this.activeScans.add(scanId);
     void this.run(scanId, url, options);
     return scanId;
   }
 
+  /** Requests a cooperative stop. Work already inside a browser call may finish, but the scan cannot advance or complete afterward. */
+  async stop(scanId: string): Promise<boolean> {
+    if (this.activeScans.has(scanId)) this.stoppedScans.add(scanId);
+    const patched = await this.worker.stopScan(scanId);
+    if (!patched) this.stoppedScans.delete(scanId);
+    return patched;
+  }
+
+  private isStopped(scanId: string): boolean {
+    return this.stoppedScans.has(scanId);
+  }
+
   private async run(scanId: string, url: string, options: ScanOptions): Promise<void> {
+    try {
+      await this.runPipeline(scanId, url, options);
+    } finally {
+      this.activeScans.delete(scanId);
+      this.stoppedScans.delete(scanId);
+    }
+  }
+
+  private async runPipeline(scanId: string, url: string, options: ScanOptions): Promise<void> {
     const { worker, runs } = this;
     log("scan", `${scanId} started in ${this.config.mode} mode: ${url}`);
 
@@ -66,13 +93,17 @@ export class ScanManager {
     try {
       plan = this.config.mode === "mock" ? await this.mockPlan(scanId, url) : await this.livePlan(scanId, url);
     } catch (err) {
+      if (this.isStopped(scanId)) return;
       // crawlSite and generateTasks both degrade on their own; this is the belt to their braces.
       plan = { tasks: fallbackScanTasks(url), source: "fallback", note: `Couldn't read the site (${errorMessage(err)}), so these tasks are generic.` };
     }
 
+    if (this.isStopped(scanId)) return;
+
     const prepared: PreparedRun[] = [];
     try {
       for (const [index, task] of plan.tasks.entries()) {
+        if (this.isStopped(scanId)) return;
         prepared.push(
           await runs.create(url, task.title, {
             scan: { scanId, taskIndex: index, whyCritical: task.whyCritical, successCheck: task.successCheck },
@@ -82,10 +113,13 @@ export class ScanManager {
         );
       }
     } catch (err) {
+      if (this.isStopped(scanId)) return;
       log("scan", `${scanId} failed: ${errorMessage(err)}`);
       await worker.patchScan(scanId, { status: "failed", taskSource: plan.source, message: `Could not create the runs: ${errorMessage(err)}` });
       return;
     }
+
+    if (this.isStopped(scanId)) return;
 
     await worker.patchScan(scanId, {
       status: "running",
@@ -93,9 +127,12 @@ export class ScanManager {
       message: plan.note ?? `Testing ${plan.tasks.length} tasks.`,
     });
 
+    if (this.isStopped(scanId)) return;
+
     // execute() enters the session pool synchronously, so calling it in rank
     // order means the most critical tasks get browsers first.
     const outcomes = await Promise.all(prepared.map((run) => runs.execute(run)));
+    if (this.isStopped(scanId)) return;
     const succeeded = outcomes.filter((outcome) => outcome === "success").length;
     const pullRequests = options.repo && options.autoPr ? await this.pullRequests(scanId, options.repo, prepared) : "";
     await worker.patchScan(scanId, { status: "completed", message: truncate(`The agent completed ${succeeded} of ${outcomes.length} tasks.${pullRequests}`, MESSAGE_MAX) });
@@ -111,7 +148,9 @@ export class ScanManager {
         scanId,
         repo,
         tasks: prepared.map((run, taskIndex) => ({ taskIndex, runId: run.runId, title: run.task })),
-        progress: (message) => this.worker.patchScan(scanId, { message: truncate(message, MESSAGE_MAX) }),
+        progress: async (message) => {
+          await this.worker.patchScan(scanId, { message: truncate(message, MESSAGE_MAX) });
+        },
       });
       return ` ${summarizeTaskPullRequests(results).text}`;
     } catch (err) {
@@ -125,9 +164,9 @@ export class ScanManager {
     // at the creation-time "Opening the site." message for the whole wait.
     await this.worker.patchScan(scanId, { message: "Waiting for a browser session." });
     const crawl = await this.sessions.run(() =>
-      crawlSite(this.config, url, (page, message) =>
-        this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) }),
-      ),
+      crawlSite(this.config, url, async (page, message) => {
+        await this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) });
+      }),
     );
     await this.worker.patchScan(scanId, { message: `Choosing the ${MAX_SCAN_TASKS} most critical tasks.` });
     return generateTasks(this.config, url, crawl);
@@ -136,7 +175,9 @@ export class ScanManager {
   /** No browser, no model: a scripted crawl so the root node still shows progress. */
   private async mockPlan(scanId: string, url: string): Promise<PlannedTasks> {
     for (const [index, page] of MOCK_PAGES.entries()) {
+      if (this.isStopped(scanId)) return { tasks: [], source: "mock", note: "Stopped by user." };
       await sleep(1500 / this.config.mockSpeed);
+      if (this.isStopped(scanId)) return { tasks: [], source: "mock", note: "Stopped by user." };
       const pageUrl = new URL(page.path, url).toString();
       const label = new URL(pageUrl).pathname || "/";
       await this.worker.patchScan(scanId, {

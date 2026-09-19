@@ -15,16 +15,18 @@ import type { RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
 import { Chip, Dot, SEVERITY_STYLES } from "../badges";
 import { Check, Cross } from "../icons";
 
-/** Shared by every node: opaque graphite, text lifts to white on hover, a white ring set 4px off the edge when selected. */
-function frame(selected: boolean): string {
-  return `group pointer-events-auto bg-graphite text-left transition-colors duration-150 ease-out ${
-    selected ? "ring-1 ring-white ring-offset-4 ring-offset-void" : ""
-  }`;
+/** Shared by every node: opaque graphite, text lifts to white on hover, and a subtle brighter fill when selected. */
+function frame(): string {
+  return "group pointer-events-auto text-left transition-colors duration-150 ease-out";
 }
 
-/** Neutral nodes: a 15% hairline that lifts on hover and goes full strength when selected. */
+function nodeStyle(selected: boolean): { backgroundColor: string } {
+  return { backgroundColor: selected ? "rgb(255 255 255 / 0.08)" : "var(--color-graphite)" };
+}
+
+/** Neutral nodes: the same hairline stays in place while selection is shown by the fill. */
 function neutralBorder(selected: boolean): string {
-  return selected ? "border-hairline" : "border-hairline/15 hover:border-hairline/40";
+  return selected ? "border-hairline/15" : "border-hairline/15 hover:border-hairline/40";
 }
 
 export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
@@ -35,7 +37,8 @@ export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
         type="button"
         onClick={() => data.onSelect(id)}
         aria-current={data.selected ? "true" : undefined}
-        className={`${frame(data.selected)} ${neutralBorder(data.selected)} flex w-65 flex-col rounded-card border p-4`}
+        style={nodeStyle(data.selected)}
+        className={`${frame()} ${neutralBorder(data.selected)} flex w-65 flex-col rounded-card border p-4`}
       >
         <span className="flex items-center justify-between gap-2">
           <Chip tone={status.tone}>{status.label}</Chip>
@@ -108,10 +111,11 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
         onClick={() => data.onSelect(id)}
         aria-current={data.selected ? "true" : undefined}
         title={data.title}
-        className={`${frame(data.selected)} ${border} flex h-28 w-80 flex-col rounded-2xl border p-3`}
+        style={nodeStyle(data.selected)}
+        className={`${frame()} ${border} flex h-28 w-80 flex-col rounded-2xl border p-3`}
       >
         <span className="flex items-center gap-2">
-          <span className="font-mono text-caption tabular-nums tracking-normal text-ash">T{data.index + 1}</span>
+          <span className="font-mono text-caption tabular-nums tracking-normal text-ash">Task {data.index + 1}</span>
           <span className="ml-auto flex items-center gap-1.5 text-caption text-smoke">
             {stateLabel}
             <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center">
