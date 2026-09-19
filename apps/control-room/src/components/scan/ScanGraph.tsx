@@ -4,16 +4,18 @@
  * selection, connecting and delete keys are all off. Each node is a <button>
  * (see nodes.tsx): Tab reaches it and Enter selects it.
  */
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow,
   type Edge,
   type FitViewOptions,
+  type NodeChange,
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -28,6 +30,14 @@ const FIT: FitViewOptions = { padding: 0.12, maxZoom: 1 };
 /** An animation's length, or 0 when the viewer asked for reduced motion. */
 function motion(ms: number): number {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : ms;
+}
+
+/** Zero an element's scroll offset if the browser (or anything else) has nudged it off (0, 0). */
+function unscroll(element: HTMLElement): void {
+  if (element.scrollTop !== 0 || element.scrollLeft !== 0) {
+    element.scrollTop = 0;
+    element.scrollLeft = 0;
+  }
 }
 
 interface Props {
@@ -47,6 +57,30 @@ function Canvas({ nodes, edges }: Props) {
   const frame = useRef<HTMLDivElement>(null);
   const { getZoom, screenToFlowPosition, setCenter } = useReactFlow();
 
+  // Every poll rebuilds every node as a brand-new object (layoutScan is
+  // pure), so React Flow's adoptUserNodes never sees the same reference twice
+  // and resets `measured` to { width: undefined, height: undefined } -- which
+  // hides the node (visibility: hidden) and drops its handle bounds (so
+  // edges lose their anchor) until the ResizeObserver fires again, a couple
+  // of frames later, on every single poll. onNodesChange reports each node's
+  // real size once React Flow measures it; keep the latest one per id here
+  // and stamp it onto every incoming node before it reaches <ReactFlow>, so
+  // a node already on screen never goes back to unmeasured.
+  const measuredSizes = useRef(new Map<string, { width?: number; height?: number }>());
+
+  const handleNodesChange = useCallback((changes: NodeChange<ScanFlowNode>[]) => {
+    for (const change of changes) {
+      if (change.type === "dimensions" && change.dimensions) {
+        measuredSizes.current.set(change.id, change.dimensions);
+      }
+    }
+  }, []);
+
+  const measuredNodes = useMemo<ScanFlowNode[]>(
+    () => nodes.map((node) => ({ ...node, measured: measuredSizes.current.get(node.id) ?? node.measured })),
+    [nodes],
+  );
+
   // Tabbing to a node outside the view makes the browser scroll React Flow's
   // overflow-hidden root, which React Flow never notices, so nodes and edges
   // drift apart. Undo any such scroll; reveal() pans the viewport instead.
@@ -54,11 +88,7 @@ function Canvas({ nodes, edges }: Props) {
     const element = frame.current;
     if (!element) return;
     const reset = (event: Event): void => {
-      const target = event.target;
-      if (target instanceof HTMLElement && (target.scrollTop !== 0 || target.scrollLeft !== 0)) {
-        target.scrollTop = 0;
-        target.scrollLeft = 0;
-      }
+      if (event.target instanceof HTMLElement) unscroll(event.target);
     };
     element.addEventListener("scroll", reset, true);
     return () => element.removeEventListener("scroll", reset, true);
@@ -76,10 +106,7 @@ function Canvas({ nodes, edges }: Props) {
     // screenToFlowPosition, which assumes an unscrolled pane), so undo it
     // before measuring rather than waiting on the separate scroll listener.
     const pane = event.currentTarget.querySelector<HTMLElement>(".react-flow");
-    if (pane && (pane.scrollTop !== 0 || pane.scrollLeft !== 0)) {
-      pane.scrollTop = 0;
-      pane.scrollLeft = 0;
-    }
+    if (pane) unscroll(pane);
     const box = node.getBoundingClientRect();
     const view = event.currentTarget.getBoundingClientRect();
     if (box.left >= view.left && box.right <= view.right && box.top >= view.top && box.bottom <= view.bottom) return;
@@ -90,9 +117,10 @@ function Canvas({ nodes, edges }: Props) {
   return (
     <div ref={frame} onFocus={reveal} className="scan-flow absolute inset-0">
       <ReactFlow
-        nodes={nodes}
+        nodes={measuredNodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        onNodesChange={handleNodesChange}
         colorMode="dark"
         nodesDraggable={false}
         nodesConnectable={false}
@@ -109,25 +137,44 @@ function Canvas({ nodes, edges }: Props) {
         maxZoom={1.5}
       >
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgb(229 229 229 / 0.12)" />
-        <FitOnGrow count={nodes.length} />
+        <FitOnGrow count={measuredNodes.length} />
         <CanvasControls />
       </ReactFlow>
     </div>
   );
 }
 
-/** The fitView prop fits once, on load; fit again when the task nodes first appear after the crawl. */
+/**
+ * The fitView prop fits once, on load; fit again when the task nodes first
+ * appear after the crawl. A grow is only *acted on* once useNodesInitialized
+ * reports every node measured -- firing fitView the moment the count grows
+ * races the newly-mounted nodes' own ResizeObserver callbacks, so fitView
+ * would see them as zero-sized and either skip them or fit to the root
+ * alone. `pending` survives across renders where nodesInitialized is still
+ * false; measuring 41 nodes is not instantaneous, so nodesInitialized can
+ * flip false again right after a growth is first seen true (a stale read,
+ * before the store has processed the new nodes), which cancels this timer
+ * via the effect's own cleanup -- so `pending` is cleared only once the fit
+ * actually runs, not merely once it is scheduled, letting a cancelled
+ * attempt retry on the next settle instead of being silently dropped.
+ */
 function FitOnGrow({ count }: { count: number }) {
   const { fitView } = useReactFlow();
-  const previous = useRef(count);
+  const nodesInitialized = useNodesInitialized();
+  const lastCount = useRef(count);
+  const pending = useRef(false);
+
   useEffect(() => {
-    const grew = count > previous.current;
-    previous.current = count;
-    if (!grew) return;
-    // Give React Flow a beat to measure the new nodes before fitting them.
-    const timer = window.setTimeout(() => void fitView({ ...FIT, duration: motion(300) }), 80);
+    if (count > lastCount.current) pending.current = true;
+    lastCount.current = count;
+    if (!pending.current || !nodesInitialized) return;
+    // Give React Flow a beat to settle the freshly measured layout before fitting it.
+    const timer = window.setTimeout(() => {
+      pending.current = false;
+      void fitView({ ...FIT, duration: motion(300) });
+    }, 80);
     return () => window.clearTimeout(timer);
-  }, [count, fitView]);
+  }, [count, nodesInitialized, fitView]);
   return null;
 }
 
