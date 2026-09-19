@@ -7,7 +7,7 @@
  * This flattens what assembleScanReport already works from. It is a second
  * SHAPE of the findings, never a second source of truth for them.
  */
-import { normalizeHost, OVERLAY_VERSION, type Anchor } from "./anchor";
+import { normalizeHost, type Anchor } from "./anchor";
 import type { FrictionCategory, Severity, StepEvent } from "./events";
 import type { ScanFindingInput } from "./scanReport";
 
@@ -79,7 +79,7 @@ export function toAnnotationFinding(
     summary: finding.summary ?? "",
     whyItMatters: finding.whyItMatters ?? "",
     recommendation: finding.recommendation,
-    url: payload?.signals?.urlAfter ?? payload?.url ?? "",
+    url: payload?.url ?? "",
     anchor: payload?.anchor ?? null,
     evidenceUrl: key ? `${evidenceBase.replace(/\/$/, "")}/${key}` : null,
     patchJs,

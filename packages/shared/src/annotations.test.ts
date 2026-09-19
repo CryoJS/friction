@@ -56,4 +56,16 @@ describe("toAnnotationFinding", () => {
     expect(result.evidenceUrl).toBeNull();
     expect(result.url).toBe("");
   });
+
+  it("uses the page the element was on, not the page the action navigated to", () => {
+    const navigated = {
+      ...step,
+      payload: {
+        ...step.payload,
+        signals: { urlAfter: "https://example.com/checkout" },
+      },
+    } as StepEvent;
+    const result = toAnnotationFinding(finding, navigated, "https://worker.example/api/evidence");
+    expect(result.url).toBe("https://example.com/p");
+  });
 });
