@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   FixUpsertSchema,
   RunEventSchema,
+  StepPayloadSchema,
+  FrictionPayloadSchema,
   detectFriction,
   findingsFromEvents,
   isVerdictStage,
@@ -112,5 +114,44 @@ describe("the verify lane", () => {
   it("detectors ignore fix events", () => {
     const events: RunEvent[] = [deadClick("primary", 1), { runId: "t", lane: "verify", seq: 1, ts: clock, fixId: "f1", type: "fix", payload: fix }];
     expect(detectFriction(events).map((c) => c.category)).toEqual(["dead_click"]);
+  });
+});
+
+describe("anchor on payloads", () => {
+  const anchor = {
+    xpath: "/html/body/button",
+    tag: "button",
+    role: "button",
+    name: "Add to cart",
+    text: "Add to cart",
+    attrs: { id: "add-to-cart" },
+    ordinal: 0,
+    path: "/products/hat",
+  };
+
+  const step = {
+    url: "https://example.com/products/hat",
+    actionType: "click" as const,
+    targetLabel: "Add to cart",
+    selector: "xpath=/html/body/button",
+    rationale: "I'm adding the hat to the cart.",
+    screenshotKey: "runs/r_1/primary/3.jpg",
+    bbox: null,
+    durationMs: 120,
+    domChanged: false,
+  };
+
+  it("accepts a step payload with an anchor", () => {
+    expect(StepPayloadSchema.parse({ ...step, anchor }).anchor).toEqual(anchor);
+  });
+
+  it("still accepts a step payload recorded before anchors existed", () => {
+    expect(StepPayloadSchema.parse(step).anchor).toBeUndefined();
+  });
+
+  it("accepts a friction payload with an anchor, and without", () => {
+    const friction = { category: "dead_click" as const, severity: 3 as const, evidenceSeq: 3, recommendation: "Make the button do something.", confidence: 0.9 };
+    expect(FrictionPayloadSchema.parse({ ...friction, anchor }).anchor).toEqual(anchor);
+    expect(FrictionPayloadSchema.parse(friction).anchor).toBeUndefined();
   });
 });
