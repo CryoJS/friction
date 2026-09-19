@@ -1,4 +1,5 @@
 export * from "./events";
+export * from "./anchor";
 export * from "./agent";
 export * from "./api";
 export * from "./report";
