@@ -7,6 +7,7 @@ import { ReportView } from "./components/ReportView";
 import { RunBar } from "./components/RunBar";
 import type { StartedRun } from "./components/RunForm";
 import { Play, Plus, Sparkle } from "./components/icons";
+import { ScanPage } from "./components/scan/ScanPage";
 import { useReport } from "./hooks/useReport";
 import { useRunStream } from "./hooks/useRunStream";
 import { snapshotFromView, summarize } from "./lib/runState";
@@ -17,13 +18,15 @@ export default function App() {
   const [startNotice, setStartNotice] = useState<string | null>(null);
   const [overHero, setOverHero] = useState(true);
 
-  const stream = useRunStream(query.run, { replay: query.replay });
+  // The single-run view only: a scan page streams its selected persona node itself.
+  const runId = query.scan ? null : query.run;
+  const stream = useRunStream(runId, { replay: query.replay });
   const { view } = stream;
   const summary = summarize(view);
 
   // Whatever is on screen, as a snapshot: lets the report be built with no Worker.
   const localSnapshot = useMemo(() => stream.snapshot ?? snapshotFromView(view), [stream.snapshot, view]);
-  const report = useReport(query.run, query.tab === "report", localSnapshot, {
+  const report = useReport(runId, query.tab === "report", localSnapshot, {
     localOnly: stream.origin === "bundled",
     refreshKey: summary.frictionCount + (summary.phase === "complete" ? 1000 : 0),
   });
@@ -41,25 +44,46 @@ export default function App() {
   const onStarted = useCallback(
     (run: StartedRun) => {
       setStartNotice(run.notice);
-      setQuery({ run: run.runId, replay: run.replay, tab: "room" });
+      setQuery({ run: run.runId, scan: null, node: null, replay: run.replay, tab: "room" });
     },
     [setQuery],
   );
 
   const open = useCallback(
-    (runId: string, replay: boolean) => {
+    (id: string, replay: boolean) => {
       setStartNotice(null);
-      setQuery({ run: runId, replay, tab: "room" });
+      setQuery({ run: id, scan: null, node: null, replay, tab: "room" });
     },
     [setQuery],
   );
 
+  const openRun = useCallback((id: string) => open(id, false), [open]);
+  const selectNode = useCallback((node: string) => setQuery({ node }), [setQuery]);
+
   const goHome = useCallback(() => {
     setStartNotice(null);
-    setQuery({ run: null, replay: false, tab: "room" });
+    setQuery({ run: null, scan: null, node: null, replay: false, tab: "room" });
   }, [setQuery]);
 
   const notice = startNotice ?? stream.notice;
+
+  if (query.scan) {
+    return (
+      <div className="flex h-full flex-col">
+        <Nav
+          onHome={goHome}
+          compact
+          action={
+            <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
+              <Plus size={14} />
+              <span className="hidden sm:inline">New scan</span>
+            </button>
+          }
+        />
+        <ScanPage key={query.scan} scanId={query.scan} nodeId={query.node} onSelectNode={selectNode} onOpenRun={openRun} />
+      </div>
+    );
+  }
 
   if (!query.run) {
     return (
