@@ -48,6 +48,11 @@ export function ScanBar({ tree }: { tree: ScanTreeResponse }) {
                 <Chip tone="warn">Mock scan</Chip>
               </span>
             )}
+            {scan.repo && (
+              <span className="shrink-0" title={scan.autoPr ? "Draft pull requests open against this repository when the runs finish" : "Fixes are mapped to this repository"}>
+                <Chip tone="idle">{scan.repo}</Chip>
+              </span>
+            )}
             {scan.taskSource === "fallback" && (
               <span className="shrink-0" title="The site could not be read, so the tasks are generic">
                 <Chip tone="warn">Generic tasks</Chip>

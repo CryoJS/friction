@@ -18,7 +18,8 @@ import {
   type TaskSource,
   type TaskVerdict,
 } from "@friction/shared";
-import { hostOf, runProgress, verdictCounts } from "./scan";
+import type { Tone } from "../components/badges";
+import { TASK_PR, coveredByLabel, hostOf, runProgress, verdictCounts } from "./scan";
 
 const COLUMN_X = { root: 0, task: 320 } as const;
 /** Rendered heights (nodes.tsx: task h-28). The root grows with its content; its height is an estimate used only for centring. */
@@ -52,6 +53,8 @@ export type TaskNodeData = Selectable & {
   worst: Severity | null;
   whyCritical: string;
   successCheck: string;
+  /** The task's pull request chip, once it has an outcome. */
+  pullRequest: { label: string; tone: Tone; title?: string } | null;
 };
 
 export type RootFlowNode = Node<RootNodeData, "root">;
@@ -96,6 +99,7 @@ export function layoutScan(tree: ScanTreeResponse, options: LayoutOptions): { no
 
   tree.tasks.forEach((task, position) => {
     const taskId = scanNodeId({ kind: "task", index: task.index });
+    const pr = tree.pullRequests?.find((candidate) => candidate.runId === task.runId);
     nodes.push({
       id: taskId,
       type: "task",
@@ -110,6 +114,7 @@ export function layoutScan(tree: ScanTreeResponse, options: LayoutOptions): { no
         worst: task.worstSeverity,
         whyCritical: task.whyCritical,
         successCheck: task.successCheck,
+        pullRequest: pr ? { label: pr.status === "covered" ? coveredByLabel(pr.coveredBy) : TASK_PR[pr.status].label, tone: TASK_PR[pr.status].tone, title: pr.reason } : null,
         selected: selected === taskId,
         onSelect,
       },

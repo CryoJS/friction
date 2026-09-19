@@ -8,3 +8,4 @@ export * from "./friction";
 export * from "./fixes";
 export * from "./scan";
 export * from "./scanReport";
+export * from "./scanPr";

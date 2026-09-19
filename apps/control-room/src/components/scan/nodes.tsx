@@ -111,6 +111,10 @@ export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
             </>
           )}
 
+        {/* Once every run is over, a running scan's message is its pull request progress. */}
+        {data.status === "running" && data.runsTotal > 0 && data.runsDone === data.runsTotal && data.message && (
+          <span className="mt-1 line-clamp-2 text-caption text-ash">{data.message}</span>
+        )}
           {data.status === "failed" && <span className="mt-2 line-clamp-3 text-caption text-sev-5">{data.message ?? "The scan failed."}</span>}
           {data.taskSource === "fallback" && <span className="mt-2 text-caption text-sev-4">Couldn't read the site; these tasks are generic.</span>}
         </button>

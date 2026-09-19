@@ -1,4 +1,4 @@
-import { taskVerdict, type ScanReportResponse, type ScanTreeTask } from "@friction/shared";
+import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
 import { useRunStream } from "../../hooks/useRunStream";
 import { VERDICT } from "../../lib/scan";
 import { LanePane } from "../LanePane";
@@ -6,9 +6,12 @@ import { Chip } from "../badges";
 import { ArrowRight } from "../icons";
 import { IssueCard } from "./IssueCard";
 import { Notice } from "./Notice";
+import { TaskPullRequestCard } from "./TaskPullRequestCard";
 
 interface Props {
   task: ScanTreeTask;
+  /** For the task's pull request, and the task a covered one points at. */
+  tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
   onOpenRun: (runId: string) => void;
@@ -19,7 +22,7 @@ interface Props {
  * LanePane on the run's SSE stream), and the site issues it hit. SidePanel
  * keys it by run id, so selecting another task opens that run's stream.
  */
-export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
+export function TaskPanel({ task, tree, report, onSelect, onOpenRun }: Props) {
   const stream = useRunStream(task.runId, { replay: false });
   const verdict = VERDICT[taskVerdict(task.state)];
   const fixes = Object.keys(stream.view.fixes).length;
@@ -48,6 +51,8 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
           <dd className="mt-1 text-body text-ash">{task.successCheck}</dd>
         </div>
       </dl>
+
+      <TaskPullRequestCard task={task} tree={tree} onSelect={onSelect} />
 
       <section aria-label="The run">
         {stream.notice && <Notice tone="warn">{stream.notice}</Notice>}

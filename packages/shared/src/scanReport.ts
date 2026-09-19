@@ -9,6 +9,7 @@
  */
 import type { Severity, StepEvent } from "./events";
 import { toReportEvidence, type FindingInput } from "./report";
+import { summarizeTaskPullRequests } from "./scanPr";
 import {
   issueKey,
   issuePath,
@@ -18,6 +19,7 @@ import {
   type ScanReportResponse,
   type ScanReportSummary,
   type ScanTreeResponse,
+  type TaskPullRequest,
 } from "./scan";
 
 export interface ScanFindingInput extends FindingInput {
@@ -30,6 +32,8 @@ export interface AssembleScanReportArgs {
   findings: readonly ScanFindingInput[];
   /** Primary-lane evidence steps of those findings, in any order. Missing ones are tolerated. */
   evidence: readonly StepEvent[];
+  /** Each task's pull request outcome. Defaults to the tree's; none on scans without a repository. */
+  pullRequests?: readonly TaskPullRequest[];
   now?: number;
 }
 
@@ -104,11 +108,15 @@ export function assembleScanReport(args: AssembleScanReportArgs): ScanReportResp
   const issues = [...groups].map(([key, members]) => toIssue(key, members, totalRuns)).sort(compareIssues);
 
   const verdicts: ScanReportSummary["verdicts"] = { pass: 0, fail: 0, pending: 0 };
+  const pullRequests = args.pullRequests ?? tree.pullRequests ?? [];
+  const prByRun = new Map(pullRequests.map((pr) => [pr.runId, pr] as const));
   const tasks = tree.tasks.map((task) => {
     const verdict = taskVerdict(task.state);
     verdicts[verdict] += 1;
-    return { index: task.index, runId: task.runId, title: task.title, verdict };
+    const pullRequest = prByRun.get(task.runId);
+    return { index: task.index, runId: task.runId, title: task.title, verdict, ...(pullRequest ? { pullRequest } : {}) };
   });
+  const recorded = tasks.flatMap((task) => (task.pullRequest ? [task.pullRequest] : []));
 
   const issuesBySeverity: Record<Severity, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   for (const issue of issues) issuesBySeverity[issue.severity] += 1;
@@ -116,7 +124,7 @@ export function assembleScanReport(args: AssembleScanReportArgs): ScanReportResp
   return {
     scan: tree.scan,
     generatedAt: args.now ?? Date.now(),
-    summary: { verdicts, issuesBySeverity },
+    summary: { verdicts, issuesBySeverity, ...(recorded.length > 0 ? { pullRequests: summarizeTaskPullRequests(recorded) } : {}) },
     tasks,
     issues,
   };

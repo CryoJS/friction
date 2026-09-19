@@ -26,6 +26,7 @@ import initSql from "../migrations/0001_init.sql";
 import lanesSql from "../migrations/0002_lanes.sql";
 import fixesSql from "../migrations/0003_fixes.sql";
 import scansSql from "../migrations/0004_scans.sql";
+import taskPullRequestsSql from "../migrations/0005_task_pull_requests.sql";
 
 /* ------------------------------------------------------------------ schema */
 
@@ -45,6 +46,7 @@ const MIGRATIONS: Migration[] = [
   { name: "0002_lanes.sql", sql: lanesSql, applied: async (db) => /\blane\b/.test((await tableSql(db, "events"))?.sql ?? "") },
   { name: "0003_fixes.sql", sql: fixesSql, applied: async (db) => (await tableSql(db, "fixes")) !== null },
   { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
+  { name: "0005_task_pull_requests.sql", sql: taskPullRequestsSql, applied: async (db) => (await tableSql(db, "task_pull_requests")) !== null },
 ];
 function statementsOf(sql: string): string[] {
   return (

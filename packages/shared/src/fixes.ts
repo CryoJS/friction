@@ -124,6 +124,11 @@ export interface SearchHit {
 const SOURCE_EXT = /\.(tsx|jsx|ts|js|mjs|vue|svelte|astro|html?|liquid|erb|hbs|njk|php|py|rb|twig|cshtml|razor)$/i;
 const NOT_SOURCE = /(^|\/)(node_modules|dist|build|out|coverage|vendor|\.next|__snapshots__|__mocks__)\/|\.min\.js$|\.(test|spec|stories)\.[jt]sx?$|(^|\/)(test|tests|__tests__|e2e|cypress|playwright)\//i;
 
+/** A file type Friction maps fixes to, outside build output and tests. */
+export function isSourcePath(path: string): boolean {
+  return SOURCE_EXT.test(path) && !NOT_SOURCE.test(path);
+}
+
 /**
  * How good a search hit is: markup and component files over everything else,
  * never build output or tests, more matched terms (and earlier, more specific
@@ -229,6 +234,26 @@ export function pullRequestTitle(summary: string): string {
  * behaviour and has not itself been run.
  */
 export function buildPullRequest(facts: PullRequestFacts): { title: string; body: string } {
+  const body = [
+    "## What the agent was trying to do",
+    "",
+    `> ${facts.task}`,
+    "",
+    `on ${facts.siteUrl}`,
+    "",
+    ...findingSections(facts, "##"),
+    "",
+    "---",
+    PR_FOOTER,
+  ].join("\n");
+
+  return { title: pullRequestTitle(facts.finding.summary), body };
+}
+
+const PR_FOOTER = "Opened as a draft by Friction. Friction never merges or force-pushes.";
+
+/** One finding's story, "What went wrong" to the verified patch. Shared by the single-fix PR and the task PR. */
+function findingSections(facts: Omit<PullRequestFacts, "task" | "siteUrl">, heading: "##" | "###"): string[] {
   const { finding, fix } = facts;
   const recurrence = finding.hitCount > 1 ? `, and it recurred: the agent hit it ${finding.hitCount} times in one run` : "";
   const where = finding.stepNumber !== null ? `at step ${finding.stepNumber}` : "during the run";
@@ -237,20 +262,14 @@ export function buildPullRequest(facts: PullRequestFacts): { title: string; body
     : `Verified: ${finding.category} no longer fired with the fix applied; the agent ${describeComparison(fix.before, fix.after)}.`;
   const link = (label: string, url: string | null): string => (url ? `- ${label}: ${url}` : `- ${label}: not recorded (no Browserbase session)`);
 
-  const body = [
-    "## What the agent was trying to do",
-    "",
-    `> ${facts.task}`,
-    "",
-    `on ${facts.siteUrl}`,
-    "",
-    "## What went wrong",
+  return [
+    `${heading} What went wrong`,
     "",
     `**${finding.summary}** (${finding.category}, ${where} on ${finding.url}${recurrence}.)`,
     "",
     finding.whyItMatters,
     "",
-    "## Verification",
+    `${heading} Verification`,
     "",
     verified,
     "",
@@ -263,7 +282,7 @@ export function buildPullRequest(facts: PullRequestFacts): { title: string; body
     "",
     `This PR implements that behaviour in \`${fix.sourceFile}\`. The source change was generated from the verified patch and **has not itself been run**: review it and run your tests before merging.`,
     "",
-    "## Evidence",
+    `${heading} Evidence`,
     "",
     facts.evidenceUrl ? `- Screenshot of the problem: ${facts.evidenceUrl}` : "- Screenshot of the problem: not captured",
     link("Session replay, before (primary run)", facts.primaryReplayUrl),
@@ -276,18 +295,80 @@ export function buildPullRequest(facts: PullRequestFacts): { title: string; body
     "```",
     "",
     "</details>",
+  ];
+}
+
+/** Everything one task's pull request says: its committed fixes, and the rest of the task's story. */
+export interface TaskPullRequestFacts {
+  task: string;
+  /** 0-based rank within the scan. */
+  taskIndex: number;
+  siteUrl: string;
+  /** Committed fixes, in rank order; one file each. */
+  fixes: ReadonlyArray<Omit<PullRequestFacts, "task" | "siteUrl">>;
+  /** Found, not fixed: rejected, unverified, unmapped, guarded or covered elsewhere. */
+  notFixed: ReadonlyArray<{ findingId: string; summary: string; reason: string }>;
+  /** Later tasks whose fix to one of these files was not committed again, because this PR has it. */
+  alsoUnblocks: ReadonlyArray<{ taskIndex: number; title: string }>;
+}
+
+/**
+ * One draft PR per task: every verified, mapped fix of the task's run, then
+ * the other tasks it unblocks and what was found but not fixed, so the PR
+ * tells the whole story of the task. The same claims and the same caveats as
+ * buildPullRequest, per fix.
+ */
+export function buildTaskPullRequest(facts: TaskPullRequestFacts): { title: string; body: string } {
+  const [first] = facts.fixes;
+  if (!first) throw new Error("a task pull request needs at least one fix");
+  const many = facts.fixes.length > 1;
+  const clean = facts.task.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+  const title = many ? pullRequestTitle(`${facts.fixes.length} problems blocking "${clean}"`) : pullRequestTitle(first.finding.summary);
+
+  const body = [
+    "## What the agent was trying to do",
     "",
+    `> ${facts.task}`,
+    "",
+    `on ${facts.siteUrl} (task ${facts.taskIndex + 1} of a Friction site scan)`,
+    "",
+    ...facts.fixes.flatMap((fix, index) =>
+      many ? [`## Fix ${index + 1} of ${facts.fixes.length}: \`${fix.fix.sourceFile}\``, "", ...findingSections(fix, "###"), ""] : [...findingSections(fix, "##"), ""],
+    ),
+    ...(facts.alsoUnblocks.length > 0
+      ? [
+          "## Also unblocks",
+          "",
+          "These tasks of the same scan hit a problem in a file this PR already rewrites, so they open no pull request of their own:",
+          "",
+          ...facts.alsoUnblocks.map((other) => `- Task ${other.taskIndex + 1}: ${other.title}`),
+          "",
+        ]
+      : []),
+    ...(facts.notFixed.length > 0
+      ? ["## Found, not fixed", "", ...facts.notFixed.map((item) => `- **${item.summary}** (${item.findingId}): ${item.reason}`), ""]
+      : []),
     "---",
-    "Opened as a draft by Friction. Friction never merges or force-pushes.",
+    PR_FOOTER,
   ].join("\n");
 
-  return { title: pullRequestTitle(finding.summary), body };
+  return { title, body };
 }
+
+/** Every branch Friction creates starts with this; re-scans look for open PRs under it. */
+export const FRICTION_BRANCH_PREFIX = "friction/";
+
+const refSafe = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").replace(/\.{2,}/g, ".");
 
 /** friction/fix-<findingId>, reduced to characters a git ref allows. */
 export function fixBranchName(findingId: string, suffix?: string): string {
-  const safe = (s: string): string => s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").replace(/\.{2,}/g, ".");
-  return `friction/fix-${safe(findingId)}${suffix ? `-${safe(suffix)}` : ""}`;
+  return `${FRICTION_BRANCH_PREFIX}fix-${refSafe(findingId)}${suffix ? `-${refSafe(suffix)}` : ""}`;
+}
+
+/** friction/scan-<scanId short>-task-<n>, n 1-based like the UI's T1..T10. */
+export function taskBranchName(scanId: string, taskIndex: number, suffix?: string): string {
+  const short = refSafe(scanId.replace(/^s_/, "")).slice(0, 8) || "scan";
+  return `${FRICTION_BRANCH_PREFIX}scan-${short}-task-${taskIndex + 1}${suffix ? `-${refSafe(suffix)}` : ""}`;
 }
 
 /* ---------------------------------------------------------------- verdict */

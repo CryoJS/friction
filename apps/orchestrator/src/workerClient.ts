@@ -11,9 +11,12 @@ import type {
   PostFixResponse,
   RunEvent,
   RunPatch,
+  RunScanLink,
   RunSnapshot,
   ScanPatch,
   ScanTaskLink,
+  ScanTreeResponse,
+  TaskPullRequest,
 } from "@friction/shared";
 import { errorMessage, log, retry } from "./util";
 
@@ -41,8 +44,8 @@ export class WorkerClient {
   }
 
   /** Fails loudly too: no scan, nothing to show. */
-  async createScan(url: string): Promise<string> {
-    const response = await retry(3, 300, () => this.request("/api/scans", this.json("POST", { url }), 8000));
+  async createScan(url: string, options: { repo?: string; autoPr?: boolean } = {}): Promise<string> {
+    const response = await retry(3, 300, () => this.request("/api/scans", this.json("POST", { url, ...options }), 8000));
     return ((await response.json()) as CreateScanResponse).scanId;
   }
 
@@ -102,6 +105,36 @@ export class WorkerClient {
       log("worker", `POST fix ${upsert.findingId} (${upsert.stage}) failed: ${errorMessage(err)}`);
       return null;
     }
+  }
+
+  /** One task's pull request outcome. Best-effort, like every progress report: false when it could not be stored. */
+  async upsertTaskPullRequest(pr: TaskPullRequest): Promise<boolean> {
+    try {
+      await retry(3, 300, () => this.request(`/api/scans/${pr.scanId}/pull-requests`, this.json("POST", pr), 10_000));
+      return true;
+    } catch (err) {
+      log("worker", `POST pull request of task ${pr.taskIndex + 1} (${pr.status}) failed: ${errorMessage(err)}`);
+      return false;
+    }
+  }
+
+  async getScanTree(scanId: string): Promise<ScanTreeResponse> {
+    const response = await retry(2, 300, () => this.request(`/api/scans/${scanId}`, {}, 10_000));
+    return (await response.json()) as ScanTreeResponse;
+  }
+
+  /** The scan a run is a task of, or null for a run started on its own (or a Worker that predates scans' repositories). */
+  async getRunScan(runId: string): Promise<RunScanLink | null> {
+    const response = await fetch(`${this.baseUrl}/api/runs/${runId}/scan`, { signal: AbortSignal.timeout(8000) });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`GET /api/runs/${runId}/scan -> ${response.status}`);
+    return (await response.json()) as RunScanLink;
+  }
+
+  /** Every fix row of a run, file content included, in the order the run verified them. Throws when unreachable. */
+  async getFixes(runId: string): Promise<FixRecord[]> {
+    const response = await retry(2, 300, () => this.request(`/api/runs/${runId}/fixes`, {}, 10_000));
+    return ((await response.json()) as FixListResponse).fixes;
   }
 
   /** The stored fix row, file content included. Throws when unreachable: callers must not guess. */

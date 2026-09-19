@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Tab = "room" | "report";
+export type Tab = "scan" | "results";
 
 export interface Query {
   run: string | null;
@@ -18,7 +18,7 @@ function read(): Query {
     scan: params.get("scan") || null,
     node: params.get("node") || null,
     replay: params.get("replay") === "1",
-    tab: params.get("tab") === "report" ? "report" : "room",
+    tab: params.get("tab") === "results" ? "results" : "scan",
   };
 }
 
@@ -28,18 +28,18 @@ function write(query: Query): string {
   if (query.scan) {
     params.set("scan", query.scan);
     if (query.node && query.node !== "root") params.set("node", query.node);
+    if (query.tab === "results") params.set("tab", "results");
   } else if (query.run) {
     params.set("run", query.run);
     if (query.replay) params.set("replay", "1");
-    if (query.tab === "report") params.set("tab", "report");
   }
   const search = params.toString();
   return search ? `?${search}` : window.location.pathname;
 }
 
 /**
- * The URL is the app state: ?scan=<id>[&node=<id>] for a scan, or
- * ?run=<id>[&replay=1][&tab=report] for a single run. That keeps every view
+ * The URL is the app state: ?scan=<id>[&node=<id>][&tab=results] for a scan, or
+ * ?run=<id>[&replay=1] for a single run. That keeps every view
  * linkable (handy when the demo laptop needs a specific view, fast) and makes
  * the back button behave.
  */

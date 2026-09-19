@@ -5,6 +5,9 @@
  *   running    every task is a normal run (the agent, then its fix
  *              verifications); all of them queue for the shared session pool
  *              in task-rank order
+ *   (still running) for a scan started with a repository and automatic
+ *              pull requests: one draft PR per fixable task, one at a time,
+ *              in task-rank order (scanPullRequests.ts)
  *   completed  every run is over
  *   cancelled  the user stopped the scan; in-flight work may wind down, but
  *              no new scan stage is started
@@ -15,7 +18,9 @@
 import { MAX_SCAN_TASKS } from "@friction/shared";
 import type { Config } from "./config";
 import { crawlSite } from "./crawl";
+import { summarizeTaskPullRequests } from "@friction/shared";
 import type { PreparedRun, RunManager } from "./runManager";
+import { openScanPullRequests } from "./scanPullRequests";
 import { fallbackScanTasks, generateTasks, type PlannedTasks } from "./taskGen";
 import { errorMessage, log, sleep, truncate, type Semaphore } from "./util";
 import type { WorkerClient } from "./workerClient";
@@ -33,6 +38,13 @@ const MOCK_PAGES = [
   { path: "help", title: "Help" },
 ] as const;
 
+export interface ScanOptions {
+  /** "owner/name" from the allow-list: the repository this scan's fixes are mapped to. */
+  repo?: string;
+  /** Open one draft pull request per fixable task once the runs are over. */
+  autoPr?: boolean;
+}
+
 export class ScanManager {
   private readonly activeScans = new Set<string>();
   private readonly stoppedScans = new Set<string>();
@@ -45,10 +57,10 @@ export class ScanManager {
   ) {}
 
   /** Creates the scan and returns its id at once; everything else happens in the background. */
-  async start(url: string): Promise<string> {
-    const scanId = await this.worker.createScan(url);
+  async start(url: string, options: ScanOptions = {}): Promise<string> {
+    const scanId = await this.worker.createScan(url, options);
     this.activeScans.add(scanId);
-    void this.run(scanId, url);
+    void this.run(scanId, url, options);
     return scanId;
   }
 
@@ -64,16 +76,16 @@ export class ScanManager {
     return this.stoppedScans.has(scanId);
   }
 
-  private async run(scanId: string, url: string): Promise<void> {
+  private async run(scanId: string, url: string, options: ScanOptions): Promise<void> {
     try {
-      await this.runPipeline(scanId, url);
+      await this.runPipeline(scanId, url, options);
     } finally {
       this.activeScans.delete(scanId);
       this.stoppedScans.delete(scanId);
     }
   }
 
-  private async runPipeline(scanId: string, url: string): Promise<void> {
+  private async runPipeline(scanId: string, url: string, options: ScanOptions): Promise<void> {
     const { worker, runs } = this;
     log("scan", `${scanId} started in ${this.config.mode} mode: ${url}`);
 
@@ -96,6 +108,7 @@ export class ScanManager {
           await runs.create(url, task.title, {
             scan: { scanId, taskIndex: index, whyCritical: task.whyCritical, successCheck: task.successCheck },
             successCheck: task.successCheck,
+            repo: options.repo,
           }),
         );
       }
@@ -121,8 +134,29 @@ export class ScanManager {
     const outcomes = await Promise.all(prepared.map((run) => runs.execute(run)));
     if (this.isStopped(scanId)) return;
     const succeeded = outcomes.filter((outcome) => outcome === "success").length;
-    await worker.patchScan(scanId, { status: "completed", message: `The agent completed ${succeeded} of ${outcomes.length} tasks.` });
+    const pullRequests = options.repo && options.autoPr ? await this.pullRequests(scanId, options.repo, prepared) : "";
+    await worker.patchScan(scanId, { status: "completed", message: truncate(`The agent completed ${succeeded} of ${outcomes.length} tasks.${pullRequests}`, MESSAGE_MAX) });
     log("scan", `${scanId} finished: ${succeeded}/${outcomes.length} tasks succeeded`);
+  }
+
+  /** The pull request phase. Returns what the final message adds; never throws, so the scan always completes. */
+  private async pullRequests(scanId: string, repo: string, prepared: readonly PreparedRun[]): Promise<string> {
+    try {
+      const results = await openScanPullRequests({
+        config: this.config,
+        worker: this.worker,
+        scanId,
+        repo,
+        tasks: prepared.map((run, taskIndex) => ({ taskIndex, runId: run.runId, title: run.task })),
+        progress: async (message) => {
+          await this.worker.patchScan(scanId, { message: truncate(message, MESSAGE_MAX) });
+        },
+      });
+      return ` ${summarizeTaskPullRequests(results).text}`;
+    } catch (err) {
+      log("scan", `${scanId} pull requests stopped: ${errorMessage(err)}`);
+      return ` Pull requests could not be opened: ${errorMessage(err)}`;
+    }
   }
 
   private async livePlan(scanId: string, url: string): Promise<PlannedTasks> {
