@@ -171,14 +171,17 @@ export function locateScript(xpath: string): string {
 
 /**
  * hrefs a visitor reaches from the site's navigation: anchors inside nav,
- * header and [role=navigation] (collapsed dropdown items included), else every
- * visible anchor on the page. Filtering (same origin, auth pages, files) is
- * pickCrawlLinks' job, in Node.
+ * header and [role=navigation] (collapsed dropdown items included), followed
+ * by every visible anchor on the page, so a header with only a logo or a
+ * sign-in link still leaves slots to fill. Only real HTML anchors: an SVG
+ * <a> exposes `href` as an SVGAnimatedString, not a string. Filtering (same
+ * origin, auth pages, files, duplicates, the 5-link cap) is pickCrawlLinks'
+ * job, in Node.
  */
 export const NAV_LINKS = `(() => {
   const hrefs = (root, visibleOnly) => Array.from(root.querySelectorAll("a[href]"))
-    .filter((a) => !visibleOnly || a.getBoundingClientRect().width > 0)
+    .filter((a) => a instanceof HTMLAnchorElement && (!visibleOnly || a.getBoundingClientRect().width > 0))
     .map((a) => a.href);
   const scoped = Array.from(document.querySelectorAll("nav, header, [role=navigation]")).flatMap((el) => hrefs(el, false));
-  return scoped.length > 0 ? scoped : hrefs(document, true);
+  return [...scoped, ...hrefs(document, true)];
 })()`;

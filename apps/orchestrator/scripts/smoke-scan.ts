@@ -50,6 +50,8 @@ console.log(`scan ${scanId} started for ${TARGET}`);
 
 const tree = await follow(scanId);
 if (tree.scan.status !== "completed") fail(`scan ended as ${tree.scan.status}: ${tree.scan.message ?? ""}`);
+if (tree.scan.taskSource !== "mock") fail(`expected taskSource "mock", got ${tree.scan.taskSource}`);
+if (tree.scan.pages.length !== 3) fail(`expected 3 crawled pages, got ${tree.scan.pages.length}`);
 if (tree.tasks.length !== 10) fail(`expected 10 tasks, got ${tree.tasks.length}`);
 const personas = tree.tasks.flatMap((task) => task.personas);
 if (personas.length !== 30) fail(`expected 30 persona runs, got ${personas.length}`);
@@ -58,6 +60,6 @@ if (!personas.every((p) => isTerminalState(p.state))) fail("the scan completed w
 const report = await json<ScanReportResponse>(`${WORKER}/api/scans/${scanId}/report`);
 if (report.issues.length === 0) fail("the report has no issues");
 const widest = Math.max(...report.issues.map((issue) => issue.runsHit));
-if (widest <= 1) fail("no issue was merged across runs (max runsHit is 1)");
+if (widest < 10) fail(`expected some issue to hit at least 10/30 runs, widest was ${widest}`);
 console.log(`report: ${report.issues.length} issues, widest hit ${widest}/${report.issues[0]?.totalRuns ?? 0} runs, verdicts ${JSON.stringify(report.summary.verdicts)}`);
 console.log(`OK  open http://localhost:5173/?scan=${scanId}`);

@@ -1,5 +1,10 @@
 export const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
+/** Keeps a string under a Worker schema's max length instead of failing the whole PATCH. */
+export function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) : text;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message.split("\n")[0]?.slice(0, 300) ?? err.name;
   return String(err).slice(0, 300);

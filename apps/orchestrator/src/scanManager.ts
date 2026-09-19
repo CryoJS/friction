@@ -13,13 +13,20 @@ import type { Config } from "./config";
 import { crawlSite } from "./crawl";
 import type { PreparedRun, RunManager } from "./runManager";
 import { fallbackScanTasks, generateTasks, type PlannedTasks } from "./taskGen";
-import { errorMessage, log, sleep, type Semaphore } from "./util";
+import { errorMessage, log, sleep, truncate, type Semaphore } from "./util";
 import type { WorkerClient } from "./workerClient";
 
+/** CrawledPageSchema's title limit (packages/shared/src/scan.ts). */
+const TITLE_MAX = 300;
+/** ScanPatchSchema's message limit (packages/shared/src/scan.ts). */
+const MESSAGE_MAX = 500;
+
+// Relative to the scanned URL, not absolute: an absolute "/products" would
+// drop the scanned URL's own path prefix (".../demo-shop/" -> the host root).
 const MOCK_PAGES = [
-  { path: "/", title: "Home" },
-  { path: "/products", title: "Products" },
-  { path: "/help", title: "Help" },
+  { path: "./", title: "Home" },
+  { path: "products", title: "Products" },
+  { path: "help", title: "Help" },
 ] as const;
 
 export class ScanManager {
@@ -80,7 +87,14 @@ export class ScanManager {
   }
 
   private async livePlan(scanId: string, url: string): Promise<PlannedTasks> {
-    const crawl = await this.sessions.run(() => crawlSite(this.config, url, (page, message) => this.worker.patchScan(scanId, { page, message })));
+    // The crawl may queue behind other sessions; without this, the scan sits
+    // at the creation-time "Opening the site." message for the whole wait.
+    await this.worker.patchScan(scanId, { message: "Waiting for a browser session." });
+    const crawl = await this.sessions.run(() =>
+      crawlSite(this.config, url, (page, message) =>
+        this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) }),
+      ),
+    );
     await this.worker.patchScan(scanId, { message: "Choosing the 10 most critical tasks." });
     return generateTasks(this.config, url, crawl);
   }
@@ -89,9 +103,11 @@ export class ScanManager {
   private async mockPlan(scanId: string, url: string): Promise<PlannedTasks> {
     for (const [index, page] of MOCK_PAGES.entries()) {
       await sleep(1500 / this.config.mockSpeed);
+      const pageUrl = new URL(page.path, url).toString();
+      const label = new URL(pageUrl).pathname || "/";
       await this.worker.patchScan(scanId, {
-        page: { url: new URL(page.path, url).toString(), title: page.title },
-        message: `Read ${page.path} (${index + 1}/${MOCK_PAGES.length})`,
+        page: { url: pageUrl, title: truncate(page.title, TITLE_MAX) },
+        message: truncate(`Read ${label} (${index + 1}/${MOCK_PAGES.length})`, MESSAGE_MAX),
       });
     }
     return { tasks: fallbackScanTasks(url), source: "mock", note: "Mock mode: canned tasks, and every run replays the golden run." };
