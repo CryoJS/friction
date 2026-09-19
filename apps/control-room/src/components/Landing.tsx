@@ -20,16 +20,16 @@ type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "
 
 const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
-    title: "Three isolated browsers",
-    detail: "Each persona gets its own Browserbase session inside its own context, so no cookies leak between them. All three run at the same time.",
+    title: "One copied browser, multiple agents",
+    detail: "A disposable copy of the site gives several agents the same page to inspect. They work in parallel without touching the live experience, then leave notes directly on the UI.",
   },
   {
     title: "Observe the page",
-    detail: "Every step starts with a screenshot and the accessibility tree, pruned to interactive elements and headings.",
+    detail: "Every agent starts with a screenshot and the accessibility tree, pruned to interactive elements and headings.",
   },
   {
     title: "Plan, act and keep the evidence",
-    detail: "One model call picks a single action in the persona's own voice. The action runs, the screenshot is stored, and the step streams straight into the control room. Each persona is capped at 15 steps.",
+    detail: "One model call picks a single action for the copied browser. The action runs, the screenshot is stored, and the step streams straight into the control room. Each agent is capped at 15 steps.",
   },
   {
     title: "Detect friction deterministically",
@@ -79,7 +79,7 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
   }, []);
 
   return (
-    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth motion-reduce:scroll-auto">
+    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth">
       {/* ---------------------------------------------------------------- hero */}
       <section ref={hero} className="horizon relative isolate overflow-hidden rounded-b-panel">
         <div aria-hidden="true" className="horizon-scrim pointer-events-none absolute inset-0 -z-10" />
@@ -118,8 +118,8 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL and a task. Friction opens three isolated Browserbase sessions, one per persona, and lets each attempt the task on the live site. Friction is
-            detected as it happens and ends up in a ranked report with screenshot evidence.
+            Enter a URL and a task. Friction opens a disposable copy of the site, sends multiple agents through the task, and lets them annotate issues where they
+            happen. Friction is detected as it happens and ends up in a ranked report with screenshot evidence.
           </p>
         </div>
 
