@@ -27,7 +27,7 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
     title: "Pick the ten critical tasks",
     detail:
-      "One model call reads those pages and ranks the ten tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
+      "One model call reads those pages and ranks the five tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
   },
   {
     title: "One isolated browser per task",
@@ -128,7 +128,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL. Friction reads the site, picks the ten tasks that matter most, and has the agent attempt each one in an isolated Browserbase
+            Enter a URL. Friction reads the site, picks the five tasks that matter most, and has the agent attempt each one in an isolated Browserbase
             session on the live site. Findings from every run are merged into one ranked report with screenshot evidence.
           </p>
         </div>
@@ -155,7 +155,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
       <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
-          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to ten tasks per scan, one run each.</p>}
+          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to five tasks per scan, one run each.</p>}
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">

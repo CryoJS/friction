@@ -12,7 +12,7 @@ import type { SuggestTasksResponse } from "@friction/shared";
 import { openBrowser } from "./browser";
 import type { Config } from "./config";
 import { observe } from "./observe";
-import { errorMessage, log, withTimeout } from "./util";
+import { errorMessage, log, withTimeout, withTimeoutDisposing } from "./util";
 
 const SuggestionsSchema = z.object({ tasks: z.array(z.string().min(3)).min(1) });
 
@@ -48,10 +48,10 @@ export async function suggestTasks(config: Config, url: string): Promise<Suggest
 
   let close: (() => Promise<void>) | null = null;
   try {
-    const browser = await withTimeout(openBrowser(config, "suggest"), 60_000, "browser session");
+    const browser = await withTimeoutDisposing(openBrowser(config, "suggest"), 60_000, "browser session", (late) => late.close());
     close = browser.close;
     await browser.page.goto(url, { waitUntil: "load", timeoutMs: 25_000 }).catch(() => undefined);
-    const observation = await observe(browser.page);
+    const observation = await observe(browser.page, "model");
 
     const content: OpenAI.Responses.ResponseInputContent[] = [
       {

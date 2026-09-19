@@ -1,6 +1,7 @@
 import type {
   CreateScanResponse,
   OpenPullRequestResponse,
+  LiveViewResponse,
   OrchestratorHealth,
   ReportResponse,
   RunSnapshot,
@@ -68,6 +69,13 @@ export const api = {
       json({}),
       60_000,
     ),
+
+  /**
+   * Minted on demand, never stored: the URL is signed, pinned to one page
+   * target and only valid while that session is open. Nulls mean the run has
+   * no session open right now, and the live view should come down.
+   */
+  liveView: (runId: string) => request<LiveViewResponse>(`${ORCHESTRATOR_URL}/runs/${encodeURIComponent(runId)}/live-view`, undefined, 6000),
 
   orchestratorHealth: () => request<OrchestratorHealth>(`${ORCHESTRATOR_URL}/health`, undefined, 2500),
 

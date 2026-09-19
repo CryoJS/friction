@@ -16,6 +16,7 @@ import {
   type DoneEvent,
   type FixEvent,
   type FrictionEvent,
+  type LiveViewResponse,
   type RunEvent,
   type RunRecord,
   type RunSnapshot,
@@ -27,6 +28,11 @@ import {
 export interface LaneView {
   state: AgentState;
   statusMessage: string | null;
+  /**
+   * Set ONLY by applyLiveView, from a URL the orchestrator minted just now.
+   * Never from the stream or the run row: the URL stored there was minted when
+   * the session opened and is dead by the time anyone renders it.
+   */
   liveViewUrl: string | null;
   sessionId: string | null;
   replayUrl: string | null;
@@ -95,9 +101,10 @@ function upsertFriction(list: readonly FrictionEvent[], event: FrictionEvent): F
 export function applyToLane(lane: LaneView, event: RunEvent): LaneView {
   switch (event.type) {
     case "status": {
-      // The "running" status carries the lane's session: how a verify lane's live view arrives.
+      // The "running" status carries the lane's session. Its liveViewUrl is
+      // deliberately ignored (see LaneView.liveViewUrl); replayUrl is permanent.
       const session = event.payload.session;
-      const withSession = session ? { ...lane, liveViewUrl: session.liveViewUrl ?? lane.liveViewUrl, replayUrl: session.replayUrl ?? lane.replayUrl } : lane;
+      const withSession = session ? { ...lane, replayUrl: session.replayUrl ?? lane.replayUrl } : lane;
       // A terminal state is final, and an older status never overrides a newer one.
       if (event.seq > lane.stateSeq && !isTerminalState(lane.state)) {
         return { ...withSession, state: event.payload.state, statusMessage: event.payload.message ?? null, stateSeq: event.seq };
@@ -115,6 +122,32 @@ export function applyToLane(lane: LaneView, event: RunEvent): LaneView {
       // A fix belongs to the run, not to a lane's timeline (see applyEvent).
       return lane;
   }
+}
+
+/**
+ * Puts a freshly minted live view URL on the one lane whose session is open,
+ * and clears every other lane's. `live` is null when the orchestrator has not
+ * answered yet or is unreachable, which correctly means "show no live view":
+ * a lane keeping a URL it can no longer connect to is exactly the dead
+ * DevTools iframe this replaced.
+ */
+export function applyLiveView(view: RunView, live: LiveViewResponse | null): RunView {
+  const url = live?.liveViewUrl ?? null;
+  const onPrimary = url !== null && live?.lane === "primary";
+  const primary = view.primary.liveViewUrl === (onPrimary ? url : null) ? view.primary : { ...view.primary, liveViewUrl: onPrimary ? url : null };
+
+  let verify = view.verify;
+  let changed = false;
+  const next: Record<string, LaneView> = {};
+  for (const [fixId, lane] of Object.entries(view.verify)) {
+    const wanted = url !== null && live?.lane === "verify" && live.fixId === fixId ? url : null;
+    next[fixId] = lane.liveViewUrl === wanted ? lane : { ...lane, liveViewUrl: wanted };
+    if (next[fixId] !== lane) changed = true;
+  }
+  if (changed) verify = next;
+
+  // Same object when nothing moved, so this never forces a re-render on its own.
+  return primary === view.primary && verify === view.verify ? view : { ...view, primary, verify };
 }
 
 export function applyEvent(view: RunView, event: RunEvent): RunView {
@@ -154,7 +187,6 @@ export function applyRunRecord(view: RunView, run: RunRecord): RunView {
   const untouched = current.stateSeq < 0 && current.steps.length === 0;
   const primary: LaneView = {
     ...current,
-    liveViewUrl: run.liveViewUrl ?? current.liveViewUrl,
     sessionId: run.sessionId ?? current.sessionId,
     replayUrl: run.replayUrl ?? current.replayUrl,
     state: untouched ? run.state : current.state,
@@ -196,7 +228,6 @@ export function snapshotFromView(view: RunView): RunSnapshot | null {
     outcome: p.done?.payload.outcome ?? view.run.outcome,
     totalSteps: p.done?.payload.totalSteps ?? view.run.totalSteps,
     durationMs: p.done?.payload.durationMs ?? view.run.durationMs,
-    liveViewUrl: p.liveViewUrl,
     sessionId: p.sessionId,
     replayUrl: p.replayUrl,
   };

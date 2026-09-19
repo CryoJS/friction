@@ -20,7 +20,7 @@ import { openBrowser, type BrowserHandle, type StagehandPage } from "./browser";
 import type { Config } from "./config";
 import { observe, readState, readTree } from "./observe";
 import { NAV_LINKS } from "./pageScripts";
-import { errorMessage, log, truncate, withTimeout } from "./util";
+import { errorMessage, log, truncate, withTimeout, withTimeoutDisposing } from "./util";
 
 /** Accessibility-tree lines per page handed to the model. */
 const LINES_PER_PAGE = 60;
@@ -71,10 +71,10 @@ export async function crawlSite(config: Config, url: string, onPage: CrawlProgre
   const result: CrawlResult = { landing: null, landingImage: null, pages: [] };
   let browser: BrowserHandle | null = null;
   try {
-    browser = await withTimeout(openBrowser(config, "crawl"), 120_000, "browser session");
+    browser = await withTimeoutDisposing(openBrowser(config, "crawl"), 120_000, "browser session", (late) => late.close());
     const { page } = browser;
     const response = await withTimeout(page.goto(url, { waitUntil: "load", timeoutMs: 25_000 }), 30_000, "landing page").catch(tolerateTimeout);
-    const observation = await observe(page);
+    const observation = await observe(page, "model");
     const rejection = unreadable(observation.state.url, response);
     if (rejection) {
       log("crawl", `${url} ${rejection}`);

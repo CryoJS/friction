@@ -21,8 +21,11 @@ export const TASK_SOURCES = ["model", "fallback", "mock"] as const;
 export const TaskSourceSchema = z.enum(TASK_SOURCES);
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
-/** Most tasks one scan runs, one run each. */
-export const MAX_SCAN_TASKS = 10;
+/**
+ * Most tasks one scan runs, one run each. Matched to MAX_SESSIONS so a scan's
+ * tasks all get a browser at once instead of queueing behind each other.
+ */
+export const MAX_SCAN_TASKS = 5;
 /** Navigation pages the crawl reads after the landing page. */
 export const MAX_CRAWL_LINKS = 5;
 

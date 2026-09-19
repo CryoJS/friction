@@ -14,9 +14,10 @@ import { performStep } from "./actor";
 import { openBrowser, type BrowserHandle, type StagehandPage } from "./browser";
 import type { Config } from "./config";
 import type { LaneEmitter } from "./emitter";
+import { registerSession, releaseSession } from "./liveView";
 import { observe } from "./observe";
 import type { HistoryEntry, PlannedAction, Planner } from "./planner";
-import { errorMessage, log, withTimeout } from "./util";
+import { errorMessage, log, timed, withTimeoutDisposing } from "./util";
 import type { WorkerClient } from "./workerClient";
 
 export interface AgentRun {
@@ -44,6 +45,17 @@ export interface AgentRun {
   openBrowser?: () => Promise<BrowserHandle>;
 }
 
+/** Phases already measured by the time `act` runs, so one line can account for the whole step. */
+interface PriorPhases {
+  /** Building the observation the planner was shown. */
+  look: number;
+  /** The model call that chose this action. */
+  plan: number;
+}
+
+/** Step 1 is the unplanned navigation: nothing was looked at or planned for it. */
+const NO_PRIOR: PriorPhases = { look: 0, plan: 0 };
+
 export interface AgentResult {
   outcome: Outcome;
   steps: number;
@@ -70,22 +82,30 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
   const outOfTime = (): boolean => Date.now() - startedAt > config.agentTimeoutMs;
 
   try {
-    browser = await withTimeout((run.openBrowser ?? (() => openBrowser(config, lane)))(), 120_000, "browser session");
+    browser = await withTimeoutDisposing((run.openBrowser ?? (() => openBrowser(config, lane)))(), 120_000, "browser session", (late) => late.close());
+    // Registered before the first step, so the control room can mint a live view for it at any time.
+    if (browser.sessionId) registerSession(run.runId, { sessionId: browser.sessionId, lane, fixId: emitter.fixId ?? null });
     await run.onSession(browser);
     await run.beforeFirstNavigation?.(browser.page);
     emitter.status("running", "Session is up.", { liveViewUrl: browser.liveViewUrl, replayUrl: browser.replayUrl });
     log(lane, `session ${browser.sessionId ?? "(local)"} up in ${Date.now() - startedAt}ms`);
     const session = browser;
 
-    const act = async (plan: PlannedAction): Promise<void> => {
+    const act = async (plan: PlannedAction, prior: PriorPhases = NO_PRIOR): Promise<void> => {
       const stepNumber = emitter.stepCount + 1;
-      const observation = await observe(session.page);
-      const result = await performStep({ browser: session, worker: run.worker, runId: run.runId, evidenceKeyFor: run.evidenceKeyFor, startUrl: run.url, stepNumber }, plan, observation);
+      const [observation, observeMs] = await timed(observe(session.page, "evidence"));
+      const [result, actMs] = await timed(
+        performStep({ browser: session, worker: run.worker, runId: run.runId, evidenceKeyFor: run.evidenceKeyFor, startUrl: run.url, stepNumber }, plan, observation),
+      );
       const event = emitter.step(result.payload);
       trees.set(event.seq, result.treeLines);
       history.push({ step: stepNumber, action: result.historyAction, outcome: result.historyOutcome });
       if (result.failedAttempt) failedAttempts += 1;
       log(lane, `step ${stepNumber}: ${result.historyAction} -> ${result.historyOutcome}`);
+      // Where a step's wall clock actually went. The payload's durationMs covers
+      // only act+settle, which is the smallest of these four on a live site.
+      const total = prior.look + prior.plan + observeMs + actMs;
+      log(lane, `step ${stepNumber} timing: look=${prior.look}ms plan=${prior.plan}ms observe=${observeMs}ms act=${actMs}ms total=${total}ms`);
     };
 
     // Step 1 is always the navigation to the start URL. Not planned: there is nothing to look at yet.
@@ -107,15 +127,17 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
         break;
       }
 
-      const observation = await observe(session.page);
-      const plan = await run.planner.plan({ task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history });
+      const [observation, lookMs] = await timed(observe(session.page, "model"));
+      const [plan, planMs] = await timed(
+        run.planner.plan({ task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history }),
+      );
       if (plan.taskComplete) {
         outcome = "success";
         summary = plan.rationale || "Task complete.";
         decided = true;
         break;
       }
-      await act(plan);
+      await act(plan, { look: lookMs, plan: planMs });
     }
 
     // Used every step without declaring victory: one last look, so a run that
@@ -124,7 +146,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
       if (failedAttempts >= AGENT.maxFailedAttempts) {
         summary = `Abandoned after ${failedAttempts} failed attempts.`;
       } else {
-        const observation = await observe(session.page);
+        const observation = await observe(session.page, "model");
         const verdict = await run.planner
           .plan({ task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount, maxSteps: config.maxSteps, observation, history, finalCheck: true })
           .catch(() => null);
@@ -153,6 +175,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
     emitter.done({ outcome, durationMs, summary });
     await emitter.flush();
   } finally {
+    if (browser?.sessionId) releaseSession(run.runId, browser.sessionId);
     await browser?.close().catch(() => undefined);
   }
   log(lane, `done: ${outcome} in ${emitter.stepCount} steps, ${emitter.frictionCount} findings. ${summary}`);

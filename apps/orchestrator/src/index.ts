@@ -1,11 +1,14 @@
 /**
  * Friction orchestrator.
- *   POST /scans          { url }       -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background
+ *   POST /scans          { url }       -> { scanId } at once; crawl, then up to MAX_SCAN_TASKS tasks, one run each, in the background
  *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
  *   POST /runs/:runId/fixes/:findingId/pull-request
  *                                      -> opens a DRAFT PR for a verified, mapped fix.
  *                                         Only ever called by the user's click.
+ *   GET  /runs/:runId/live-view        -> a freshly minted Browserbase live view URL for whatever
+ *                                         session that run has open right now, or nulls if none.
+ *                                         Never stored: the URL is signed and dies with the session.
  *   GET  /health                       -> live or mock, and which env vars are missing
  */
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -18,10 +21,12 @@ import {
   normalizeTargetUrl,
   type CreateRunResponse,
   type CreateScanResponse,
+  type LiveViewResponse,
   type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
+import { NO_LIVE_VIEW, mintLiveView } from "./liveView";
 import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
 import { ScanManager } from "./scanManager";
@@ -57,6 +62,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.get("/health", (_req, res) => {
   const body: OrchestratorHealth = { ok: true, mode: config.mode, missingEnv: config.missingEnv };
+  res.json(body);
+});
+
+/**
+ * Polled by the control room while it is showing a run. Cheap and side-effect
+ * free: it reads this process's registry of open sessions, and only calls
+ * Browserbase when there is one.
+ */
+app.get("/runs/:runId/live-view", async (req, res) => {
+  // No browser of our own in mock mode, so never a live view.
+  const body: LiveViewResponse = config.mode === "mock" ? NO_LIVE_VIEW : await mintLiveView(config, req.params.runId);
+  // The URL is short-lived by design; a cache would hand out dead ones.
+  res.setHeader("Cache-Control", "no-store");
   res.json(body);
 });
 

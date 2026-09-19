@@ -115,7 +115,7 @@ function load(): Config {
     localBrowserPath: text("LOCAL_BROWSER_PATH"),
     maxSteps: int("MAX_STEPS", HARD_STEP_CAP, 1, HARD_STEP_CAP),
     // PERSONA_CONCURRENCY is the old name, still honoured so existing .env files keep working.
-    maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 3, 1, 100), 1, 100),
+    maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 5, 1, 100), 1, 100),
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     github: githubConfig(),

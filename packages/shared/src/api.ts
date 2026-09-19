@@ -14,6 +14,7 @@ import {
   type AgentState,
   type BBox,
   type FrictionCategory,
+  type Lane,
   type Outcome,
   type Severity,
   type Viewport,
@@ -254,6 +255,24 @@ export interface SuggestTasksResponse {
   tasks: string[];
   /** "model" = read from the live landing page; "fallback" = generic suggestions. */
   source: "model" | "fallback";
+}
+
+/**
+ * GET /runs/:runId/live-view on the ORCHESTRATOR (it holds the Browserbase key).
+ *
+ * Browserbase's debuggerFullscreenUrl is signed, pinned to one page target and
+ * only valid while that session is open, so it is minted on demand and never
+ * stored: the control room asks for it at the moment it is about to render it.
+ * Every field is null when no browser session is open for this run right now,
+ * which is also how the UI learns to stop showing a dead live view.
+ */
+export interface LiveViewResponse {
+  sessionId: string | null;
+  /** Which lane the open session belongs to; the UI shows it on that lane only. */
+  lane: Lane | null;
+  /** Verify lane: the finding whose fix that session is testing. */
+  fixId: string | null;
+  liveViewUrl: string | null;
 }
 
 export interface OrchestratorHealth {
