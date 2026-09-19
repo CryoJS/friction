@@ -10,10 +10,13 @@ import { cors } from "hono/cors";
 import { demoShopResponse } from "@friction/shared/demo-shop";
 import {
   CreateRunRequestSchema,
+  CreateScanRequestSchema,
   GOLDEN_EVIDENCE_PREFIX,
   GOLDEN_RUN_ID,
   PersonaPatchBodySchema,
+  ScanPatchSchema,
   assembleReport,
+  assembleScanReport,
   buildReportFromSnapshot,
   formatIssues,
   isAllowedOrigin,
@@ -21,9 +24,11 @@ import {
   parseEventBatch,
   renderMockScreenshot,
   type CreateRunResponse,
+  type CreateScanResponse,
   type PostEventsResponse,
   type RunListResponse,
   type RunSnapshot,
+  type ScanListResponse,
 } from "@friction/shared";
 import { getGoldenRun, rebaseGoldenRun } from "@friction/shared/golden";
 import {
@@ -38,6 +43,7 @@ import {
   listRuns,
   patchPersonas,
 } from "./db";
+import { createScan, getScan, getScanFindingRows, getScanTree, listScans, patchScan } from "./scanDb";
 import type { AppEnv } from "./env";
 import { broadcast } from "./hub";
 import { handleStream } from "./stream";
@@ -86,7 +92,9 @@ app.post("/api/runs", async (c) => {
   const url = normalizeTargetUrl(parsed.data.url);
   if (!url) return c.json({ error: "url: not a valid http(s) URL" }, 400);
 
-  const run = await createRun(c.env.DB, { url, task: parsed.data.task });
+  const { scan } = parsed.data;
+  if (scan && !(await getScan(c.env.DB, scan.scanId))) return c.json({ error: `scan ${scan.scanId} not found` }, 404);
+  const run = await createRun(c.env.DB, { url, task: parsed.data.task, scan });
   const body: CreateRunResponse = { runId: run.id };
   return c.json(body, 201);
 });
@@ -167,6 +175,48 @@ app.get("/api/runs/:id/report", async (c) => {
 
   const [personas, rows] = await Promise.all([getPersonas(c.env.DB, runId), getReportRows(c.env.DB, runId)]);
   return c.json(assembleReport({ run, personas, findings: rows.findings, events: rows.events, source: "live" }));
+});
+
+/* ------------------------------------------------------------------- scans */
+
+app.post("/api/scans", async (c) => {
+  const parsed = CreateScanRequestSchema.safeParse(await readJson(c.req.raw));
+  if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
+  const url = normalizeTargetUrl(parsed.data.url);
+  if (!url) return c.json({ error: "url: not a valid http(s) URL" }, 400);
+
+  const scan = await createScan(c.env.DB, url);
+  const body: CreateScanResponse = { scanId: scan.id };
+  return c.json(body, 201);
+});
+
+app.get("/api/scans", async (c) => {
+  const limit = Math.min(50, Math.max(1, Number.parseInt(c.req.query("limit") ?? "20", 10) || 20));
+  const body: ScanListResponse = { scans: await listScans(c.env.DB, limit) };
+  return c.json(body);
+});
+
+/** The orchestrator reports crawl progress, task source and status as the scan moves. */
+app.patch("/api/scans/:id", async (c) => {
+  const parsed = ScanPatchSchema.safeParse(await readJson(c.req.raw));
+  if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
+  const scan = await patchScan(c.env.DB, c.req.param("id"), parsed.data);
+  if (!scan) return c.json({ error: `scan ${c.req.param("id")} not found` }, 404);
+  return c.json(scan);
+});
+
+/** The tree the canvas polls: tasks in rank order, three personas each. */
+app.get("/api/scans/:id", async (c) => {
+  const scan = await getScan(c.env.DB, c.req.param("id"));
+  if (!scan) return c.json({ error: `scan ${c.req.param("id")} not found` }, 404);
+  return c.json(await getScanTree(c.env.DB, scan));
+});
+
+app.get("/api/scans/:id/report", async (c) => {
+  const scan = await getScan(c.env.DB, c.req.param("id"));
+  if (!scan) return c.json({ error: `scan ${c.req.param("id")} not found` }, 404);
+  const [tree, rows] = await Promise.all([getScanTree(c.env.DB, scan), getScanFindingRows(c.env.DB, scan.id)]);
+  return c.json(assembleScanReport({ tree, findings: rows.findings, evidence: rows.evidence }));
 });
 
 /* ---------------------------------------------------------------- evidence */

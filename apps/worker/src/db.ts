@@ -15,26 +15,25 @@ import {
   type RunStatus,
   type Severity,
   type FrictionCategory,
+  type ScanTaskLink,
 } from "@friction/shared";
-import schemaSql from "../migrations/0001_init.sql";
+import initSql from "../migrations/0001_init.sql";
+import scansSql from "../migrations/0002_scans.sql";
 
 /* ------------------------------------------------------------------ schema */
 
 let schemaChecked = false;
 
-/**
- * Creates the schema if this database has never been migrated. `wrangler d1
- * migrations apply` remains the documented path; this is the safety net for
- * the teammate (or the demo laptop) that skipped it. A plain flag rather than a
- * shared promise: promises must not be awaited across Worker requests.
- */
-export async function ensureSchema(db: D1Database): Promise<void> {
-  if (schemaChecked) return;
-  const existing = await db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'findings'")
-    .first<{ name: string }>();
-  if (!existing) {
-    const statements = schemaSql
+/** Each migration, and a table whose absence means it has never run here. */
+const MIGRATIONS: ReadonlyArray<{ name: string; sentinel: string; sql: string }> = [
+  { name: "0001_init", sentinel: "findings", sql: initSql },
+  { name: "0002_scans", sentinel: "scans", sql: scansSql },
+];
+
+/** One statement per `;`, with `--` comments stripped. */
+function statementsOf(sql: string): string[] {
+  return (
+    sql
       // \r?\n, not \n: with core.autocrlf the file is checked out as CRLF, and
       // `.` stops at \r, so a trailing \r would keep the comment alive.
       .split(/\r?\n/)
@@ -42,9 +41,29 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       .join(" ")
       .split(";")
       .map((statement) => statement.replace(/\s+/g, " ").trim())
-      .filter((statement) => statement.length > 0);
+      .filter((statement) => statement.length > 0)
+  );
+}
+
+/**
+ * Applies any migration this database has never had. `wrangler d1 migrations
+ * apply` remains the documented path; this is the safety net for the
+ * teammate (or the demo laptop) that skipped it. Every statement is
+ * IF NOT EXISTS, so running after wrangler (or before it) is harmless. A plain
+ * flag rather than a shared promise: promises must not be awaited across
+ * Worker requests.
+ */
+export async function ensureSchema(db: D1Database): Promise<void> {
+  if (schemaChecked) return;
+  for (const migration of MIGRATIONS) {
+    const existing = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .bind(migration.sentinel)
+      .first<{ name: string }>();
+    if (existing) continue;
+    const statements = statementsOf(migration.sql);
     await db.batch(statements.map((statement) => db.prepare(statement)));
-    console.log(`[db] bootstrapped schema (${statements.length} statements)`);
+    console.log(`[db] applied ${migration.name} (${statements.length} statements)`);
   }
   schemaChecked = true;
 }
@@ -106,7 +125,7 @@ function toPersona(row: PersonaRow): PersonaRecord {
 }
 
 /** Rows were validated on the way in, so reading them back is a plain cast. */
-function toEvent(row: Pick<EventRow, "run_id" | "persona_id" | "seq" | "ts" | "type" | "payload">): RunEvent | null {
+export function toEvent(row: Pick<EventRow, "run_id" | "persona_id" | "seq" | "ts" | "type" | "payload">): RunEvent | null {
   try {
     return {
       runId: row.run_id,
@@ -128,24 +147,25 @@ export interface StoredEvent {
 
 /* -------------------------------------------------------------------- runs */
 
-function newRunId(): string {
+/** "r_" + 10 random [a-z0-9]. Prefix: "r_" runs, "s_" scans. */
+export function newId(prefix: string): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   const bytes = crypto.getRandomValues(new Uint8Array(10));
-  let id = "r_";
+  let id = prefix;
   for (const byte of bytes) id += alphabet[byte % alphabet.length];
   return id;
 }
 
-export async function createRun(db: D1Database, input: { url: string; task: string }): Promise<RunRecord> {
+export async function createRun(db: D1Database, input: { url: string; task: string; scan?: ScanTaskLink }): Promise<RunRecord> {
   const run: RunRecord = {
-    id: newRunId(),
+    id: newId("r_"),
     url: input.url,
     task: input.task,
     status: "pending",
     createdAt: Date.now(),
     completedAt: null,
   };
-  await db.batch([
+  const statements: D1PreparedStatement[] = [
     db
       .prepare("INSERT INTO runs (id, url, task, status, created_at) VALUES (?, ?, ?, ?, ?)")
       .bind(run.id, run.url, run.task, run.status, run.createdAt),
@@ -154,7 +174,16 @@ export async function createRun(db: D1Database, input: { url: string; task: stri
         .prepare("INSERT INTO personas (id, run_id, persona_id, state, step_count) VALUES (?, ?, ?, 'idle', 0)")
         .bind(`${run.id}:${personaId}`, run.id, personaId),
     ),
-  ]);
+  ];
+  if (input.scan) {
+    // OR REPLACE: a retried POST re-points the task at the newest run instead of failing the batch.
+    statements.push(
+      db
+        .prepare("INSERT OR REPLACE INTO scan_tasks (scan_id, task_index, run_id, why_critical, success_check) VALUES (?, ?, ?, ?, ?)")
+        .bind(input.scan.scanId, input.scan.taskIndex, run.id, input.scan.whyCritical, input.scan.successCheck),
+    );
+  }
+  await db.batch(statements);
   return run;
 }
 
