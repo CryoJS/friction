@@ -5,5 +5,7 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//": "Tests run on node (node --test), not in the browser, so they are typechecked out of this browser-targeted project.",
+  "exclude": ["src/**/*.test.ts"]
 }

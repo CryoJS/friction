@@ -26,14 +26,9 @@ function Icon({ size = 16, children, ...rest }: IconProps & { children: React.Re
   );
 }
 
-/** Three paths; the middle one hits something. */
+/** The Friction brand mark from the public asset. */
 export function LogoMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 28 28" aria-hidden="true" focusable="false">
-      <rect width="28" height="28" rx="8" fill="#ffffff" />
-      <path d="M7 9h14M7 14h4.5l2.5-3.5 2.5 3.5H21M7 19h14" fill="none" stroke="#000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <img src="/friction-icon.svg" width={size} height={size} alt="" aria-hidden="true" draggable={false} />;
 }
 
 export const Sparkle = (p: IconProps) => (

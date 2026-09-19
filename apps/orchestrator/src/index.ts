@@ -1,7 +1,7 @@
 /**
  * Friction orchestrator.
  *   POST /scans          { url, repo?, autoPr? }
- *                                      -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background.
+ *                                      -> { scanId } at once; crawl, then up to MAX_SCAN_TASKS tasks, one run each, in the background.
  *                                         `repo` must be on the allow-list; with `autoPr`, one draft PR per fixable task at the end
  *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
@@ -9,6 +9,9 @@
  *                                      -> opens a DRAFT PR for a verified, mapped fix.
  *                                         Only ever called by the user's click.
  *   GET  /health                       -> live or mock, which env vars are missing, and the repositories a scan may choose
+ *   GET  /runs/:runId/live-view        -> a freshly minted Browserbase live view URL for whatever
+ *                                         session that run has open right now, or nulls if none.
+ *                                         Never stored: the URL is signed and dies with the session.
  */
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
@@ -21,10 +24,12 @@ import {
   normalizeTargetUrl,
   type CreateRunResponse,
   type CreateScanResponse,
+  type LiveViewResponse,
   type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
+import { NO_LIVE_VIEW, mintLiveView } from "./liveView";
 import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
 import { ScanManager } from "./scanManager";
@@ -61,6 +66,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.get("/health", (_req, res) => {
   // Names only. The token never leaves this process.
   const body: OrchestratorHealth = { ok: true, mode: config.mode, missingEnv: config.missingEnv, repos: config.allowedRepos, githubDryRun: config.githubDryRun };
+  res.json(body);
+});
+
+/**
+ * Polled by the control room while it is showing a run. Cheap and side-effect
+ * free: it reads this process's registry of open sessions, and only calls
+ * Browserbase when there is one.
+ */
+app.get("/runs/:runId/live-view", async (req, res) => {
+  // No browser of our own in mock mode, so never a live view.
+  const body: LiveViewResponse = config.mode === "mock" ? NO_LIVE_VIEW : await mintLiveView(config, req.params.runId);
+  // The URL is short-lived by design; a cache would hand out dead ones.
+  res.setHeader("Cache-Control", "no-store");
   res.json(body);
 });
 

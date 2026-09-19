@@ -10,7 +10,8 @@
     "smoke": "tsx scripts/smoke-local.ts",
     "smoke:scan": "tsx scripts/smoke-scan.ts",
     "smoke:scan-pr": "tsx scripts/smoke-scan-pr.ts",
-    "smoke:github-fake": "tsx scripts/smoke-github-fake.ts"
+    "smoke:github-fake": "tsx scripts/smoke-github-fake.ts",
+    "test": "node --test --import tsx \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.16.0",

@@ -13,7 +13,7 @@
     "dev:orchestrator": "pnpm --filter @friction/orchestrator dev",
     "dev:control-room": "pnpm --filter @friction/control-room dev",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @friction/shared test",
+    "test": "pnpm -r test",
     "build": "pnpm --filter @friction/control-room build",
     "golden:generate": "tsx scripts/generate-golden.ts",
     "db:migrate:local": "pnpm --filter @friction/worker db:migrate:local",

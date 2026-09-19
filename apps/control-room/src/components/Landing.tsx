@@ -27,7 +27,7 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
     title: "Pick the ten critical tasks",
     detail:
-      "One model call reads those pages and ranks the ten tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
+      "One model call reads those pages and ranks the five tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
   },
   {
     title: "One isolated browser per task",
@@ -100,14 +100,10 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
         <AgentAmbient />
 
         <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
-          <h1 className="max-w-[21ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
-            <span className="lg:block">
-              <HeadlineTarget className="hero-headline-target--users">Three users.</HeadlineTarget>{" "}
-              <HeadlineTarget className="hero-headline-target--task">One task.</HeadlineTarget>
-            </span>
-            <span className="lg:block">
-              <HeadlineTarget className="hero-headline-target--site">Every place</HeadlineTarget>{" "}
-              your site fights back.
+          <h1 className="max-w-[28ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
+            <span className="block">Ship fast</span>
+            <span className="block">
+              <HeadlineTypewriter />
             </span>
           </h1>
 
@@ -132,7 +128,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL. Friction reads the site, picks the ten tasks that matter most, and has the agent attempt each one in an isolated Browserbase
+            Enter a URL. Friction reads the site, picks the five tasks that matter most, and has the agent attempt each one in an isolated Browserbase
             session on the live site. Findings from every run are merged into one ranked report with screenshot evidence.
           </p>
         </div>
@@ -159,7 +155,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
       <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
-          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to ten tasks per scan, one run each.</p>}
+          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to five tasks per scan, one run each.</p>}
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
@@ -228,21 +224,88 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
   );
 }
 
-function HeadlineTarget({ children, className }: { children: React.ReactNode; className: string }) {
+function HeadlineTypewriter() {
+  const [{ typedLength, selectionStart, phase }, setAnimation] = useState<{
+    typedLength: number;
+    selectionStart: number;
+    phase: "waiting" | "typing" | "typed" | "selecting-word" | "word-selected" | "underlining" | "holding" | "selecting-line" | "line-selected";
+  }>({ typedLength: 0, selectionStart: TYPEWRITER_TEXT.length, phase: "waiting" });
+  const selectingWord = phase === "selecting-word" || phase === "word-selected";
+  const selectingLine = phase === "selecting-line" || phase === "line-selected";
+  const selecting = selectingWord || selectingLine;
+  const selectionEnd = selectingWord ? FRICTION_END : TYPEWRITER_TEXT.length;
+  const underlined = phase === "underlining" || phase === "holding" || selectingLine;
+  const caretPosition = selecting ? selectionStart : phase === "underlining" ? FRICTION_END : typedLength;
+
+  useEffect(() => {
+    const delay = phase === "waiting" ? TYPEWRITER_START_DELAY_MS
+      : phase === "typed" ? 300
+      : phase === "selecting-word" ? 55
+      : phase === "word-selected" ? 450
+      : phase === "underlining" ? 700
+      : phase === "holding" ? TYPEWRITER_HOLD_MS
+      : phase === "line-selected" ? 650
+      : phase === "selecting-line" ? 28
+      : TYPEWRITER_STEP_MS;
+    const timer = window.setTimeout(() => setAnimation((current) => {
+      if (current.phase === "typed") return { ...current, selectionStart: FRICTION_END, phase: "selecting-word" };
+      if (current.phase === "selecting-word") {
+        const start = Math.max(FRICTION_START, current.selectionStart - 1);
+        return { ...current, selectionStart: start, phase: start === FRICTION_START ? "word-selected" : "selecting-word" };
+      }
+      if (current.phase === "word-selected") return { ...current, phase: "underlining" };
+      if (current.phase === "underlining") return { ...current, phase: "holding" };
+      if (current.phase === "holding") return { ...current, selectionStart: TYPEWRITER_TEXT.length, phase: "selecting-line" };
+      if (current.phase === "selecting-line") {
+        const start = Math.max(0, current.selectionStart - 1);
+        return { ...current, selectionStart: start, phase: start === 0 ? "line-selected" : "selecting-line" };
+      }
+      if (current.phase === "line-selected") {
+        return { typedLength: 0, selectionStart: TYPEWRITER_TEXT.length, phase: "waiting" };
+      }
+      const length = current.typedLength + 1;
+      return { ...current, typedLength: length, phase: length === TYPEWRITER_TEXT.length ? "typed" : "typing" };
+    }), delay);
+    return () => window.clearTimeout(timer);
+  }, [phase, typedLength, selectionStart]);
+
+  const renderCharacters = (start: number, end: number) => TYPEWRITER_TEXT.slice(start, end).split("").map((character, offset) => {
+    const index = start + offset;
+    const selected = selecting && index >= selectionStart && index < selectionEnd;
+    const caretBefore = index === caretPosition;
+    const caretAfter = caretPosition === TYPEWRITER_TEXT.length && index === caretPosition - 1;
+    return (
+      <span
+        key={index}
+        className={`hero-typewriter-character ${selected ? "hero-typewriter-character--selected" : ""} ${selected && index === selectionStart ? "hero-typewriter-character--selection-start" : ""} ${selected && index === selectionEnd - 1 ? "hero-typewriter-character--selection-end" : ""}`}
+      >
+        {caretBefore && <span className={`hero-typewriter-caret hero-typewriter-caret--before ${selecting ? "hero-typewriter-caret--selecting" : ""}`} />}
+        <span style={{ visibility: index < typedLength ? "visible" : "hidden" }}>{character}</span>
+        {caretAfter && <span className="hero-typewriter-caret" />}
+      </span>
+    );
+  });
+
   return (
-    <span className={`hero-headline-target ${className}`}>
-      <span className="relative z-[1]">{children}</span>
-      <span className="hero-headline-selection" aria-hidden="true">
-        <span className="hero-headline-handle hero-headline-handle--top-left" />
-        <span className="hero-headline-handle hero-headline-handle--top-right" />
-        <span className="hero-headline-handle hero-headline-handle--bottom-left" />
-        <span className="hero-headline-handle hero-headline-handle--bottom-right" />
+    <span className="hero-typewriter" data-phase={phase}>
+      <span className="sr-only">{TYPEWRITER_TEXT}</span>
+      <span aria-hidden="true">
+        <span className="hero-typewriter-word">{renderCharacters(0, 7)}</span>
+        {renderCharacters(7, 8)}
+        <span className="hero-typewriter-word">{renderCharacters(8, 16)}</span>
+        {renderCharacters(16, FRICTION_START)}
+        <span className="hero-typewriter-word">
+          <span className={`hero-typewriter-friction ${underlined ? "hero-typewriter-friction--done" : ""}`}>{renderCharacters(FRICTION_START, FRICTION_END)}</span>
+          {renderCharacters(FRICTION_END, TYPEWRITER_TEXT.length)}
+        </span>
       </span>
-      <span className="hero-headline-label" aria-hidden="true">
-        <span className="hero-headline-label-dot" />
-        agent focus
-      </span>
-      <span className="hero-headline-cursor" aria-hidden="true" />
     </span>
   );
 }
+
+const TYPEWRITER_TEXT = "without shipping friction.";
+const FRICTION_START = "without shipping ".length;
+const FRICTION_END = FRICTION_START + "friction".length;
+const TYPEWRITER_START_DELAY_MS = 500;
+const TYPEWRITER_STEP_MS = 48;
+const TYPEWRITER_HOLD_MS = 4200;

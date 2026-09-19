@@ -29,7 +29,7 @@ Open http://localhost:5173.
 | You want to... | Do this |
 | --- | --- |
 | See the UI with zero setup | Click **Replay the golden run**, or open `/?run=golden&replay=1` |
-| Exercise the whole pipeline with no keys | Start all three apps, enter any URL, **Scan & test** (mock mode: a scripted crawl, 10 canned tasks, 10 runs that replay the golden run, fix verification included, through the real pipeline), or run `pnpm --filter @friction/orchestrator smoke:scan` |
+| Exercise the whole pipeline with no keys | Start all three apps, enter any URL, **Scan & test** (mock mode: a scripted crawl, 5 canned tasks, 5 runs that replay the golden run, fix verification included, through the real pipeline), or run `pnpm --filter @friction/orchestrator smoke:scan` |
 | Test the real browser loop with no keys | `pnpm --filter @friction/orchestrator smoke` (Worker must be running; drives a local Chrome/Edge with a scripted planner against the built-in demo shop) |
 | Do a real scan | Fill in `.env` (below), restart the orchestrator, **Scan & test**. Read [Scans: time and cost](#scans-time-and-cost) first |
 | Reopen a scan | Landing page > **Recent scans**, or `/?scan=<id>` (add `&node=t2` to select a task) |
@@ -60,7 +60,7 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `LOCAL_BROWSER_PATH` | | auto-detected | Chrome/Edge binary for `BROWSER_ENV=LOCAL` |
 | `FRICTION_MOCK` | | off | `1` forces mock mode even with keys set |
 | `MOCK_SPEED` | | `3` | Mock mode playback speed |
-| `MAX_SESSIONS` | | `3` | Browser sessions open at once across every run and scan (1-100): a scan's crawl, every primary run and every fix verification take one. Set it to your Browserbase plan's concurrency limit. `PERSONA_CONCURRENCY` is still read as a fallback |
+| `MAX_SESSIONS` | | `5` | Browser sessions open at once across every run and scan (1-100): a scan's crawl, every primary run and every fix verification take one. Set it to your Browserbase plan's concurrency limit. `PERSONA_CONCURRENCY` is still read as a fallback |
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
 | `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
 | `VERIFY_TOP_N` | | `2` | How many top findings (by severity) get a fix proposed and verified. Each is a full extra browser run. `0` turns verification off |
@@ -114,7 +114,7 @@ Local dev does not strictly need the first one: if the Worker finds a database m
 
 ## Scans: time and cost
 
-A live scan is up to 10 runs (one per task) of up to 15 steps each, plus up to `VERIFY_TOP_N` verification runs per task, each a full re-run of the task. At the defaults that is up to 30 browser runs and roughly 450 planner calls with a screenshot each, plus a judge call per friction finding, a fixer call per verified finding, one task-generation call, and the crawl's one browser session. At `MAX_SESSIONS=3` expect roughly 20-50 minutes per scan; raise `MAX_SESSIONS` to your Browserbase plan's concurrency limit to go faster, or lower `VERIFY_TOP_N` to spend less. Point it at `/demo-shop` first. Mock mode (`FRICTION_MOCK=1`, or no keys) costs nothing and finishes in a few minutes.
+A live scan is up to 5 runs (one per task) of up to 15 steps each, plus up to `VERIFY_TOP_N` verification runs per task, each a full re-run of the task. At the defaults that is up to 15 browser runs and roughly 225 planner calls with a screenshot each, plus a judge call per friction finding, a fixer call per verified finding, one task-generation call, and the crawl's one browser session. With `MAX_SESSIONS=5` the 5 primary runs all get a browser at once, so expect roughly 10-20 minutes per scan; raise `MAX_SESSIONS` to your Browserbase plan's concurrency limit to go faster, or lower `VERIFY_TOP_N` to spend less. Point it at `/demo-shop` first. Mock mode (`FRICTION_MOCK=1`, or no keys) costs nothing and finishes in a few minutes.
 
 ## Deploy the Worker
 
@@ -161,5 +161,6 @@ The demo is **replay**. Live is the bonus.
 Things that bite:
 
 - **Browserbase concurrency.** A scan opens one session to crawl, then one per run and one per fix verification, never more than `MAX_SESSIONS` at once; the rest wait as **Queued**, most critical task first. A single run's sessions (primary, then each verification in turn) share the same pool. On a plan that allows fewer sessions, session creation returns 429 and the orchestrator waits and retries, but set `MAX_SESSIONS` to your plan's limit. `POST /suggest-tasks` (API only now) opens a session outside the pool.
+- **The live view goes blank or shows "Debugging connection was closed".** The live view is a real DevTools frontend on a WebSocket, and its URL is signed and dies with the session. The control room mints it on demand (`GET /runs/:runId/live-view` on the orchestrator) and re-checks every 20s, so a live view only appears while a session is genuinely open, and comes down to the last step screenshot when it is not. If the orchestrator is unreachable, you get screenshots instead of a live view.
 - **Bot protection.** Big retail sites may CAPTCHA a cloud browser. Rehearse on your real target, and keep `/demo-shop` as the target that always works.
 - **`OPENAI_MODEL` unset** puts the orchestrator in mock mode. Check `/health`.

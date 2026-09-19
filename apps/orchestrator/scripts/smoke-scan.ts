@@ -21,6 +21,7 @@ import {
   type OrchestratorHealth,
   type ScanReportResponse,
   type ScanTreeResponse,
+  MAX_SCAN_TASKS,
 } from "@friction/shared";
 
 const ORCHESTRATOR = (process.env.ORCHESTRATOR_URL ?? "http://127.0.0.1:8788").replace(/\/+$/, "");
@@ -75,7 +76,7 @@ const tree = await follow(scanId);
 if (tree.scan.status !== "completed") fail(`scan ended as ${tree.scan.status}: ${tree.scan.message ?? ""}`);
 if (tree.scan.taskSource !== "mock") fail(`expected taskSource "mock", got ${tree.scan.taskSource}`);
 if (tree.scan.pages.length !== 3) fail(`expected 3 crawled pages, got ${tree.scan.pages.length}`);
-if (tree.tasks.length !== 10) fail(`expected 10 tasks, got ${tree.tasks.length}`);
+if (tree.tasks.length !== MAX_SCAN_TASKS) fail(`expected ${MAX_SCAN_TASKS} tasks, got ${tree.tasks.length}`);
 if (!tree.tasks.every((task) => isTerminalState(task.state))) fail("the scan completed with runs still going");
 if (!tree.tasks.every((task) => task.status === "completed")) fail("the scan completed with runs still verifying");
 
@@ -83,7 +84,7 @@ const report = await json<ScanReportResponse>(`${WORKER}/api/scans/${scanId}/rep
 if (report.issues.length === 0) fail("the report has no issues");
 const widest = Math.max(...report.issues.map((issue) => issue.runsHit));
 // Every task replays the golden run, so some issue must be hit by every one of them.
-if (widest < 10) fail(`expected some issue to hit all 10 runs, widest was ${widest}`);
+if (widest < MAX_SCAN_TASKS) fail(`expected some issue to hit all ${MAX_SCAN_TASKS} runs, widest was ${widest}`);
 console.log(`report: ${report.issues.length} issues, widest hit ${widest}/${report.issues[0]?.totalRuns ?? 0} runs, verdicts ${JSON.stringify(report.summary.verdicts)}`);
 
 if (WITH_PRS) {

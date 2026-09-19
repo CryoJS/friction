@@ -59,13 +59,13 @@ export function RootPanel({ tree, report, onSelect }: Props) {
       )}
 
       {scan.status === "failed" && <Notice tone="bad">{scan.message ?? "The scan failed."}</Notice>}
-      {scan.taskSource === "fallback" && <Notice tone="warn">Couldn't read the site; these tasks are generic.</Notice>}
+      {scan.taskSource === "fallback" && <Notice tone="warn">Couldn't read the site, so these tasks are generic.</Notice>}
       {scan.taskSource === "mock" && (
-        <Notice tone="warn">Mock scan: no API keys, so the tasks are canned and every run replays the golden run.</Notice>
+        <Notice tone="warn">Mock scan: no API keys, so every run replays the golden run.</Notice>
       )}
       {hasTasks && !isScanFinished(scan.status) && (
         <Notice tone="glow">
-          Partial report: {progress.done} of {progress.total} runs have finished. Issues fill in as the rest do.
+          Partial report: {progress.done}/{progress.total} runs done. Issues fill in as the rest do.
         </Notice>
       )}
 
@@ -175,7 +175,7 @@ function ReportBody({ report, onSelect }: { report: ScanReportResponse; onSelect
           </h3>
           <p className="text-caption text-smoke">By severity, then reach</p>
         </div>
-        <div className="mt-3 space-y-4">
+        <div className="mt-3 space-y-2">
           {report.issues.length === 0 && (
             <p className="rounded-card border border-dashed border-hairline/20 px-6 py-10 text-center text-body text-smoke">No friction found yet.</p>
           )}

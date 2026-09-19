@@ -1,7 +1,8 @@
 /**
  * OBSERVE: what the agent can see right now.
- *   - a viewport screenshot, twice: full size as evidence for R2, and
- *     downscaled in the browser for the model (this is where the token bill is)
+ *   - ONE viewport screenshot, chosen by what the caller will read: full size
+ *     as evidence for R2, or downscaled in the browser for the model (this is
+ *     where the token bill is)
  *   - the accessibility tree, pruned to interactive elements plus headings
  *   - page state the detectors need (focus, overlays)
  */
@@ -15,12 +16,19 @@ const MODEL_IMAGE_SCALE = 0.6;
 const EVIDENCE_QUALITY = 68;
 const MODEL_QUALITY = 55;
 
+/**
+ * Which screenshot the caller will actually read. No call site wants both, and
+ * taking the other one costs a whole extra round trip to the browser: planning
+ * reads `forModel`, acting reads `evidence`.
+ */
+export type ObserveNeed = "model" | "evidence";
+
 export interface Observation {
   state: PageState;
   tree: A11ySummary;
-  /** Full-size JPEG of the viewport. */
+  /** Full-size JPEG of the viewport. Null unless the caller asked for "evidence". */
   evidence: Buffer | null;
-  /** Base64 JPEG, downscaled, for the planner. */
+  /** Base64 JPEG, downscaled, for the planner. Null unless the caller asked for "model". */
   forModel: string | null;
 }
 
@@ -88,15 +96,26 @@ async function captureForModel(page: StagehandPage, state: PageState): Promise<s
   }
 }
 
-export async function observe(page: StagehandPage): Promise<Observation> {
+export async function observe(page: StagehandPage, need: ObserveNeed): Promise<Observation> {
   // From now until the action starts, DOM mutations are ambient noise (see pageScripts).
   await page.evaluate(ARM_AMBIENT).catch(() => undefined);
+  // Read before any capture: the downscaled one clips against the DOCUMENT, so
+  // it needs this scroll position to frame the viewport.
   const state = await readState(page);
-  // The two captures MUST NOT overlap. The downscaled one works by temporarily
-  // changing the page scale; run concurrently, the full-size evidence comes out
-  // shrunk into the top-left corner and every bbox lands in the wrong place.
-  const evidence = await captureEvidence(page);
-  const forModel = await captureForModel(page, state);
-  const tree = await readTree(page);
-  return { state, tree, evidence, forModel: forModel ?? evidence?.toString("base64") ?? null };
+
+  // Only ever one capture per call, so the two can no longer collide. (They must
+  // not: the downscaled one works by temporarily changing the page scale, and run
+  // alongside it the full-size evidence comes out shrunk into the top-left corner
+  // with every bbox landing in the wrong place.) The tree is read from the DOM and
+  // carries no viewport geometry, so it is safe to fetch concurrently with either.
+  if (need === "evidence") {
+    const [evidence, tree] = await Promise.all([captureEvidence(page), readTree(page)]);
+    return { state, tree, evidence, forModel: null };
+  }
+
+  const [downscaled, tree] = await Promise.all([captureForModel(page, state), readTree(page)]);
+  // The downscaled capture failed: pay for the full-size one after all, rather
+  // than send the model no image at all.
+  const forModel = downscaled ?? (await captureEvidence(page))?.toString("base64") ?? null;
+  return { state, tree, evidence: null, forModel };
 }

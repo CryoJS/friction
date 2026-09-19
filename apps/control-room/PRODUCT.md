@@ -14,7 +14,7 @@ Secondary: founders and product teams pointing Friction at their own site to fin
 
 ## Product Purpose
 
-Give Friction a URL and press **Scan & test**. It reads the site, picks the ten tasks that matter most, and has one agent, a competent first-time visitor, attempt each one in its own isolated Browserbase browser on the live site. Friction is detected as it happens, shown as a live node tree (site, tasks), and merged into one site report that ranks each issue by severity and by how many tasks hit it, with screenshot evidence. For each task's worst findings, a fix is proposed and proven by re-running the task with it installed. Success is a viewer who sees exactly where and why a real user would give up.
+Give Friction a URL and press **Scan & test**. It reads the site, picks the five tasks that matter most, and has one agent, a competent first-time visitor, attempt each one in its own isolated Browserbase browser on the live site. Friction is detected as it happens, shown as a live node tree (site, tasks), and merged into one site report that ranks each issue by severity and by how many tasks hit it, with screenshot evidence. For each task's worst findings, a fix is proposed and proven by re-running the task with it installed. Success is a viewer who sees exactly where and why a real user would give up.
 
 ## Positioning
 
@@ -30,7 +30,7 @@ One neutral agent runs each of a site's ten most critical tasks on the live site
 ## Capabilities and Constraints
 
 - **Must render with the wifi off.** No runtime CDN, font, or image fetches; fonts are bundled.
-- Up to 10 tasks per scan, one run each, plus up to `VERIFY_TOP_N` verification runs per task.
+- Up to 5 tasks per scan, one run each, plus up to `VERIFY_TOP_N` verification runs per task.
 - Hard cap of 15 steps per run.
 - Severity scale S1 to S5: Cosmetic, Minor, Moderate, Major, Blocker.
 - Friction categories: dead click, navigation loop, retry, step budget, error message, modal interrupt, long wait, keyboard trap, ambiguous label.
