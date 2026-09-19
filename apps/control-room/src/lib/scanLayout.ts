@@ -50,6 +50,8 @@ export type TaskNodeData = Selectable & {
   stepCount: number;
   findingCount: number;
   worst: Severity | null;
+  whyCritical: string;
+  successCheck: string;
 };
 
 export type RootFlowNode = Node<RootNodeData, "root">;
@@ -106,6 +108,8 @@ export function layoutScan(tree: ScanTreeResponse, options: LayoutOptions): { no
         stepCount: task.stepCount,
         findingCount: task.findingCount,
         worst: task.worstSeverity,
+        whyCritical: task.whyCritical,
+        successCheck: task.successCheck,
         selected: selected === taskId,
         onSelect,
       },
