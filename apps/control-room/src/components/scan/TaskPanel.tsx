@@ -1,11 +1,7 @@
 import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
-import { useRunStream } from "../../hooks/useRunStream";
 import { VERDICT } from "../../lib/scan";
-import { LanePane } from "../LanePane";
 import { Chip } from "../badges";
-import { ArrowRight } from "../icons";
 import { IssueCard } from "./IssueCard";
-import { Notice } from "./Notice";
 import { TaskPullRequestCard } from "./TaskPullRequestCard";
 
 interface Props {
@@ -14,18 +10,11 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
-  onOpenRun: (runId: string) => void;
 }
 
-/**
- * One task: what it is, why it matters, its run live (the control room's own
- * LanePane on the run's SSE stream), and the site issues it hit. SidePanel
- * keys it by run id, so selecting another task opens that run's stream.
- */
-export function TaskPanel({ task, tree, report, onSelect, onOpenRun }: Props) {
-  const stream = useRunStream(task.runId, { replay: false });
+/** One task: what it is, why it matters, its pull request outcome and site issues. */
+export function TaskPanel({ task, tree, report, onSelect }: Props) {
   const verdict = VERDICT[taskVerdict(task.state)];
-  const fixes = Object.keys(stream.view.fixes).length;
   const ranked = report
     ? report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(task.index))
     : [];
@@ -53,34 +42,6 @@ export function TaskPanel({ task, tree, report, onSelect, onOpenRun }: Props) {
       </dl>
 
       <TaskPullRequestCard task={task} tree={tree} onSelect={onSelect} />
-
-      <section aria-label="The run">
-        {stream.notice && <Notice tone="warn">{stream.notice}</Notice>}
-        {/* From lg the panel scrolls on its own, so the pane gets a fixed height and scrolls its findings and timeline inside it. */}
-        <div className="mt-3 grid lg:h-160">
-          <LanePane
-            lane={stream.view.primary}
-            title="The agent"
-            allowLiveView={stream.origin === "live"}
-            startTs={stream.view.firstTs}
-            layout="stacked"
-            idleLabel="Queued"
-          />
-        </div>
-        {/* A real link, so it opens in a new tab too; a plain click stays in the app. */}
-        <a
-          href={`?run=${encodeURIComponent(task.runId)}`}
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-            event.preventDefault();
-            onOpenRun(task.runId);
-          }}
-          className="pill-ghost mt-3"
-        >
-          {fixes > 0 ? `Open full control room · ${fixes} ${fixes === 1 ? "fix" : "fixes"}` : "Open full control room"}
-          <ArrowRight size={14} />
-        </a>
-      </section>
 
       <section aria-label="Issues in this task">
         <h3 className="font-heading text-subheading text-bone">

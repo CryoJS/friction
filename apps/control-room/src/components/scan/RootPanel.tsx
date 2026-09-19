@@ -53,7 +53,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
               ? summarizeTaskPullRequests(pullRequests).text
               : scan.autoPr
                 ? "One draft pull request per fixable task, once every run has finished."
-                : "Pull requests are opened by hand, one fix at a time, from a task's control room."}
+                : "Pull requests are opened by hand, one fix at a time, from a task's results."}
           </p>
         </section>
       )}

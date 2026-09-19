@@ -5,7 +5,6 @@ import { ArrowRight } from "./icons";
 
 interface Props {
   onStarted: (scanId: string) => void;
-  onReplayGolden: () => void;
 }
 
 const STORAGE_KEY = "friction:last-scan-url";
@@ -35,7 +34,7 @@ function loadUrl(): string {
 type Failure = { kind: "invalid" } | { kind: "unreachable"; detail: string };
 
 /** One field, one button: Friction picks the tasks. Lives in the landing hero. */
-export function ScanForm({ onStarted, onReplayGolden }: Props) {
+export function ScanForm({ onStarted }: Props) {
   const [url, setUrl] = useState(loadUrl);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -162,12 +161,7 @@ export function ScanForm({ onStarted, onReplayGolden }: Props) {
           {failure.kind === "invalid" ? (
             "Enter a website URL, like https://your-store.com."
           ) : (
-            <>
-              Couldn't start the scan ({failure.detail}). Is the orchestrator running?{" "}
-              <button type="button" onClick={onReplayGolden} className="text-white underline">
-                Replay the golden run
-              </button>
-            </>
+            <>Couldn't start the scan ({failure.detail}). Is the orchestrator running?</>
           )}
         </p>
       )}
