@@ -11,7 +11,7 @@
  * how long the page took to settle, whether the DOM or URL changed, whether an
  * overlay or error text appeared, whether focus moved.
  */
-import { normalizeUrlForVisit, type ActionType, type BBox, type StepPayload, type StepSignals } from "@friction/shared";
+import { normalizeUrlForVisit, type ActionType, type Anchor, type BBox, type StepPayload, type StepSignals } from "@friction/shared";
 import { cleanLabel, idFromDescription, sameLabelCount } from "./a11y";
 import type { BrowserHandle, StagehandPage } from "./browser";
 import { VIEWPORT } from "./config";
@@ -120,6 +120,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   let label = "";
   let selector = "";
   let bbox: BBox | null = null;
+  let anchor: Anchor | null = null;
   let evidence = observation.evidence;
   let actionError: string | null = null;
   let opensPopup = false;
@@ -151,6 +152,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
         bbox = located.bbox;
         label ||= located.label;
         opensPopup = located.opensPopup;
+        anchor = located.anchor;
         // The target was off-screen and got scrolled into view: retake, or the bbox would not match the evidence.
         if (located.scrolled) evidence = (await captureEvidence(page)) ?? evidence;
       }
@@ -298,6 +300,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
     ...(value === undefined ? {} : { value }),
     viewport: { w: VIEWPORT.w, h: VIEWPORT.h },
     signals,
+    ...(anchor ? { anchor } : {}),
   };
 
   const deadClick = plan.actionType === "click" && !actionError && !domChanged;
