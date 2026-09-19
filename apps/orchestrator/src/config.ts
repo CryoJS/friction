@@ -12,7 +12,7 @@
  * and no model name anywhere in this codebase.
  */
 import { existsSync } from "node:fs";
-import { DEFAULT_VERIFY_TOP_N } from "@friction/shared";
+import { DEFAULT_VERIFY_TOP_N, matchAllowedRepo, parseRepoSlug } from "@friction/shared";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +45,8 @@ export interface GitHubConfig {
   repo: string;
   /** Null: use the repository's default branch. */
   baseBranch: string | null;
+  /** GITHUB_API_URL, for GitHub Enterprise Server. Absent: api.github.com. */
+  apiUrl?: string | null;
 }
 
 export interface Config {
@@ -79,6 +81,20 @@ export interface Config {
    * GITHUB_REPO are all set; fixes then stay verified-but-unmapped.
    */
   github: GitHubConfig | null;
+  /**
+   * Every repository a scan may be started with, as "owner/name":
+   * GITHUB_OWNER/GITHUB_REPO first, then GITHUB_ALLOWED_REPOS. This process has
+   * no auth, so a scan chooses from this list and never names a repository
+   * freely. In mock mode with none configured it holds MOCK_REPO, so the whole
+   * feature can be shown with no keys.
+   */
+  /** Never leaves this process: not in /health, not in a log line. */
+  githubToken: string | null;
+  githubBaseBranch: string | null;
+  githubApiUrl: string | null;
+  allowedRepos: string[];
+  /** Pull requests are previewed, never pushed: GITHUB_DRY_RUN, mock mode, or no GITHUB_TOKEN. */
+  githubDryRun: boolean;
   /** Mock mode plays the golden run this many times faster than it was recorded. */
   mockSpeed: number;
 }
@@ -88,7 +104,34 @@ function githubConfig(): GitHubConfig | null {
   const owner = text("GITHUB_OWNER");
   const repo = text("GITHUB_REPO");
   if (!token || !owner || !repo) return null;
-  return { token, owner, repo, baseBranch: text("GITHUB_BASE_BRANCH") };
+  return { token, owner, repo, baseBranch: text("GITHUB_BASE_BRANCH"), apiUrl: text("GITHUB_API_URL") };
+}
+
+/** Stands in for a connected repository in mock mode. Canned: it does not exist, and mock mode never writes. */
+export const MOCK_REPO = "friction-demo/demo-shop";
+
+function allowedRepos(mock: boolean): string[] {
+  const owner = text("GITHUB_OWNER");
+  const repo = text("GITHUB_REPO");
+  const listed = (text("GITHUB_ALLOWED_REPOS") ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  const repos: string[] = [];
+  for (const slug of [...(owner && repo ? [`${owner}/${repo}`] : []), ...listed]) {
+    if (!parseRepoSlug(slug)) console.warn(`[config] ignoring ${JSON.stringify(slug)}: a repository is written owner/name`);
+    else if (!matchAllowedRepo(repos, slug)) repos.push(slug);
+  }
+  return repos.length === 0 && mock ? [MOCK_REPO] : repos;
+}
+
+/**
+ * The single-repo shape pr.ts and repo.ts work with, for a repository on the
+ * allow-list. Null when the slug is not allowed, or there is no token to act
+ * with (a dry run then has nothing to read either).
+ */
+export function githubFor(config: Config, slug: string | null | undefined): GitHubConfig | null {
+  const allowed = matchAllowedRepo(config.allowedRepos, slug);
+  const parsed = parseRepoSlug(allowed);
+  if (!parsed || !config.githubToken) return null;
+  return { token: config.githubToken, owner: parsed.owner, repo: parsed.repo, baseBranch: config.githubBaseBranch, apiUrl: config.githubApiUrl };
 }
 
 function load(): Config {
@@ -98,10 +141,11 @@ function load(): Config {
   const missingEnv = required.filter((name) => text(name) === null);
 
   const detail = text("OPENAI_IMAGE_DETAIL");
+  const mode = flag("FRICTION_MOCK") || missingEnv.length > 0 ? "mock" : "live";
   return {
     port: int("PORT", 8788, 1, 65535),
     workerUrl: (text("WORKER_URL") ?? "http://127.0.0.1:8787").replace(/\/+$/, ""),
-    mode: flag("FRICTION_MOCK") || missingEnv.length > 0 ? "mock" : "live",
+    mode,
     missingEnv,
     browserEnv,
     openaiApiKey: text("OPENAI_API_KEY"),
@@ -119,6 +163,11 @@ function load(): Config {
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     github: githubConfig(),
+    githubToken: text("GITHUB_TOKEN"),
+    githubBaseBranch: text("GITHUB_BASE_BRANCH"),
+    githubApiUrl: text("GITHUB_API_URL"),
+    allowedRepos: allowedRepos(mode === "mock"),
+    githubDryRun: flag("GITHUB_DRY_RUN") || mode === "mock" || text("GITHUB_TOKEN") === null,
     mockSpeed: int("MOCK_SPEED", 3, 1, 50),
   };
 }

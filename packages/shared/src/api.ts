@@ -280,4 +280,8 @@ export interface OrchestratorHealth {
   /** "mock" replays the golden run through the real pipeline; no API keys needed. */
   mode: "live" | "mock";
   missingEnv: string[];
+  /** Repositories a scan may be started with, as "owner/name". Never the token. */
+  repos?: string[];
+  /** True when pull requests are only previewed: GITHUB_DRY_RUN, mock mode, or no GITHUB_TOKEN. */
+  githubDryRun?: boolean;
 }

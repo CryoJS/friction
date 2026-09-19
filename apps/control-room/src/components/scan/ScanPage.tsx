@@ -22,7 +22,7 @@ interface Props {
 export function ScanPage({ scanId, nodeId, view, onSelectNode, onOpenRun }: Props) {
   const { tree, stale, missing } = useScan(scanId);
   // Refetch the report when findings arrive, a run finishes, the tasks appear, or the status changes.
-  const refreshKey = tree ? `${totalFindings(tree)}:${runProgress(tree).done}:${tree.tasks.length}:${tree.scan.status}` : "none";
+  const refreshKey = tree ? `${totalFindings(tree)}:${runProgress(tree).done}:${tree.tasks.length}:${tree.scan.status}:${tree.pullRequests?.length ?? 0}` : "none";
   const { report } = useScanReport(scanId, refreshKey);
   const node = tree ? resolveScanNode(parseScanNode(nodeId), tree) : parseScanNode(nodeId);
   const selected = scanNodeId(node);

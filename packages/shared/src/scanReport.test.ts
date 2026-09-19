@@ -16,6 +16,7 @@ import {
   type ScanTreeTask,
   type Severity,
   type StepEvent,
+  type TaskPullRequest,
 } from "./index";
 import { getGoldenRun } from "./golden";
 
@@ -156,6 +157,18 @@ describe("assembleScanReport", () => {
       { index: 1, runId: "r1", title: "Task 2", verdict: "pass" },
       { index: 2, runId: "r2", title: "Task 3", verdict: "fail" },
     ]);
+    // A scan with no repository says nothing about pull requests.
+    expect(report.summary.pullRequests).toBeUndefined();
+  });
+
+  it("carries each task's pull request and the scan total", () => {
+    const pr = (index: number, status: TaskPullRequest["status"]): TaskPullRequest => ({ scanId: "s_1", runId: `r${index}`, taskIndex: index, status, findingIds: [], notFixed: [] });
+    const pullRequests = [pr(0, "opened"), pr(2, "covered"), { ...pr(9, "opened"), runId: "r_other" }];
+    const withPrs = assembleScanReport({ tree, findings, evidence, pullRequests, now: 42 });
+    expect(withPrs.tasks.map((task) => task.pullRequest?.status)).toEqual(["opened", undefined, "covered"]);
+    expect(withPrs.summary.pullRequests?.text).toBe("1 draft PR opened, 1 task covered.");
+    // The tree's own list is the default.
+    expect(assembleScanReport({ tree: { ...tree, pullRequests }, findings, evidence }).summary.pullRequests?.counts.opened).toBe(1);
   });
 });
 

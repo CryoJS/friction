@@ -16,6 +16,7 @@ import {
   GOLDEN_RUN_ID,
   RunPatchSchema,
   ScanPatchSchema,
+  TaskPullRequestSchema,
   assembleReport,
   assembleScanReport,
   buildReportFromSnapshot,
@@ -47,7 +48,7 @@ import {
   patchRun,
   upsertFix,
 } from "./db";
-import { createScan, getScan, getScanFindingRows, getScanTree, listScans, patchScan } from "./scanDb";
+import { createScan, getRunScanLink, getScan, getScanFindingRows, getScanTree, listScans, patchScan, upsertTaskPullRequest } from "./scanDb";
 import type { AppEnv } from "./env";
 import { broadcast } from "./hub";
 import { handleStream } from "./stream";
@@ -228,13 +229,18 @@ app.get("/api/runs/:id/report", async (c) => {
 
 /* ------------------------------------------------------------------- scans */
 
+app.get("/api/runs/:id/scan", async (c) => {
+  const link = await getRunScanLink(c.env.DB, c.req.param("id"));
+  return link ? c.json(link) : c.json({ error: "this run is not a task of a scan" }, 404);
+});
+
 app.post("/api/scans", async (c) => {
   const parsed = CreateScanRequestSchema.safeParse(await readJson(c.req.raw));
   if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
   const url = normalizeTargetUrl(parsed.data.url);
   if (!url) return c.json({ error: "url: not a valid http(s) URL" }, 400);
 
-  const scan = await createScan(c.env.DB, url);
+  const scan = await createScan(c.env.DB, url, { repo: parsed.data.repo, autoPr: parsed.data.autoPr });
   const body: CreateScanResponse = { scanId: scan.id };
   return c.json(body, 201);
 });
@@ -259,6 +265,18 @@ app.get("/api/scans/:id", async (c) => {
   const scan = await getScan(c.env.DB, c.req.param("id"));
   if (!scan) return c.json({ error: `scan ${c.req.param("id")} not found` }, 404);
   return c.json(await getScanTree(c.env.DB, scan));
+});
+
+/** Upsert one task's pull request outcome (the orchestrator). The tree the canvas polls carries them. */
+app.post("/api/scans/:id/pull-requests", async (c) => {
+  const parsed = TaskPullRequestSchema.safeParse(await readJson(c.req.raw));
+  if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
+  const scanId = c.req.param("id");
+  if (parsed.data.scanId !== scanId) return c.json({ error: `scanId: expected ${scanId}` }, 400);
+  if (!(await getScan(c.env.DB, scanId))) return c.json({ error: `scan ${scanId} not found` }, 404);
+  const pullRequest = await upsertTaskPullRequest(c.env.DB, parsed.data);
+  if (!pullRequest) return c.json({ error: `run ${parsed.data.runId} is not a task of scan ${scanId}` }, 404);
+  return c.json({ pullRequest });
 });
 
 app.get("/api/scans/:id/report", async (c) => {
