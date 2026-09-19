@@ -55,7 +55,9 @@ export function FixComparison({ fix, finding, before, after, allowLiveView, star
   const p = fix.payload;
   const decided = p.stage === "verified" || p.stage === "rejected" || p.stage === "pr_opened";
   const rejected = p.stage === "rejected";
-  const showPanes = p.stage !== "proposed";
+  // A finding no acceptable patch came back for is recorded as rejected with no patch: nothing ran, so there is nothing to compare.
+  const unproposed = rejected && !p.patchJs;
+  const showPanes = p.stage !== "proposed" && !unproposed;
 
   return (
     <article
@@ -67,17 +69,26 @@ export function FixComparison({ fix, finding, before, after, allowLiveView, star
         {finding && <SeverityBadge severity={finding.severity} />}
         {p.category && <span className="text-ui text-bone">{categoryLabel(p.category)}</span>}
         {finding && finding.hitCount > 1 && <span className="tag">Hit {finding.hitCount}×</span>}
+        {(p.attempts ?? 1) > 1 && <span className="tag">Second attempt</span>}
         {finding?.summary && <span className="min-w-0 flex-1 basis-60 truncate text-caption text-smoke" title={finding.summary}>{finding.summary}</span>}
       </div>
 
       <div className="mt-4 grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
-          <h3 className={`font-heading text-heading-sm font-medium tracking-[-0.02em] ${rejected ? "text-sev-3" : "text-white"}`}>{HEADLINES[p.stage]}</h3>
+          <h3 className={`font-heading text-heading-sm font-medium tracking-[-0.02em] ${rejected ? "text-sev-3" : "text-white"}`}>{unproposed ? "No fix could be proposed" : HEADLINES[p.stage]}</h3>
           {p.note && decided && <p className="mt-1.5 max-w-[70ch] text-subheading leading-snug text-bone">{p.note}</p>}
-          <p className="mt-2 max-w-[75ch] text-body text-ash">
-            <span className="text-bone">The fix: </span>
-            {p.summary}
-          </p>
+          {!unproposed && (
+            <p className="mt-2 max-w-[75ch] text-body text-ash">
+              <span className="text-bone">The fix: </span>
+              {p.summary}
+            </p>
+          )}
+          {decided && !rejected && p.alsoResolved && p.alsoResolved.length > 0 && (
+            <p className="mt-2 max-w-[75ch] text-body text-ash">
+              <span className="text-bone">Also resolved: </span>
+              {[...new Set(p.alsoResolved.map((item) => categoryLabel(item.category)))].join(", ")}. No longer fired in the verification run, so no separate fix was proposed.
+            </p>
+          )}
         </div>
         {p.before && p.after && <Contrast before={p.before} after={p.after} rejected={rejected} />}
       </div>
@@ -106,7 +117,7 @@ export function FixComparison({ fix, finding, before, after, allowLiveView, star
 
       <div className="mt-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-4 border-t border-hairline/10 pt-4">
         <div className="min-w-0 flex-1 basis-[360px]">
-          <details className="group">
+          <details className="group" hidden={unproposed}>
             <summary className="cursor-pointer list-none text-ui text-bone transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
               <span className="mr-1.5 inline-block transition-transform group-open:rotate-90">›</span>
               The patch that was tested
@@ -167,7 +178,11 @@ function PullRequestAction({ fix, availability, onOpen }: { fix: FixEvent; avail
   if (p.stage === "rejected") return <p className="max-w-[34ch] text-caption text-smoke">A fix that did not resolve the problem never becomes a pull request.</p>;
   if (p.stage !== "verified") return <p className="max-w-[34ch] text-caption text-smoke">A pull request can be opened once the fix is verified.</p>;
   if (!p.sourceFile) {
-    return <p className="max-w-[40ch] text-caption text-smoke">Verified, but not mapped to a source file in a connected repository, so there is no pull request to open.</p>;
+    return (
+      <p className="max-w-[40ch] text-caption text-smoke">
+        Verified, but not mapped to a source file in a connected repository, so there is no pull request to open.{p.mappingNote ? ` ${p.mappingNote}` : ""}
+      </p>
+    );
   }
 
   const open = async (): Promise<void> => {

@@ -13,7 +13,7 @@ import { z } from "zod";
 import { FRICTION_LABELS, MAX_PATCH_LINES, validatePatch, type FrictionCategory, type FrictionPayload, type Severity, type StepEvent } from "@friction/shared";
 import type { Config } from "./config";
 import { FixReport } from "./fixReport";
-import { errorMessage, log } from "./util";
+import { errorMessage, log, truncate } from "./util";
 import type { WorkerClient } from "./workerClient";
 
 /** How much of the accessibility tree the model sees. */
@@ -52,6 +52,8 @@ export interface ProposeFixInput {
   stepEvents: readonly StepEvent[];
   /** Pruned accessibility tree the agent saw at the failing step; null when there was no browser (mock). */
   tree: readonly string[] | null;
+  /** The retry: the patch that was verified and rejected, and the verdict's sentence on what is still wrong. */
+  previous?: { patchJs: string; note: string };
 }
 
 export type FixProposer = (input: ProposeFixInput) => Promise<FixProposal>;
@@ -118,6 +120,16 @@ function inputText(input: ProposeFixInput): string {
     "Accessibility tree at the failing step (interactive elements and headings, one per line as [id] role: name):",
     treeLines.length > 0 ? treeLines.join("\n") : "(not available)",
     ...(tree && tree.length > MAX_TREE_LINES ? [`(${tree.length - MAX_TREE_LINES} more lines omitted)`] : []),
+    ...(input.previous
+      ? [
+          "",
+          "A previous patch for this problem was installed, the task was re-run from scratch, and the patch did NOT fix it.",
+          `Result of that run: ${input.previous.note}`,
+          "The previous patch:",
+          input.previous.patchJs,
+          "It loaded and ran, so the approach is what failed: it matched the wrong element, acted too late, or changed something the visitor does not depend on. Write a different patch that addresses what the result says is still wrong. Do not repeat it.",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -184,13 +196,19 @@ export function findingForFix(payload: FrictionPayload, steps: readonly StepEven
 /**
  * Phase one of a fix's life: propose it and report it as "proposed". Returns
  * the fix's handle for the later stages, or null when no acceptable patch
- * could be produced (logged; the finding simply goes unverified).
+ * could be produced. That is recorded too, as a rejected fix with no patch, so
+ * the finding's story says where it stopped.
+ *
+ * With `retryOf` (the rejected fix's handle) the new proposal goes onto the
+ * SAME row: a finding has one fix, however many attempts it took. A retry
+ * that yields no patch leaves the row as it was, rejected with its first note.
  */
 export async function proposeAndReport(args: {
   worker: WorkerClient;
   runId: string;
   proposer: FixProposer;
   input: ProposeFixInput;
+  retryOf?: FixReport;
 }): Promise<FixReport | null> {
   const { finding } = args.input;
   let proposal: FixProposal;
@@ -198,7 +216,37 @@ export async function proposeAndReport(args: {
     proposal = await proposeFix(args.proposer, args.input);
   } catch (err) {
     log("fixer", `${finding.findingId}: no fix proposed: ${errorMessage(err)}`);
+    if (!args.retryOf) {
+      const note = truncate(`No acceptable patch was proposed, so nothing was verified: ${errorMessage(err)}`, 400);
+      const unproposed = new FixReport(args.worker, args.runId, {
+        findingId: finding.findingId,
+        stage: "rejected",
+        summary: "No fix could be proposed for this finding.",
+        patchJs: "",
+        sourceFile: null,
+        before: null,
+        after: null,
+        prUrl: null,
+        category: finding.category,
+        note,
+      });
+      await unproposed.update({});
+    }
     return null;
+  }
+  if (args.retryOf) {
+    const first = args.retryOf.state.note ?? "";
+    await args.retryOf.update({
+      stage: "proposed",
+      summary: proposal.summary,
+      patchJs: proposal.patchJs,
+      after: null,
+      attempts: 2,
+      note: truncate(`Second attempt. The first fix was rejected: ${first}`, 400),
+      liveViewUrl: null,
+      replayUrl: null,
+    });
+    return args.retryOf;
   }
   const report = new FixReport(args.worker, args.runId, {
     findingId: finding.findingId,

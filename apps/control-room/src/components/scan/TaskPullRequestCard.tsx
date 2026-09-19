@@ -56,6 +56,7 @@ function Outcome({ pr, tree, onSelect }: { pr: TaskPullRequest; tree: ScanTreeRe
             </a>
           )}
           {pr.branch && <p className="font-mono text-caption tracking-normal text-smoke">{pr.branch}</p>}
+          <AlsoResolved pr={pr} />
           <NotFixed pr={pr} />
         </>
       );
@@ -64,6 +65,7 @@ function Outcome({ pr, tree, onSelect }: { pr: TaskPullRequest; tree: ScanTreeRe
         <>
           <p className="text-ui text-ash">Preview only, nothing was pushed. This is the draft pull request Friction would open.</p>
           <Preview pr={pr} />
+          <AlsoResolved pr={pr} />
           <NotFixed pr={pr} />
         </>
       );
@@ -78,7 +80,10 @@ function Outcome({ pr, tree, onSelect }: { pr: TaskPullRequest; tree: ScanTreeRe
     case "nothing_to_fix":
       return (
         <>
-          <p className="text-ui text-ash">No problem in this task had a fix that was both verified and mapped to a source file.</p>
+          <p className="text-ui text-ash">
+            No problem in this task had a fix that was both verified and mapped to a source file.
+            {pr.notFixed.length > 0 ? " Below is how far each finding got." : ""}
+          </p>
           <NotFixed pr={pr} />
         </>
       );
@@ -154,15 +159,35 @@ function Preview({ pr }: { pr: TaskPullRequest }) {
   );
 }
 
+/** Symptoms (a loop, a spent step budget, a long wait) that stopped firing once a committed fix was applied. */
+function AlsoResolved({ pr }: { pr: TaskPullRequest }) {
+  if (!pr.alsoResolved || pr.alsoResolved.length === 0) return null;
+  return (
+    <div>
+      <h4 className="text-caption text-smoke">Also resolved</h4>
+      <ul className="mt-1.5 space-y-1.5">
+        {pr.alsoResolved.map((item) => (
+          <li key={item.findingId} className="text-caption text-ash">
+            <span className="font-mono tracking-normal text-smoke">{item.findingId}</span> {item.summary && <span className="text-bone">{item.summary} </span>}
+            No longer fired once the fix for <span className="font-mono tracking-normal text-smoke">{item.by}</span> was applied.
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Every finding that did not ship, with the furthest stage it reached and why it stopped there. */
 function NotFixed({ pr }: { pr: TaskPullRequest }) {
   if (pr.notFixed.length === 0) return null;
   return (
     <div>
       <h4 className="text-caption text-smoke">Found, not fixed</h4>
       <ul className="mt-1.5 space-y-1.5">
-        {pr.notFixed.map((item) => (
-          <li key={item.findingId} className="text-caption text-ash">
-            <span className="font-mono tracking-normal text-smoke">{item.findingId}</span> {item.reason}
+        {pr.notFixed.map((item, index) => (
+          <li key={`${item.findingId}-${index}`} className="text-caption text-ash">
+            <span className="font-mono tracking-normal text-smoke">{item.findingId}</span> {item.summary && <span className="text-bone">{item.summary} </span>}
+            {item.reason}
           </li>
         ))}
       </ul>

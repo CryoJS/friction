@@ -238,7 +238,8 @@ export function describeFix(snapshot: RunSnapshot, fix: MappedFix, workerUrl: st
   const { primaryStepNumber, evidenceUrl, finding } = describeFinding(snapshot, fix, workerUrl);
   return {
     finding: { ...finding, stepNumber: primaryStepNumber },
-    fix: { summary: fix.summary, patchJs: fix.patchJs, sourceFile: fix.sourceFile, before: fix.before, after: fix.after },
+    fix: { summary: fix.summary, patchJs: fix.patchJs, sourceFile: fix.sourceFile, before: fix.before, after: fix.after, note: fix.note },
+    alsoResolved: fix.alsoResolved,
     evidenceUrl,
     primaryReplayUrl: snapshot.run.replayUrl,
     verifyReplayUrl: fix.replayUrl ?? null,
@@ -246,7 +247,7 @@ export function describeFix(snapshot: RunSnapshot, fix: MappedFix, workerUrl: st
 }
 
 /** Everything the PR says about the finding, read from the recorded run. */
-export function describeFinding(snapshot: RunSnapshot, fix: FixRecord, workerUrl: string) {
+export function describeFinding(snapshot: RunSnapshot, fix: Pick<FixRecord, "findingId" | "summary"> & Partial<Pick<FixRecord, "category">>, workerUrl: string) {
   const primary = snapshot.events.filter((e) => e.lane === "primary");
   const steps = primary.filter((e): e is StepEvent => e.type === "step").sort((a, b) => a.seq - b.seq);
   // The latest emission of the finding carries its final hit count.

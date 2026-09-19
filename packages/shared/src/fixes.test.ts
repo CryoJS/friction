@@ -7,7 +7,14 @@ import {
   checkGeneratedFile,
   describeComparison,
   guardPatch,
+  describeNotSelected,
   judgeVerification,
+  patchSearchTerms,
+  planRetries,
+  planVerification,
+  routeHits,
+  routeSearchTerms,
+  visibleTextTerms,
   rankSearchHits,
   searchTermsFor,
   selectTopFindings,
@@ -17,6 +24,8 @@ import {
   pullRequestTitle,
   validatePatch,
   type PullRequestFacts,
+  type SelectableFinding,
+  type Verdict,
   type VerifyObservation,
 } from "./fixes";
 
@@ -92,6 +101,90 @@ describe("selectTopFindings", () => {
   });
 });
 
+describe("planVerification", () => {
+  const f = (findingId: string, category: SelectableFinding["category"], severity: number, confidence: number, selector = "", url = "https://shop.example/collections/mens"): SelectableFinding => ({
+    findingId,
+    category,
+    severity,
+    confidence,
+    hitCount: 1,
+    selector,
+    url,
+  });
+
+  it("verifies the dead_click (sev 3) before the step_budget (sev 4): causes before symptoms", () => {
+    const plan = planVerification([f("f18", "step_budget", 4, 0.9), f("f10", "dead_click", 3, 0.98, "xpath=/html[1]/body[1]/main[1]/div[3]/div[1]/button[2]")], 2);
+    expect(plan.selected.map((x) => x.findingId)).toEqual(["f10", "f18"]);
+    expect(planVerification([f("f18", "step_budget", 4, 0.9), f("f10", "dead_click", 3, 0.98, "button#a")], 1).selected.map((x) => x.findingId)).toEqual(["f10"]);
+  });
+
+  it("two findings on one selector verify once: the higher-ranked fixable one", () => {
+    // Scan s_7oqpezr9mf task 2: dead_click and ambiguous_label on the same wishlist button.
+    const button = "xpath=/html[1]/body[1]/main[1]/div[3]/article[1]/button[2]";
+    const plan = planVerification([f("f9", "ambiguous_label", 3, 0.98, button), f("f7", "dead_click", 4, 0.94, button), f("f14", "loop", 4, 0.97, "xpath=/html[1]/body[1]/main[1]/div[3]/article[1]/a[1]")], 3);
+    expect(plan.selected.map((x) => x.findingId)).toEqual(["f7", "f14"]);
+    expect(plan.notSelected).toEqual([{ finding: expect.objectContaining({ findingId: "f9" }), why: "same_cause", sameCauseAs: "f7" }]);
+  });
+
+  it("a symptom on the fixable finding's element is the same cause, whatever its severity", () => {
+    // Scan s_t9bui7z4uw task 5: loop sev 4 and dead_click sev 3, both on the search input.
+    const input = "xpath=/html[1]/body[1]/header[1]/form[1]/input[1]";
+    const plan = planVerification([f("f23", "loop", 4, 0.87, input), f("f8", "dead_click", 3, 0.91, input), f("f20", "step_budget", 3, 0.77)], 3);
+    expect(plan.selected.map((x) => x.findingId)).toEqual(["f8", "f20"]);
+    expect(plan.notSelected[0]).toMatchObject({ why: "same_cause", sameCauseAs: "f8" });
+  });
+
+  it("the same structural xpath on another page is another element, and findings with no element are never merged", () => {
+    const xpath = "xpath=/html[1]/body[1]/main[1]/div[3]/article[1]/a[1]";
+    const plan = planVerification(
+      [f("a", "dead_click", 3, 0.9, xpath, "https://shop.example/collections/mens/"), f("b", "dead_click", 3, 0.8, xpath, "https://shop.example/collections/womens"), f("c", "loop", 3, 0.9), f("d", "step_budget", 3, 0.8)],
+      5,
+    );
+    expect(plan.selected.map((x) => x.findingId)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("says why the rest were not selected", () => {
+    const plan = planVerification([f("a", "dead_click", 5, 0.9, "#a"), f("b", "retry", 4, 0.9, "#b"), f("c", "error_text", 3, 0.9, "#c"), f("d", "loop", 5, 0.99)], 2);
+    expect(plan.selected.map((x) => x.findingId)).toEqual(["a", "b"]);
+    expect(plan.notSelected.map((x) => [x.finding.findingId, x.why])).toEqual([
+      ["c", "below_cut"],
+      ["d", "symptom"],
+    ]);
+    expect(describeNotSelected(plan.notSelected[1]!, "loop")).toMatch(/loop is a symptom/);
+    expect(describeNotSelected({ why: "same_cause", sameCauseAs: "f7" }, "ambiguous_label")).toMatch(/same element as f7/);
+    expect(planVerification([f("a", "dead_click", 5, 0.9)], 0).selected).toEqual([]);
+  });
+});
+
+describe("planRetries", () => {
+  const verdict = (reason: Verdict["reason"], stage: Verdict["stage"] = "rejected"): Verdict => ({ stage, reason, note: "" });
+  const attempt = (findingId: string, category: SelectableFinding["category"], v: Verdict, attempts = 1) => ({ findingId, category, verdict: v, attempts });
+
+  it("retries a fixable finding whose patch ran and whose category still fires", () => {
+    expect(planRetries([attempt("f10", "dead_click", verdict("still_fires"))], { used: 1, maxRuns: 4 })).toEqual(["f10"]);
+  });
+
+  it("never retries a symptom, a verified fix, a run that proved nothing, or a second time", () => {
+    const attempts = [
+      attempt("a", "loop", verdict("still_fires")),
+      attempt("b", "dead_click", verdict("no_longer_fires", "verified")),
+      attempt("c", "dead_click", verdict("patch_inactive")),
+      attempt("d", "dead_click", verdict("errored")),
+      attempt("e", "dead_click", verdict("not_reached")),
+      attempt("f", "dead_click", verdict("still_fires"), 2),
+    ];
+    expect(planRetries(attempts, { used: 0, maxRuns: 10 })).toEqual([]);
+  });
+
+  it("a retry never exceeds the cap", () => {
+    const three = ["a", "b", "c"].map((id) => attempt(id, "dead_click", verdict("still_fires")));
+    expect(planRetries(three, { used: 3, maxRuns: 4 })).toEqual(["a"]);
+    expect(planRetries(three, { used: 4, maxRuns: 4 })).toEqual([]);
+    expect(planRetries(three, { used: 5, maxRuns: 4 })).toEqual([]);
+    for (let used = 0; used <= 6; used++) expect(used + planRetries(three, { used, maxRuns: 4 }).length).toBeLessThanOrEqual(Math.max(used, 4));
+  });
+});
+
 describe("describeComparison", () => {
   it("states both sides concretely", () => {
     expect(describeComparison({ outcome: "timeout", steps: 13, durationMs: 1 }, { outcome: "success", steps: 4, durationMs: 1 })).toBe(
@@ -144,6 +237,121 @@ describe("judgeVerification", () => {
   it("a success that stays a success is not an outcome flip: it needs the category gone", () => {
     const ok = { outcome: "success" as const, steps: 15, durationMs: 1 };
     expect(judgeVerification({ category: "dead_click", before: ok, after: observed({ result: ok, categoryHits: 2 }) }).stage).toBe("rejected");
+  });
+});
+
+describe("judgeVerification, from the rejections of three live scans (2026-09-19)", () => {
+  const lane = (outcome: "success" | "failure" | "timeout", steps: number) => ({ outcome, steps, durationMs: 1 });
+  const seen = (result: ReturnType<typeof lane>, over: Partial<VerifyObservation> = {}): VerifyObservation => ({ result, errored: false, patchActive: true, categoryHits: 0, reachedFindingPage: false, ...over });
+
+  it("2 steps, down from 15: the fix removed the need to reach the page, so it is verified, and the note has both numbers", () => {
+    for (const category of ["step_budget", "retry"] as const) {
+      const verdict = judgeVerification({ category, before: lane("success", 15), after: seen(lane("success", 2)), categoryHitsBefore: 1 });
+      expect(verdict).toMatchObject({ stage: "verified", reason: "fewer_steps" });
+      expect(verdict.note).toBe(`With the fix, the agent completed the task in 2 steps, down from 15 steps; ${category} no longer needed to be passed.`);
+    }
+  });
+
+  it("15 steps and a timeout, against 15 steps and a timeout: never reached, nothing better, rejected", () => {
+    const verdict = judgeVerification({ category: "ambiguous_label", before: lane("timeout", 15), after: seen(lane("timeout", 15)), categoryHitsBefore: 1 });
+    expect(verdict).toMatchObject({ stage: "rejected", reason: "not_reached" });
+    expect(verdict.note).toMatch(/never reached the page where ambiguous_label happened/);
+  });
+
+  it("gave up after 8 steps, down from 15 and giving up: giving up sooner is not an improvement", () => {
+    expect(judgeVerification({ category: "loop", before: lane("failure", 15), after: seen(lane("failure", 8)), categoryHitsBefore: 1 })).toMatchObject({ stage: "rejected", reason: "not_reached" });
+  });
+
+  it("a worse outcome is rejected however few steps it took", () => {
+    // "dead_click still fires (1 time); the agent gave up after 8 steps, down from 15 steps."
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("failure", 8), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 1 }).stage).toBe("rejected");
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("failure", 2)), categoryHitsBefore: 1 }).stage).toBe("rejected");
+  });
+
+  it("a category that went quiet because the task broke is not a fix", () => {
+    // Was verified before this rule: "loop no longer fires; the agent gave up after 9 steps, down from 14 steps." The primary run had completed the task.
+    const verdict = judgeVerification({ category: "loop", before: lane("success", 14), after: seen(lane("failure", 9), { reachedFindingPage: true }), categoryHitsBefore: 2 });
+    expect(verdict).toMatchObject({ stage: "rejected", reason: "outcome_worse" });
+    expect(verdict.note).toBe("loop no longer fires, but with the fix the agent no longer completed the task: it gave up after 9 steps, down from 14 steps.");
+    // Failing both times is not worse: the category going quiet still counts.
+    expect(judgeVerification({ category: "loop", before: lane("timeout", 15), after: seen(lane("failure", 9), { reachedFindingPage: true }) })).toMatchObject({ stage: "verified", reason: "no_longer_fires" });
+  });
+
+  it("fewer hits AND clearly fewer steps is verified; the same hits, or a step of variance, is not", () => {
+    const fewer = judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("success", 6), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 3 });
+    expect(fewer).toMatchObject({ stage: "verified", reason: "fewer_steps" });
+    expect(fewer.note).toBe("With the fix, the agent completed the task in 6 steps, down from 15 steps; dead_click fired 1 time, down from 3 times.");
+    // "long_wait still fires (1 time); the agent completed the task in 2 steps, down from 5 steps.": as many hits as before.
+    expect(judgeVerification({ category: "long_wait", before: lane("success", 5), after: seen(lane("success", 2), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 1 })).toMatchObject({ stage: "rejected", reason: "still_fires" });
+    // "dead_click still fires (2 times); the agent completed the task in 4 steps, down from 5 steps."
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 5), after: seen(lane("success", 4), { categoryHits: 2, reachedFindingPage: true }), categoryHitsBefore: 1 }).stage).toBe("rejected");
+    // "loop still fires (2 times); the agent completed the task in 14 steps, down from 15 steps."
+    expect(judgeVerification({ category: "loop", before: lane("success", 15), after: seen(lane("success", 14), { categoryHits: 2, reachedFindingPage: true }), categoryHitsBefore: 1 }).stage).toBe("rejected");
+    // Without the primary run's hit count, fewer hits cannot be claimed.
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("success", 6), { categoryHits: 1, reachedFindingPage: true }) }).stage).toBe("rejected");
+  });
+
+  it("the step drop must be at least 2 and at least 30%", () => {
+    const judge = (beforeSteps: number, afterSteps: number) => judgeVerification({ category: "retry", before: lane("success", beforeSteps), after: seen(lane("success", afterSteps)) }).stage;
+    expect(judge(15, 11)).toBe("rejected"); // 27%
+    expect(judge(15, 10)).toBe("verified"); // 33%
+    expect(judge(3, 2)).toBe("rejected"); // 33%, but one step
+    expect(judge(4, 2)).toBe("verified");
+    expect(judge(9, 9)).toBe("rejected");
+  });
+
+  it("no change from before, an errored run and an inactive patch are still rejected", () => {
+    expect(judgeVerification({ category: "step_budget", before: lane("success", 15), after: seen(lane("success", 15), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 1 }).note).toMatch(/no change from before/);
+    expect(judgeVerification({ category: "retry", before: lane("success", 15), after: seen(lane("success", 2), { errored: true }) })).toMatchObject({ stage: "rejected", reason: "errored" });
+    expect(judgeVerification({ category: "retry", before: lane("success", 15), after: seen(lane("success", 2), { patchActive: false }) })).toMatchObject({ stage: "rejected", reason: "patch_inactive" });
+  });
+
+  it("the golden run's verdicts stand: f13 verified, f15 rejected", () => {
+    const before = { outcome: "failure" as const, steps: 14, durationMs: 55_230 };
+    expect(judgeVerification({ category: "dead_click", before, after: seen({ outcome: "success", steps: 11, durationMs: 48_160 }, { reachedFindingPage: true }), categoryHitsBefore: 2 })).toMatchObject({ stage: "verified", reason: "outcome_improved" });
+    const f15 = judgeVerification({ category: "retry", before, after: seen({ outcome: "timeout", steps: 15, durationMs: 58_380 }, { categoryHits: 2, reachedFindingPage: true }), categoryHitsBefore: 2 });
+    expect(f15).toMatchObject({ stage: "rejected", reason: "still_fires" });
+    expect(f15.note).toBe("retry still fires (2 times); the agent timed out after 15 steps, up from 14 steps and giving up.");
+  });
+});
+
+describe("mapping fallbacks", () => {
+  it("reads the selectors a verified patch looked its element up with", () => {
+    const patch = [
+      "try {",
+      "  document.addEventListener('click', (e) => {",
+      "    const a = e.target.closest('a');",
+      '    const card = e.target.closest("[data-product-card]");',
+      "    const button = document.querySelector('button.wishlist-toggle, #wishlist-count');",
+      "    if (card.matches(`[aria-label=\"Add to wishlist\"]`)) document.getElementById('size-error').hidden = false;",
+      "    document.querySelector(name);",
+      "  }, true);",
+      "} catch (e) {}",
+    ].join("\n");
+    expect(patchSearchTerms(patch)).toEqual(["data-product-card", "wishlist-toggle", "wishlist-count", "Add to wishlist", "size-error"]);
+    expect(patchSearchTerms("try { document.body.click(); } catch (e) {}")).toEqual([]);
+  });
+
+  it("breaks a rendered label into the parts a template would hold", () => {
+    expect(visibleTextTerms(["Add to wishlist: Alpine Down Parka"])).toEqual(["Add to wishlist", "Alpine Down Parka", "Add to", "Alpine Down"]);
+    expect(visibleTextTerms(["Add Alpine Down Parka to cart"])).toEqual(["Add Alpine Down", "Add Alpine"]);
+    expect(visibleTextTerms(["Search", ""])).toEqual([]);
+  });
+
+  it("turns the finding's route into path terms", () => {
+    expect(routeSearchTerms("https://shop.example/products/alpine-parka?size=m#top")).toEqual(["products", "alpine-parka"]);
+    expect(routeSearchTerms("https://shop.example/collections/mens-jackets/")).toEqual(["collections", "mens-jackets"]);
+    expect(routeSearchTerms("https://shop.example/")).toEqual(["index"]);
+    expect(routeSearchTerms("https://shop.example/about.html")).toEqual(["about"]);
+    expect(routeSearchTerms("not a url")).toEqual([]);
+  });
+
+  it("matches route terms against file paths under a routes directory only, and the hits are ranked like any other", () => {
+    const paths = ["src/pages/products/[slug].astro", "src/pages/index.astro", "src/components/products/Grid.astro", "app/products/page.tsx", "routes/products.test.ts", "README.md", ".github/workflows/products.yml"];
+    const hits = routeHits(paths, ["products", "alpine-parka"]);
+    expect(hits.map((h) => h.path)).toEqual(["src/pages/products/[slug].astro", "app/products/page.tsx", "routes/products.test.ts"]);
+    expect(rankSearchHits(hits, ["products", "alpine-parka"]).map((h) => h.path)).toEqual(["app/products/page.tsx", "src/pages/products/[slug].astro"]);
+    expect(routeHits(paths, ["index"]).map((h) => h.path)).toEqual(["src/pages/index.astro"]);
   });
 });
 
