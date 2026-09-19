@@ -89,56 +89,56 @@ const DEFAULTS: Readonly<Record<FrictionCategory, HeuristicJudgement>> = {
   dead_click: {
     severity: 4,
     confidence: 0.8,
-    whyItMatters: "The control looked clickable but gave no feedback, so the user cannot tell whether the site registered the click.",
-    recommendation: "Make the control respond to every click: perform the action, or show a visible disabled state or an inline message that says what is missing.",
+    whyItMatters: "The click does nothing and says nothing, so the user is stuck.",
+    recommendation: "Respond to every click: act, look disabled, or say what is missing.",
   },
   loop: {
     severity: 3,
     confidence: 0.7,
-    whyItMatters: "Coming back to the same page again and again means the user is not finding a way forward from it.",
-    recommendation: "Review the ways out of this page: make the next step obvious, and carry filters and selections across the round trip.",
+    whyItMatters: "The user keeps landing back here with no way forward.",
+    recommendation: "Make the next step obvious and keep selections across the round trip.",
   },
   retry: {
     severity: 3,
     confidence: 0.75,
-    whyItMatters: "Repeating the same action signals that the first attempt produced no result the user could perceive.",
-    recommendation: "Give immediate feedback for the action (loading state, confirmation or error) so nobody needs to repeat it.",
+    whyItMatters: "The first attempt showed no result, so the user tried again.",
+    recommendation: "Show a loading, success or error state on every action.",
   },
   step_budget: {
     severity: 3,
     confidence: 0.7,
-    whyItMatters: "The task is taking more steps than a typical user will tolerate, which drives abandonment.",
-    recommendation: "Shorten the path: remove interstitials, surface key options earlier and cut the number of page loads.",
+    whyItMatters: "The path is longer than most users will sit through.",
+    recommendation: "Cut steps: fewer interstitials, fewer page loads, key options earlier.",
   },
   error_text: {
     severity: 3,
     confidence: 0.75,
-    whyItMatters: "An error interrupted the flow. When it only appears after the user commits, it reads as a rejection.",
-    recommendation: "Prevent the error earlier (disable invalid options, validate inline) and make the message say how to fix the problem.",
+    whyItMatters: "The error lands only after the user commits, so it reads as a rejection.",
+    recommendation: "Validate inline and say how to fix it, not just what failed.",
   },
   modal_interrupt: {
     severity: 3,
     confidence: 0.7,
-    whyItMatters: "An overlay the user did not ask for covered the page and had to be dealt with before they could continue.",
-    recommendation: "Delay or remove the overlay during task flows, and make dismissing it a single obvious action.",
+    whyItMatters: "An uninvited overlay blocked the page mid-task.",
+    recommendation: "Hold overlays until the task is done; make dismissing them one click.",
   },
   long_wait: {
     severity: 3,
     confidence: 0.85,
-    whyItMatters: "Waits over five seconds break the user's flow; many assume the site is broken and leave.",
-    recommendation: "Speed up the response, or acknowledge the wait immediately with a skeleton or progress indicator.",
+    whyItMatters: "Waits over five seconds read as broken, and users leave.",
+    recommendation: "Cut the response time, or show a skeleton the instant it starts.",
   },
   keyboard_trap: {
     severity: 5,
     confidence: 0.85,
-    whyItMatters: "Pressing Tab did not move focus, so anyone relying on the keyboard cannot continue at all. This fails WCAG 2.1.2 (No Keyboard Trap).",
-    recommendation: "Manage focus explicitly: move it into overlays when they open, keep Tab cycling inside them, and restore it on close.",
+    whyItMatters: "Tab does not move focus, so keyboard users are stuck. Fails WCAG 2.1.2.",
+    recommendation: "Move focus into overlays, cycle Tab inside them, restore it on close.",
   },
   ambiguous_label: {
     severity: 2,
     confidence: 0.7,
-    whyItMatters: "Several controls share one accessible name, so assistive-technology users cannot tell them apart.",
-    recommendation: "Give each control a unique accessible name that includes its context, for example the product it belongs to.",
+    whyItMatters: "Controls share one accessible name, so screen-reader users cannot tell them apart.",
+    recommendation: "Give each control a unique name that includes its context.",
   },
 };
 
@@ -449,8 +449,8 @@ export const FRICTION_JUDGEMENT_JSON_SCHEMA = {
   properties: {
     category: { type: "string", enum: [...FRICTION_CATEGORIES], description: "Echo the category you were given." },
     severity: { type: "integer", enum: [1, 2, 3, 4, 5], description: "1 cosmetic, 2 minor, 3 moderate, 4 major, 5 blocks the task." },
-    whyItMatters: { type: "string", description: "Two sentences at most: the impact on this kind of user." },
-    recommendation: { type: "string", description: "A concrete fix a front-end developer could ship this week." },
+    whyItMatters: { type: "string", description: "One line, 15 words at most: the concrete cost to this user. No preamble, no restating the observation." },
+    recommendation: { type: "string", description: "One line, 15 words at most, starting with a verb: a concrete fix a front-end developer could ship this week." },
     confidence: { type: "number", description: "0 to 1: how sure you are that this is real friction and not an artefact." },
   },
 } as const;
@@ -488,7 +488,8 @@ export function buildJudgeRequest(candidate: FrictionCandidate, context: JudgeCo
       "You are a senior UX researcher reviewing an automated usability session. " +
       "A deterministic detector has already established WHAT happened; do not dispute it and do not change the category. " +
       "Your job is the judgement: how bad it is for this kind of user, why, and what to fix. " +
-      "Be specific to the page and element involved, never generic. Lower your confidence if the evidence could be an automation artefact rather than a real usability problem.",
+      "Be specific to the page and element involved, never generic. Lower your confidence if the evidence could be an automation artefact rather than a real usability problem. " +
+      "Write like a bug tracker: each text field is ONE line of 15 words at most, with no preamble, no hedging and no repeating what the detector already observed.",
     input: [
       `Task the user was attempting: ${context.task}`,
       "User: a competent adult visiting the site for the first time.",

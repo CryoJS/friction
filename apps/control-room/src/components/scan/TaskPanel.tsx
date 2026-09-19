@@ -81,7 +81,7 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
         <h3 className="font-heading text-subheading text-bone">
           Issues in this task <span className="tabular-nums text-smoke">{ranked.length}</span>
         </h3>
-        <div className="mt-3 space-y-4">
+        <div className="mt-3 space-y-2">
           {ranked.length === 0 && <p className="text-caption text-smoke">{report ? "None so far." : "Building the report…"}</p>}
           {ranked.map(({ issue, rank }) => (
             <IssueCard key={issue.key} issue={issue} rank={rank} onSelect={onSelect} />

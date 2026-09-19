@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { GOLDEN_RUN_ID, type StepPayload } from "@friction/shared";
+import { type StepPayload } from "@friction/shared";
 import { Landing } from "./components/Landing";
 import { Nav } from "./components/Nav";
 import { LanePane } from "./components/LanePane";
 import { ReportView } from "./components/ReportView";
 import { RoomComparison } from "./components/RoomComparison";
 import { RunBar } from "./components/RunBar";
-import { Play, Plus, Sparkle } from "./components/icons";
+import { Plus, Sparkle } from "./components/icons";
 import { ScanPage } from "./components/scan/ScanPage";
 import { useReport } from "./hooks/useReport";
 import { useRunStream } from "./hooks/useRunStream";
@@ -82,16 +82,7 @@ export default function App() {
   if (!runId) {
     return (
       <div className="flex h-full flex-col">
-        <Nav
-          onHome={goHome}
-          frosted={overHero}
-          action={
-            <button type="button" onClick={() => openRun(GOLDEN_RUN_ID, true)} className="pill-cta h-8.5 px-4 text-ui">
-              <Play size={12} />
-              Watch the demo
-            </button>
-          }
-        >
+        <Nav onHome={goHome} frosted={overHero}>
           <a href="#how" className="pill-ghost hidden border-transparent md:inline-flex">
             How it works
           </a>

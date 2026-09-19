@@ -1,6 +1,7 @@
 import { FRICTION_LABELS, scanNodeId, type ScanIssue } from "@friction/shared";
 import { EvidenceImage } from "../EvidenceImage";
 import { SEVERITY_STYLES, SeverityBadge, categoryLabel } from "../badges";
+import { Plus } from "../icons";
 
 interface Props {
   issue: ScanIssue;
@@ -9,13 +10,47 @@ interface Props {
   onSelect: (nodeId: string) => void;
 }
 
-/** One merged issue: how bad, how widespread, the evidence, and every run that hit it. */
+/**
+ * One merged issue, collapsed to a single scannable row: rank, severity,
+ * what it is, how widespread. Opening it shows the evidence, the three
+ * one-line bullets (what, cost, fix) and every run that hit it.
+ */
 export function IssueCard({ issue, rank, onSelect }: Props) {
   const style = SEVERITY_STYLES[issue.severity];
+  const bullets = [
+    issue.summary && { label: null, text: issue.summary },
+    issue.whyItMatters && { label: "Cost", text: issue.whyItMatters },
+    { label: "Fix", text: issue.recommendation },
+  ].filter((bullet): bullet is { label: string | null; text: string } => Boolean(bullet));
 
   return (
-    <article className="overflow-hidden rounded-card border border-hairline/10 bg-white/4">
-      <div className="p-3 pb-0">
+    <details className="group overflow-hidden rounded-card border border-hairline/10 bg-white/4">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-white/4 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="font-heading text-subheading tabular-nums leading-none text-ash">{String(rank).padStart(2, "0")}</span>
+            <h3 className="truncate font-heading text-subheading leading-none text-white" title={FRICTION_LABELS[issue.category].blurb}>
+              {categoryLabel(issue.category)}
+            </h3>
+            <SeverityBadge severity={issue.severity} />
+          </div>
+          <p className="mt-1.5 truncate text-caption text-smoke">
+            <span className="tabular-nums text-bone">
+              {issue.runsHit}/{issue.totalRuns}
+            </span>{" "}
+            runs
+            {issue.page && (
+              <>
+                {" · "}
+                <span className="font-mono tracking-normal">{issue.page}</span>
+              </>
+            )}
+          </p>
+        </div>
+        <Plus size={14} className="shrink-0 text-ash transition-transform duration-300 ease-out group-open:rotate-45" />
+      </summary>
+
+      <div className="space-y-4 border-t border-hairline/10 p-5">
         {issue.evidence ? (
           <div className="overflow-hidden rounded-xl">
             <EvidenceImage
@@ -25,40 +60,22 @@ export function IssueCard({ issue, rank, onSelect }: Props) {
             />
           </div>
         ) : (
-          <div className="flex aspect-video items-center justify-center rounded-xl bg-graphite px-6 text-center text-caption text-smoke">
-            The evidence step was never received.
-          </div>
+          <div className="flex aspect-video items-center justify-center rounded-xl bg-graphite text-caption text-smoke">No evidence captured.</div>
         )}
-      </div>
 
-      <div className="px-5 pb-5 pt-4">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="font-heading text-subheading tabular-nums leading-none text-ash">{String(rank).padStart(2, "0")}</span>
-          <SeverityBadge severity={issue.severity} withLabel />
-        </div>
-        <h3 className="mt-3 font-heading text-subheading text-white" title={FRICTION_LABELS[issue.category].blurb}>
-          {categoryLabel(issue.category)}
-        </h3>
-        <p className="mt-1 text-caption text-smoke">
-          Hit in{" "}
-          <span className="tabular-nums text-bone">
-            {issue.runsHit}/{issue.totalRuns}
-          </span>{" "}
-          runs
-          {issue.page && (
-            <>
-              {" · "}
-              <span className="font-mono tracking-normal">{issue.page}</span>
-            </>
-          )}
-        </p>
-        {issue.summary && <p className="mt-3 text-ui leading-snug text-bone">{issue.summary}</p>}
-        {issue.whyItMatters && <p className="mt-1.5 text-ui text-ash">{issue.whyItMatters}</p>}
-        <p className="mt-3 rounded-ui border border-hairline/15 px-3 py-2 text-ui text-ash">
-          <span className="text-bone">Fix: </span>
-          {issue.recommendation}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label="Tasks that hit this issue">
+        <ul className="space-y-2">
+          {bullets.map((bullet) => (
+            <li key={bullet.label ?? "what"} className="flex gap-2.5 text-ui leading-snug text-ash">
+              <span aria-hidden="true" className={`mt-2 h-1 w-1 shrink-0 rounded-full ${style.dot}`} />
+              <span>
+                {bullet.label && <span className="text-bone">{bullet.label}: </span>}
+                {bullet.text}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tasks that hit this issue">
           {issue.taskIndexes.map((taskIndex) => (
             <button
               key={taskIndex}
@@ -71,6 +88,6 @@ export function IssueCard({ issue, rank, onSelect }: Props) {
           ))}
         </div>
       </div>
-    </article>
+    </details>
   );
 }

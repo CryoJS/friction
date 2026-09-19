@@ -8,8 +8,8 @@ interface Props {
   frosted?: boolean;
   /** Links or tabs, between the logo and the action. */
   children?: React.ReactNode;
-  /** The one white pill. */
-  action: React.ReactNode;
+  /** The one white pill, where a view has one. */
+  action?: React.ReactNode;
 }
 
 /** A detached, frosted bar that floats 16px off the top of the viewport. */
@@ -27,7 +27,7 @@ export function Nav({ onHome, compact = false, frosted = false, children, action
           <span className={`text-[15px] text-white ${compact ? "max-sm:sr-only" : ""}`}>Friction</span>
         </button>
         {children && <div className="flex min-w-0 items-center gap-1">{children}</div>}
-        <div className="ml-1 shrink-0">{action}</div>
+        {action && <div className="ml-1 shrink-0">{action}</div>}
       </nav>
     </header>
   );
