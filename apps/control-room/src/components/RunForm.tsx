@@ -53,7 +53,7 @@ export function RunForm({ onStarted }: Props) {
   async function start(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!normalizedUrl || !form.task.trim()) {
-      setError(normalizedUrl ? "Describe the task the personas should attempt." : "Enter a valid website URL.");
+      setError(normalizedUrl ? "Describe the task the agent should attempt." : "Enter a valid website URL.");
       (normalizedUrl ? taskField : urlField).current?.focus();
       return;
     }

@@ -49,7 +49,7 @@ export function normalizeUrlForVisit(input: string): string {
 
 export const FRICTION_LABELS: Readonly<Record<FrictionCategory, { label: string; blurb: string }>> = {
   dead_click: { label: "Dead click", blurb: "A click produced no visible response." },
-  loop: { label: "Navigation loop", blurb: "The persona kept landing on the same page." },
+  loop: { label: "Navigation loop", blurb: "The agent kept landing on the same page." },
   retry: { label: "Retry", blurb: "The same action had to be repeated." },
   step_budget: { label: "Step budget", blurb: "The task took more steps than it should." },
   error_text: { label: "Error message", blurb: "The site showed an error or validation message." },

@@ -14,24 +14,27 @@
  * SDKs and API keys. If the call fails, times out, or returns junk, the
  * candidate's heuristic judgement is used instead: a run never loses a finding
  * because the model hiccuped.
+ *
+ * Detectors report every OCCURRENCE. Findings are deduplicated per lane by
+ * category + selector (findingKey): hitting the same wall three times is one
+ * finding with hitCount 3, and that repetition is itself the signal.
  */
 import { z } from "zod";
 import {
   FRICTION_CATEGORIES,
   FrictionCategorySchema,
-  PERSONA_IDS,
+  LANES,
   SeveritySchema,
   isDoneEvent,
   isStepEvent,
   type ActionType,
   type FrictionCategory,
   type FrictionPayload,
-  type PersonaId,
+  type Lane,
   type RunEvent,
   type Severity,
   type StepEvent,
 } from "./events";
-import type { PersonaDefinition } from "./personas";
 import { clamp, normalizeUrlForVisit } from "./util";
 
 /* --------------------------------------------------------------- thresholds */
@@ -61,10 +64,19 @@ export interface FrictionCandidate {
    * every step; callers emit each key once.
    */
   key: string;
-  personaId: PersonaId;
+  lane: Lane;
+  /** Verify lane: which fix's run this came from. */
+  fixId?: string;
   category: FrictionCategory;
   /** seq of the step event that evidences the finding. */
   evidenceSeq: number;
+  /** Selector of the element involved ("" when the action had no target). */
+  selector: string;
+  /**
+   * Dedupe identity within a lane: category + selector. Occurrences that share
+   * it are one finding hit several times (see tallyFindings).
+   */
+  findingKey: string;
   /** Deterministic one-line description of what was observed. */
   summary: string;
   /** Used verbatim when no model judgement is available. */
@@ -119,7 +131,7 @@ const DEFAULTS: Readonly<Record<FrictionCategory, HeuristicJudgement>> = {
   keyboard_trap: {
     severity: 5,
     confidence: 0.85,
-    whyItMatters: "A keyboard-only user cannot move focus, so they cannot continue at all. This fails WCAG 2.1.2 (No Keyboard Trap).",
+    whyItMatters: "Pressing Tab did not move focus, so anyone relying on the keyboard cannot continue at all. This fails WCAG 2.1.2 (No Keyboard Trap).",
     recommendation: "Manage focus explicitly: move it into overlays when they open, keep Tab cycling inside them, and restore it on close.",
   },
   ambiguous_label: {
@@ -171,7 +183,29 @@ function sameAction(a: StepEvent | undefined, b: StepEvent | undefined): boolean
   );
 }
 
-function detectForPersona(personaId: PersonaId, events: readonly RunEvent[]): FrictionCandidate[] {
+/**
+ * The selector part of a finding's identity. The element's selector when there
+ * is one; otherwise the most specific thing the category is about, so two
+ * unrelated selector-less hits never merge into one finding.
+ */
+function identityOf(category: FrictionCategory, step: StepEvent, facts: FrictionCandidate["facts"]): string {
+  const p = step.payload;
+  const target = p.selector || (p.targetLabel.trim() ? `label:${p.targetLabel.trim().toLowerCase()}` : `page:${normalizeUrlForVisit(p.url)}`);
+  switch (category) {
+    case "modal_interrupt":
+      return `modal:${String(facts.modalLabel ?? "").toLowerCase()}`;
+    case "loop":
+      return `page:${normalizeUrlForVisit(p.url)}`;
+    case "step_budget":
+      return "run";
+    case "error_text":
+      return `${target}|${String(facts.errorText ?? "").toLowerCase()}`;
+    default:
+      return target;
+  }
+}
+
+function detectForTrack(lane: Lane, fixId: string | undefined, events: readonly RunEvent[]): FrictionCandidate[] {
   const steps = events.filter(isStepEvent).sort((a, b) => a.seq - b.seq);
   const success = events.find((e) => isDoneEvent(e) && e.payload.outcome === "success");
   const out: FrictionCandidate[] = [];
@@ -184,21 +218,25 @@ function detectForPersona(personaId: PersonaId, events: readonly RunEvent[]): Fr
     facts: FrictionCandidate["facts"],
     override: Partial<HeuristicJudgement> = {},
   ): void => {
+    const allFacts: FrictionCandidate["facts"] = {
+      url: step.payload.url,
+      actionType: step.payload.actionType,
+      targetLabel: step.payload.targetLabel,
+      durationMs: step.payload.durationMs,
+      domChanged: step.payload.domChanged,
+      ...facts,
+    };
     out.push({
-      key: `${personaId}:${category}:${discriminator}`,
-      personaId,
+      key: `${lane}${fixId ? `/${fixId}` : ""}:${category}:${discriminator}`,
+      lane,
+      ...(fixId ? { fixId } : {}),
       category,
       evidenceSeq: step.seq,
+      selector: step.payload.selector,
+      findingKey: `${category}:${identityOf(category, step, allFacts)}`,
       summary,
       heuristic: { ...DEFAULTS[category], ...override },
-      facts: {
-        url: step.payload.url,
-        actionType: step.payload.actionType,
-        targetLabel: step.payload.targetLabel,
-        durationMs: step.payload.durationMs,
-        domChanged: step.payload.domChanged,
-        ...facts,
-      },
+      facts: allFacts,
     });
   };
 
@@ -261,8 +299,9 @@ function detectForPersona(personaId: PersonaId, events: readonly RunEvent[]): Fr
       });
     }
 
-    // keyboard_trap: the keyboard persona pressed Tab and focus stayed where it was.
-    if (personaId === "keyboard" && signals.focusMoved === false && (signals.keysPressed ?? []).some(isTab)) {
+    // keyboard_trap: the agent CHOSE to press Tab and focus stayed where it was.
+    // Never inferred from other actions: keyboard behaviour is not forced on the agent.
+    if (p.actionType === "press" && signals.focusMoved === false && (signals.keysPressed ?? []).some(isTab)) {
       // An empty label means focus never left the page body (e.g. an overlay swallows Tab).
       const stuckOn = signals.focusLabel || label;
       const where = stuckOn ? `stuck on "${stuckOn}"` : "stuck on the page body: nothing focusable could be reached";
@@ -305,20 +344,46 @@ function detectForPersona(personaId: PersonaId, events: readonly RunEvent[]): Fr
 }
 
 /**
- * Every friction candidate evidenced by these events. Pure: same input, same
- * output, input untouched. Accepts one persona's events or a whole run; events
- * may arrive in any order (they are ordered by seq per persona internally).
- * Result order: persona (PERSONA_IDS order), then evidence seq.
+ * Every friction candidate (occurrence) evidenced by these events. Pure: same
+ * input, same output, input untouched. Accepts one lane's events or a whole
+ * run; events may arrive in any order. Each track (the primary lane, and each
+ * fix's run in the verify lane) is judged on its own, ordered by seq.
+ * Result order: lane (LANES order), then evidence seq.
  */
 export function detectFriction(events: readonly RunEvent[]): FrictionCandidate[] {
   const out: FrictionCandidate[] = [];
-  for (const personaId of PERSONA_IDS) {
-    const mine = events.filter((e) => e.personaId === personaId);
-    if (mine.length > 0) out.push(...detectForPersona(personaId, mine));
+  for (const lane of LANES) {
+    const tracks = new Map<string | undefined, RunEvent[]>();
+    for (const e of events) {
+      if (e.lane !== lane) continue;
+      const track = lane === "verify" ? e.fixId : undefined;
+      const list = tracks.get(track);
+      if (list) list.push(e);
+      else tracks.set(track, [e]);
+    }
+    for (const [fixId, mine] of tracks) out.push(...detectForTrack(lane, fixId, mine));
   }
-  return out.sort((a, b) =>
-    a.personaId === b.personaId ? a.evidenceSeq - b.evidenceSeq : PERSONA_IDS.indexOf(a.personaId) - PERSONA_IDS.indexOf(b.personaId),
-  );
+  return out.sort((a, b) => (a.lane === b.lane ? a.evidenceSeq - b.evidenceSeq : LANES.indexOf(a.lane) - LANES.indexOf(b.lane)));
+}
+
+export interface FindingTally {
+  findingKey: string;
+  /** The first occurrence: its evidence step is the finding's evidence. */
+  first: FrictionCandidate;
+  /** Every occurrence, first included, in evidence order. */
+  hits: FrictionCandidate[];
+}
+
+/** Occurrences grouped into findings by lane + findingKey. Pure; order of first appearance. */
+export function tallyFindings(candidates: readonly FrictionCandidate[]): FindingTally[] {
+  const byKey = new Map<string, FindingTally>();
+  for (const candidate of candidates) {
+    const id = `${candidate.lane}|${candidate.fixId ?? ""}|${candidate.findingKey}`;
+    const tally = byKey.get(id);
+    if (tally) tally.hits.push(candidate);
+    else byKey.set(id, { findingKey: candidate.findingKey, first: candidate, hits: [candidate] });
+  }
+  return [...byKey.values()];
 }
 
 /** Candidates whose key is not in `alreadyEmitted`. Convenience for the per-step loop. */
@@ -402,8 +467,7 @@ export type StructuredCaller = (request: StructuredRequest) => Promise<unknown>;
 
 export interface JudgeContext {
   task: string;
-  persona: PersonaDefinition;
-  /** Recent steps of this persona, oldest first, for context. */
+  /** Recent steps of this lane, oldest first, for context. */
   recentSteps: readonly StepEvent[];
 }
 
@@ -427,7 +491,7 @@ export function buildJudgeRequest(candidate: FrictionCandidate, context: JudgeCo
       "Be specific to the page and element involved, never generic. Lower your confidence if the evidence could be an automation artefact rather than a real usability problem.",
     input: [
       `Task the user was attempting: ${context.task}`,
-      `Persona: ${context.persona.displayName}. ${context.persona.description}`,
+      "User: a competent adult visiting the site for the first time.",
       `Detected category: ${candidate.category}`,
       `What the detector observed: ${candidate.summary}`,
       `Facts: ${JSON.stringify(candidate.facts)}`,
@@ -468,16 +532,27 @@ export async function judgeCandidate(candidate: FrictionCandidate, context: Judg
   }
 }
 
-/** The friction event payload for a judged candidate. */
-export function toFrictionPayload(candidate: FrictionCandidate, finding: JudgedFinding): FrictionPayload {
+/**
+ * The friction event payload for a judged finding. `first` is its first
+ * occurrence (the evidence); pass `repeat` for a later hit, with the count so far.
+ */
+export function toFrictionPayload(
+  first: FrictionCandidate,
+  finding: JudgedFinding,
+  repeat?: { hit: FrictionCandidate; hitCount: number },
+): FrictionPayload {
   return {
-    category: candidate.category,
+    category: first.category,
     severity: finding.severity,
-    evidenceSeq: candidate.evidenceSeq,
+    evidenceSeq: first.evidenceSeq,
     recommendation: finding.recommendation,
     confidence: Math.round(clamp(finding.confidence, 0, 1) * 100) / 100,
-    summary: candidate.summary,
+    summary: first.summary,
     whyItMatters: finding.whyItMatters,
     judgedBy: finding.judgedBy,
+    findingKey: first.findingKey,
+    selector: first.selector,
+    hitCount: repeat?.hitCount ?? 1,
+    lastSeq: repeat?.hit.evidenceSeq ?? first.evidenceSeq,
   };
 }

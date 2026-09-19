@@ -1,4 +1,4 @@
-import { FRICTION_LABELS, SEVERITY_LABELS, type FrictionCategory, type PersonaState, type Severity } from "@friction/shared";
+import { FRICTION_LABELS, SEVERITY_LABELS, type AgentState, type FixStage, type FrictionCategory, type Severity } from "@friction/shared";
 
 /** A status light. "glow" is the violet running glow; the rest are flat dots. */
 export type Tone = "idle" | "glow" | "good" | "warn" | "bad";
@@ -21,7 +21,7 @@ export function Dot({ tone, size = 8, pulse = false }: { tone: Tone; size?: numb
   );
 }
 
-const STATE_STYLES: Record<PersonaState, { label: string; tone: Tone }> = {
+const STATE_STYLES: Record<AgentState, { label: string; tone: Tone }> = {
   idle: { label: "Idle", tone: "idle" },
   running: { label: "Running", tone: "glow" },
   succeeded: { label: "Succeeded", tone: "good" },
@@ -29,11 +29,11 @@ const STATE_STYLES: Record<PersonaState, { label: string; tone: Tone }> = {
   timeout: { label: "Timed out", tone: "warn" },
 };
 
-export function stateTone(state: PersonaState): Tone {
+export function stateTone(state: AgentState): Tone {
   return STATE_STYLES[state].tone;
 }
 
-export function StateBadge({ state, prefix }: { state: PersonaState; prefix?: string }) {
+export function StateBadge({ state, prefix }: { state: AgentState; prefix?: string }) {
   const style = STATE_STYLES[state];
   return (
     <span className="inline-flex h-7 shrink-0 items-center gap-2 rounded-full border border-hairline/15 px-3 text-caption text-bone">
@@ -45,6 +45,24 @@ export function StateBadge({ state, prefix }: { state: PersonaState; prefix?: st
       ) : (
         style.label
       )}
+    </span>
+  );
+}
+
+const STAGE_STYLES: Record<FixStage, { label: string; tone: Tone }> = {
+  proposed: { label: "Fix proposed", tone: "idle" },
+  verifying: { label: "Verifying", tone: "glow" },
+  verified: { label: "Verified", tone: "good" },
+  rejected: { label: "Did not resolve it", tone: "warn" },
+  pr_opened: { label: "Pull request opened", tone: "good" },
+};
+
+export function StageBadge({ stage }: { stage: FixStage }) {
+  const style = STAGE_STYLES[stage];
+  return (
+    <span className="inline-flex h-7 shrink-0 items-center gap-2 rounded-full border border-hairline/15 px-3 text-caption text-bone">
+      <Dot tone={style.tone} />
+      {style.label}
     </span>
   );
 }

@@ -1,14 +1,16 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { GOLDEN_RUN_ID, PERSONA_IDS, type PersonaId, type StepPayload } from "@friction/shared";
+import { GOLDEN_RUN_ID, type StepPayload } from "@friction/shared";
 import { Landing } from "./components/Landing";
 import { Nav } from "./components/Nav";
-import { PersonaColumn } from "./components/PersonaColumn";
+import { LanePane } from "./components/LanePane";
 import { ReportView } from "./components/ReportView";
+import { RoomComparison } from "./components/RoomComparison";
 import { RunBar } from "./components/RunBar";
 import type { StartedRun } from "./components/RunForm";
 import { Play, Plus, Sparkle } from "./components/icons";
 import { useReport } from "./hooks/useReport";
 import { useRunStream } from "./hooks/useRunStream";
+import { api } from "./lib/api";
 import { snapshotFromView, summarize } from "./lib/runState";
 import { useQuery, type Tab } from "./lib/useQuery";
 
@@ -30,10 +32,10 @@ export default function App() {
   });
 
   const findStep = useCallback(
-    (personaId: PersonaId, seq: number): StepPayload | undefined => {
-      const live = view.personas[personaId].steps.find((step) => step.seq === seq);
+    (seq: number): StepPayload | undefined => {
+      const live = view.primary.steps.find((step) => step.seq === seq);
       if (live) return live.payload;
-      const recorded = stream.snapshot?.events.find((e) => e.type === "step" && e.personaId === personaId && e.seq === seq);
+      const recorded = stream.snapshot?.events.find((e) => e.type === "step" && e.lane === "primary" && e.seq === seq);
       return recorded?.type === "step" ? recorded.payload : undefined;
     },
     [view, stream.snapshot],
@@ -62,6 +64,14 @@ export default function App() {
   }, [setQuery]);
 
   const notice = startNotice ?? stream.notice;
+  const isLive = stream.origin === "live";
+  const verifying = Object.keys(view.fixes).length > 0;
+
+  // A pull request is only ever opened by this click, and only for a live run.
+  const openPullRequest = useCallback(async (findingId: string): Promise<string> => (await api.openPullRequest(view.runId, findingId)).prUrl, [view.runId]);
+  const pullRequests = isLive
+    ? { enabled: true, reason: null }
+    : { enabled: false, reason: "This is a replay or fixture. Pull requests are opened from a live run with a connected repository." };
 
   if (!query.run) {
     return (
@@ -139,12 +149,20 @@ export default function App() {
       )}
 
       {query.tab === "report" ? (
-        <ReportView report={report.report} loading={report.loading} local={report.local} findStep={findStep} />
+        <ReportView
+          report={report.report}
+          loading={report.loading}
+          local={report.local}
+          findStep={findStep}
+          view={view}
+          allowLiveView={isLive}
+          pullRequests={pullRequests}
+          onOpenPullRequest={openPullRequest}
+        />
       ) : (
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 lg:grid-cols-3 lg:overflow-hidden">
-          {PERSONA_IDS.map((id) => (
-            <PersonaColumn key={id} persona={view.personas[id]} allowLiveView={stream.origin === "live"} startTs={view.firstTs} />
-          ))}
+        <main className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 ${verifying ? "" : "lg:overflow-hidden"}`}>
+          {/* One agent, one pane for the whole run. The second pane appears only once a fix is being verified. */}
+          {verifying ? <RoomComparison view={view} allowLiveView={isLive} /> : <LanePane lane={view.primary} title="The agent" allowLiveView={isLive} startTs={view.firstTs} />}
         </main>
       )}
     </div>

@@ -1,94 +1,122 @@
 import { isTerminalState, type FrictionEvent, type StepEvent } from "@friction/shared";
 import { MAX_STEPS } from "../lib/config";
 import { ACTION_VERBS, formatDuration, pathOf } from "../lib/format";
-import type { PersonaView } from "../lib/runState";
+import { AGENT_BLURB, type LaneView } from "../lib/runState";
 import { EvidenceImage } from "./EvidenceImage";
 import { Dot, SEVERITY_STYLES, SeverityBadge, StateBadge, categoryLabel, stateTone } from "./badges";
-import { PERSONA_GLYPHS } from "./icons";
 
 interface Props {
-  persona: PersonaView;
+  lane: LaneView;
+  title: string;
+  /** One line under the title, e.g. "lane primary · 14 steps · gave up". */
+  subtitle?: string;
+  /** Border colour: a verified "after" reads good, a rejected one warns. */
+  accent?: "none" | "good" | "warn";
   /** Only a genuinely live run has a Browserbase session worth embedding. */
   allowLiveView: boolean;
   startTs: number | null;
+  /**
+   * wide     one pane fills the room: view and action on the left, findings and timeline on the right
+   * stacked  view, action, findings, timeline top to bottom; for panes that sit side by side
+   */
+  layout?: "wide" | "stacked";
 }
 
-export function PersonaColumn({ persona, allowLiveView, startTs }: Props) {
-  const latest = persona.steps[persona.steps.length - 1] ?? null;
-  const worst = persona.frictions.reduce<Map<number, FrictionEvent>>((map, friction) => {
-    const current = map.get(friction.payload.evidenceSeq);
-    if (!current || friction.payload.severity > current.payload.severity) map.set(friction.payload.evidenceSeq, friction);
+const ACCENTS: Record<NonNullable<Props["accent"]>, string> = {
+  none: "border-hairline/10",
+  good: "border-white/35",
+  warn: "border-sev-3/55",
+};
+
+/**
+ * One agent run: live view (or its latest screenshot), the current action, and
+ * its findings and timeline. The primary and verify lanes carry the same event
+ * schema, so this one component renders either.
+ */
+export function LanePane({ lane, title, subtitle, accent = "none", allowLiveView, startTs, layout = "wide" }: Props) {
+  const latest = lane.steps[lane.steps.length - 1] ?? null;
+  const worst = lane.frictions.reduce<Map<number, FrictionEvent>>((map, friction) => {
+    for (const seq of new Set([friction.payload.evidenceSeq, friction.payload.lastSeq ?? friction.payload.evidenceSeq])) {
+      const current = map.get(seq);
+      if (!current || friction.payload.severity > current.payload.severity) map.set(seq, friction);
+    }
     return map;
   }, new Map());
 
-  const Glyph = PERSONA_GLYPHS[persona.def.id];
+  const view = (
+    <>
+      <div className="shrink-0 px-3 pt-3">
+        {/* On a short laptop screen the still shrinks (keeping its aspect) so the findings stay in view. */}
+        <div className={`mx-auto w-full ${layout === "stacked" ? "" : "lg:[@media(max-height:860px)]:w-[min(100%,calc(42vh*16/9))]"}`}>
+          <LiveView lane={lane} title={title} latest={latest} allowLiveView={allowLiveView} />
+        </div>
+      </div>
+      <CurrentAction lane={lane} latest={latest} />
+    </>
+  );
+
+  const details = (
+    <div className={`pane min-h-[96px] flex-1 overflow-y-auto pb-2 ${layout === "stacked" ? "max-h-[340px]" : ""}`}>
+      <PaneTitle title="Friction" count={lane.frictions.length} tone={lane.frictions.length > 0 ? "alert" : "quiet"} />
+      <div className="space-y-2 px-3 pb-3">
+        {lane.frictions.length === 0 && <p className="px-2 py-1 text-caption text-smoke">Nothing detected.</p>}
+        {[...lane.frictions]
+          .sort((a, b) => b.payload.severity - a.payload.severity || a.seq - b.seq)
+          .map((friction) => (
+            <FrictionAlert key={friction.payload.findingId ?? friction.seq} friction={friction} stepNumber={stepNumberOf(lane.steps, friction.payload.evidenceSeq)} />
+          ))}
+      </div>
+
+      <PaneTitle title="Timeline" count={lane.steps.length} />
+      <ol className="px-3">
+        {lane.steps.length === 0 && <li className="px-2 py-1.5 text-caption text-smoke">No steps yet.</li>}
+        {[...lane.steps].reverse().map((step, index) => (
+          <TimelineRow key={step.seq} step={step} number={lane.steps.length - index} friction={worst.get(step.seq) ?? null} startTs={startTs} />
+        ))}
+      </ol>
+    </div>
+  );
 
   return (
-    <section className="flex min-w-0 flex-col rounded-card border border-hairline/10 bg-white/4 lg:min-h-0 lg:overflow-hidden" aria-label={persona.def.displayName}>
+    <section className={`flex min-h-0 min-w-0 flex-col rounded-card border bg-white/4 lg:overflow-hidden ${ACCENTS[accent]}`} aria-label={title}>
       <header className="flex items-center justify-between gap-3 px-5 pb-2.5 pt-3.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-icon bg-white text-black" aria-hidden="true">
-            <Glyph size={14} />
-          </span>
-          <h2 className="truncate text-body text-white">{persona.def.displayName}</h2>
+        <div className="min-w-0">
+          <h2 className="truncate text-body text-white">{title}</h2>
+          {subtitle && <p className="truncate text-caption tabular-nums text-smoke">{subtitle}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          <span className="hidden text-caption tabular-nums text-smoke 2xl:inline" title="Steps taken of the 15-step hard cap">
-            {persona.steps.length}/{MAX_STEPS}
+          <span className="text-caption tabular-nums text-smoke" title={`Steps taken of the ${MAX_STEPS}-step hard cap`}>
+            {lane.steps.length}/{MAX_STEPS}
           </span>
-          <StateBadge state={persona.state} />
+          <StateBadge state={lane.state} />
         </div>
       </header>
 
       <div
         className="mx-5 h-0.5 shrink-0 overflow-hidden rounded-full bg-hairline/10"
         role="progressbar"
-        aria-label="Steps taken of the 15-step hard cap"
+        aria-label={`Steps taken of the ${MAX_STEPS}-step hard cap`}
         aria-valuemin={0}
         aria-valuemax={MAX_STEPS}
-        aria-valuenow={persona.steps.length}
-        title={`${persona.steps.length} of ${MAX_STEPS} steps`}
+        aria-valuenow={lane.steps.length}
       >
         <div
-          className={`h-full rounded-full transition-[width] duration-700 ease-out-expo ${persona.steps.length > 12 ? "bg-sev-4" : "bg-bone"}`}
-          style={{ width: `${Math.min(100, (persona.steps.length / MAX_STEPS) * 100)}%` }}
+          className={`h-full rounded-full transition-[width] duration-700 ease-out-expo ${lane.steps.length > 12 ? "bg-sev-4" : "bg-bone"}`}
+          style={{ width: `${Math.min(100, (lane.steps.length / MAX_STEPS) * 100)}%` }}
         />
       </div>
 
-      <div className="shrink-0 px-3 pt-3">
-        {/* On a short laptop screen the still shrinks (keeping its aspect) so the friction panes stay in view. */}
-        <div className="mx-auto w-full lg:[@media(max-height:860px)]:w-[min(100%,calc(25vh*16/9))]">
-          <LiveView persona={persona} latest={latest} allowLiveView={allowLiveView} />
+      {layout === "wide" ? (
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col">{view}</div>
+          <div className="flex min-h-0 min-w-0 flex-col lg:border-l lg:border-hairline/10">{details}</div>
         </div>
-      </div>
-      <CurrentAction persona={persona} latest={latest} />
-
-      {/* One scroll region, friction first: the findings lead, and the timeline stays reachable at any height. */}
-      <div className="pane min-h-[96px] flex-1 overflow-y-auto pb-2">
-        <PaneTitle title="Friction" count={persona.frictions.length} tone={persona.frictions.length > 0 ? "alert" : "quiet"} />
-        <div className="space-y-2 px-3 pb-3">
-          {persona.frictions.length === 0 && <p className="px-2 py-1 text-caption text-smoke">Nothing detected.</p>}
-          {[...persona.frictions]
-            .sort((a, b) => b.payload.severity - a.payload.severity || b.seq - a.seq)
-            .map((friction) => (
-              <FrictionAlert key={friction.seq} friction={friction} stepNumber={stepNumberOf(persona.steps, friction.payload.evidenceSeq)} />
-            ))}
-        </div>
-
-        <PaneTitle title="Timeline" count={persona.steps.length} />
-        <ol className="px-3">
-          {persona.steps.length === 0 && <li className="px-2 py-1.5 text-caption text-smoke">No steps yet.</li>}
-          {[...persona.steps].reverse().map((step, index) => (
-            <TimelineRow
-              key={step.seq}
-              step={step}
-              number={persona.steps.length - index}
-              friction={worst.get(step.seq) ?? null}
-              startTs={startTs}
-            />
-          ))}
-        </ol>
-      </div>
+      ) : (
+        <>
+          {view}
+          {details}
+        </>
+      )}
     </section>
   );
 }
@@ -114,16 +142,16 @@ function withoutNavbar(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}navbar=false`;
 }
 
-function LiveView({ persona, latest, allowLiveView }: { persona: PersonaView; latest: StepEvent | null; allowLiveView: boolean }) {
-  const sessionLive = allowLiveView && persona.liveViewUrl !== null && !isTerminalState(persona.state);
+function LiveView({ lane, title, latest, allowLiveView }: { lane: LaneView; title: string; latest: StepEvent | null; allowLiveView: boolean }) {
+  const sessionLive = allowLiveView && lane.liveViewUrl !== null && !isTerminalState(lane.state);
 
-  if (sessionLive && persona.liveViewUrl) {
+  if (sessionLive && lane.liveViewUrl) {
     return (
       <div className="relative aspect-video w-full overflow-hidden rounded-[12px] bg-graphite">
         <iframe
-          key={persona.liveViewUrl}
-          src={withoutNavbar(persona.liveViewUrl)}
-          title={`${persona.def.displayName}: Browserbase live view`}
+          key={lane.liveViewUrl}
+          src={withoutNavbar(lane.liveViewUrl)}
+          title={`${title}: Browserbase live view`}
           sandbox="allow-same-origin allow-scripts"
           allow="clipboard-read; clipboard-write"
           className="absolute inset-0 h-full w-full border-0"
@@ -141,7 +169,7 @@ function LiveView({ persona, latest, allowLiveView }: { persona: PersonaView; la
           source={{ screenshotKey: latest.payload.screenshotKey, bbox: latest.payload.bbox, viewport: latest.payload.viewport, payload: latest.payload }}
           label={latest.payload.targetLabel}
         />
-        <Corner tone="still">{isTerminalState(persona.state) ? "Final" : "Latest"}</Corner>
+        <Corner tone="still">{isTerminalState(lane.state) ? "Final" : "Latest"}</Corner>
       </div>
     );
   }
@@ -149,14 +177,14 @@ function LiveView({ persona, latest, allowLiveView }: { persona: PersonaView; la
   // Placeholder until the live view URL arrives over the stream.
   return (
     <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-[12px] border border-hairline/10 bg-void/50 px-6 text-center">
-      <p className="max-w-sm text-ui text-ash">{persona.def.description}</p>
+      <p className="max-w-sm text-ui text-ash">{AGENT_BLURB}</p>
       <p className="flex items-center gap-2 text-caption text-smoke">
-        {isTerminalState(persona.state) ? (
-          (persona.statusMessage ?? "No browser session was recorded.")
+        {isTerminalState(lane.state) ? (
+          (lane.statusMessage ?? "No browser session was recorded.")
         ) : (
           <>
             <Dot tone="idle" size={6} pulse />
-            {persona.statusMessage ?? "Waiting for a Browserbase session"}
+            {lane.statusMessage ?? "Waiting for a Browserbase session"}
           </>
         )}
       </p>
@@ -179,7 +207,7 @@ function Corner({ children, tone }: { children: React.ReactNode; tone: "live" | 
 
 /* ----------------------------------------------------------- current action */
 
-function targetText(step: StepEvent): string {
+export function targetText(step: StepEvent): string {
   const p = step.payload;
   switch (p.actionType) {
     case "navigate":
@@ -216,8 +244,8 @@ function compactKeys(keys: string): string {
   return out.join(", ");
 }
 
-function CurrentAction({ persona, latest }: { persona: PersonaView; latest: StepEvent | null }) {
-  const finished = isTerminalState(persona.state);
+function CurrentAction({ lane, latest }: { lane: LaneView; latest: StepEvent | null }) {
+  const finished = isTerminalState(lane.state);
   return (
     <div className="shrink-0 px-5 pb-3 pt-3">
       {latest ? (
@@ -237,12 +265,12 @@ function CurrentAction({ persona, latest }: { persona: PersonaView; latest: Step
       {finished ? (
         <p className="mt-2.5 flex items-start gap-2.5 rounded-ui border border-hairline/10 bg-white/3 px-3 py-2 text-ui leading-snug text-bone">
           <span className="mt-1.5 flex">
-            <Dot tone={stateTone(persona.state)} size={7} />
+            <Dot tone={stateTone(lane.state)} size={7} />
           </span>
-          {persona.done?.payload.summary ?? persona.statusMessage ?? (persona.state === "succeeded" ? "Task complete." : "Did not complete the task.")}
+          {lane.done?.payload.summary ?? lane.statusMessage ?? (lane.state === "succeeded" ? "Task complete." : "Did not complete the task.")}
         </p>
       ) : (
-        persona.state === "running" && (
+        lane.state === "running" && (
           <div className="mt-2.5 h-0.5 w-full overflow-hidden rounded-full bg-hairline/8" title="Observing the page and planning the next action">
             <div className="wash wash-sweep h-full w-full" />
           </div>
@@ -283,11 +311,17 @@ function TimelineRow({ step, number, friction, startTs }: { step: StepEvent; num
 function FrictionAlert({ friction, stepNumber }: { friction: FrictionEvent; stepNumber: number | null }) {
   const p = friction.payload;
   const style = SEVERITY_STYLES[p.severity];
+  const hits = p.hitCount ?? 1;
   return (
     <article className="step-in rounded-ui border border-hairline/10 bg-white/3 px-3 py-2.5">
       <div className="flex items-center gap-2">
         <SeverityBadge severity={p.severity} />
         <h4 className={`min-w-0 truncate text-body ${style.text}`}>{categoryLabel(p.category)}</h4>
+        {hits > 1 && (
+          <span className="shrink-0 rounded-full border border-hairline/15 px-2 text-caption tabular-nums text-bone" title="Times the agent ran into this">
+            ×{hits}
+          </span>
+        )}
         <span className="ml-auto shrink-0 text-caption tabular-nums text-smoke">
           {stepNumber !== null && `step ${stepNumber} · `}
           {Math.round(p.confidence * 100)}%

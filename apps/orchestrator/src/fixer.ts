@@ -1,0 +1,216 @@
+/**
+ * FIX PROPOSAL: one OpenAI Responses call with Structured Outputs per finding.
+ *
+ * The output is a small JavaScript patch that verify.ts installs with
+ * page.addInitScript() in a brand-new browser session Friction owns, so the
+ * agent meets the "fixed" page from first paint. The patch is a test
+ * instrument: it only ever changes that disposable session's DOM, never the
+ * user's site, server or repository. (The repository change is a separate
+ * path: repo.ts and pr.ts, which never read from the browser.)
+ */
+import OpenAI from "openai";
+import { z } from "zod";
+import { FRICTION_LABELS, MAX_PATCH_LINES, validatePatch, type FrictionCategory, type FrictionPayload, type Severity, type StepEvent } from "@friction/shared";
+import type { Config } from "./config";
+import { FixReport } from "./fixReport";
+import { errorMessage, log } from "./util";
+import type { WorkerClient } from "./workerClient";
+
+/** How much of the accessibility tree the model sees. */
+const MAX_TREE_LINES = 250;
+
+/** What a fix is proposed against: one deduplicated primary-lane finding. */
+export interface FindingForFix {
+  findingId: string;
+  category: FrictionCategory;
+  severity: Severity;
+  summary: string;
+  whyItMatters: string;
+  recommendation: string;
+  /** e.g. "xpath=/html/body/main/div/div[2]/form/button"; "" when the finding has no element. */
+  selector: string;
+  targetLabel: string;
+  /** Page the failing step was on. */
+  url: string;
+  /** seq of the first step that evidenced it. */
+  evidenceSeq: number;
+  hitCount: number;
+  /** Other visible text tied to it (an overlay's title, an error message): clues for finding its source. */
+  texts: string[];
+}
+
+export interface FixProposal {
+  /** One sentence: what the fix does. */
+  summary: string;
+  patchJs: string;
+}
+
+export interface ProposeFixInput {
+  task: string;
+  finding: FindingForFix;
+  /** Primary-lane steps, oldest first. Those up to the failing step are used. */
+  stepEvents: readonly StepEvent[];
+  /** Pruned accessibility tree the agent saw at the failing step; null when there was no browser (mock). */
+  tree: readonly string[] | null;
+}
+
+export type FixProposer = (input: ProposeFixInput) => Promise<FixProposal>;
+
+const FixProposalSchema = z.object({ summary: z.string().min(8), patchJs: z.string().min(1) });
+
+const FIX_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary", "patchJs"],
+  properties: {
+    summary: { type: "string", description: 'One sentence, present tense: what the patch changes for the user. E.g. "Shows \\"Please select a size\\" and focuses the size options when Add to cart is pressed with no size chosen."' },
+    patchJs: { type: "string", description: `The complete script, at most ${MAX_PATCH_LINES} lines. Plain browser JavaScript, no markdown fences.` },
+  },
+} as const;
+
+/* ----------------------------------------------------------------- prompt */
+
+const INSTRUCTIONS = [
+  "You write a small JavaScript patch that fixes ONE specific usability problem on a web page, so that a test can check whether the fix lets a user complete their task.",
+  "How it runs: Playwright's page.addInitScript() installs it in a disposable test browser. It runs on EVERY document load, BEFORE the page's own scripts and before <body> exists. It never reaches the real site or its users.",
+  "Rules:",
+  "- Plain browser JavaScript (ES2020). Self-contained: no imports, no network (no fetch, XMLHttpRequest, WebSocket, sendBeacon), no navigation, no cookies, no eval.",
+  "- Wrap everything in try/catch. Never throw.",
+  "- If you need elements, wait for DOMContentLoaded, and assume they may render later: prefer event delegation on document (capture phase) or a MutationObserver over grabbing an element once.",
+  "- Scope it narrowly: match the specific element (the selector is usually an XPath; document.evaluate works, but prefer stable attributes, roles or accessible names you can see in the tree), and check location.pathname when the problem is page-specific, so other pages are untouched.",
+  "- Make the behaviour genuinely work for a person. Do not merely hide the symptom. By category:",
+  "    dead_click: make the click do what it should, or give visible, actionable feedback (say what is missing and move focus to it), or remove the disabled/pending state that blocks the click.",
+  "    retry: give immediate visible feedback on press, and make the action succeed or explain why not.",
+  "    keyboard_trap: make the unreachable control focusable (tabindex) and operable (keydown Enter/Space/Escape); move focus into dialogs when they open.",
+  "    modal_interrupt: suppress the overlay on the matching route (remove or hide it and restore scrolling).",
+  "    error_text: prevent the error before commit (mark unavailable options as unavailable), or make the message say how to fix it.",
+  "    ambiguous_label: give each control a unique accessible name (aria-label) that includes its context.",
+  "    long_wait: acknowledge the wait at once with a visible loading state.",
+  "    loop / step_budget: surface the information the visitor kept going back and forth for, on the page where they need it.",
+  `- At most ${MAX_PATCH_LINES} lines. At most one short comment line.`,
+].join("\n");
+
+function trail(stepEvents: readonly StepEvent[], evidenceSeq: number): string {
+  return stepEvents
+    .filter((s) => s.seq <= evidenceSeq)
+    .slice(-6)
+    .map((s) => {
+      const p = s.payload;
+      const marker = s.seq === evidenceSeq ? "   <-- the problem" : "";
+      return `  ${p.actionType} "${p.targetLabel}" on ${p.url} (domChanged=${p.domChanged}) thinking: ${p.rationale}${marker}`;
+    })
+    .join("\n");
+}
+
+function inputText(input: ProposeFixInput): string {
+  const { finding, tree } = input;
+  const treeLines = tree ? tree.slice(0, MAX_TREE_LINES) : [];
+  return [
+    `Task the visitor was attempting: ${input.task}`,
+    `Problem: ${finding.category} (${FRICTION_LABELS[finding.category].label}), severity ${finding.severity}/5, hit ${finding.hitCount} time(s) in one run.`,
+    `What happened: ${finding.summary}`,
+    `Why it matters: ${finding.whyItMatters}`,
+    `Element: ${finding.selector || "(none)"}${finding.targetLabel ? ` named "${finding.targetLabel}"` : ""}`,
+    `Page: ${finding.url}`,
+    `Recommended fix: ${finding.recommendation}`,
+    "Steps up to the problem:",
+    trail(input.stepEvents, finding.evidenceSeq) || "  (none)",
+    "Accessibility tree at the failing step (interactive elements and headings, one per line as [id] role: name):",
+    treeLines.length > 0 ? treeLines.join("\n") : "(not available)",
+    ...(tree && tree.length > MAX_TREE_LINES ? [`(${tree.length - MAX_TREE_LINES} more lines omitted)`] : []),
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ model */
+
+/** The live proposer. Throws when no acceptable patch comes back after one corrective retry. */
+export function openAIFixer(config: Config): FixProposer {
+  const client = new OpenAI({ apiKey: config.openaiApiKey ?? undefined, maxRetries: 1, timeout: 60_000 });
+  return async (input) => {
+    const model = config.openaiModel;
+    if (!model) throw new Error("OPENAI_MODEL is not set");
+    let feedback = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const response = await client.responses.create({
+        model,
+        instructions: INSTRUCTIONS,
+        input: feedback ? `${inputText(input)}\n\nYour previous patch was rejected: ${feedback}. Write a corrected one.` : inputText(input),
+        store: false,
+        text: { format: { type: "json_schema", name: "fix_proposal", schema: FIX_JSON_SCHEMA as unknown as Record<string, unknown>, strict: true } },
+        ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort as "low" } } : {}),
+      });
+      const parsed = FixProposalSchema.safeParse(JSON.parse(response.output_text));
+      if (!parsed.success) {
+        feedback = "the response did not match the schema";
+        continue;
+      }
+      const problem = validatePatch(parsed.data.patchJs);
+      if (!problem) return { summary: parsed.data.summary.trim(), patchJs: parsed.data.patchJs.trim() };
+      feedback = problem;
+      log("fixer", `${input.finding.findingId}: attempt ${attempt} rejected: ${problem}`);
+    }
+    throw new Error(`no acceptable patch for ${input.finding.findingId}: ${feedback}`);
+  };
+}
+
+/** Proposes, validates, and never returns an unacceptable patch. */
+export async function proposeFix(proposer: FixProposer, input: ProposeFixInput): Promise<FixProposal> {
+  const proposal = await proposer(input);
+  const problem = validatePatch(proposal.patchJs);
+  if (problem) throw new Error(`proposal for ${input.finding.findingId} rejected: ${problem}`);
+  return proposal;
+}
+
+/** A primary-lane finding, as the emitter reported it, in the shape a fix is proposed against. */
+export function findingForFix(payload: FrictionPayload, steps: readonly StepEvent[]): FindingForFix | null {
+  if (!payload.findingId) return null;
+  const evidence = steps.find((s) => s.seq === payload.evidenceSeq);
+  return {
+    findingId: payload.findingId,
+    category: payload.category,
+    severity: payload.severity,
+    summary: payload.summary ?? FRICTION_LABELS[payload.category].blurb,
+    whyItMatters: payload.whyItMatters ?? "",
+    recommendation: payload.recommendation,
+    selector: payload.selector ?? evidence?.payload.selector ?? "",
+    targetLabel: evidence?.payload.targetLabel ?? "",
+    url: evidence?.payload.signals?.urlAfter ?? evidence?.payload.url ?? "",
+    evidenceSeq: payload.evidenceSeq,
+    hitCount: payload.hitCount ?? 1,
+    texts: [evidence?.payload.signals?.modalLabel ?? "", ...(evidence?.payload.signals?.errorTexts ?? [])].filter(Boolean),
+  };
+}
+
+/**
+ * Phase one of a fix's life: propose it and report it as "proposed". Returns
+ * the fix's handle for the later stages, or null when no acceptable patch
+ * could be produced (logged; the finding simply goes unverified).
+ */
+export async function proposeAndReport(args: {
+  worker: WorkerClient;
+  runId: string;
+  proposer: FixProposer;
+  input: ProposeFixInput;
+}): Promise<FixReport | null> {
+  const { finding } = args.input;
+  let proposal: FixProposal;
+  try {
+    proposal = await proposeFix(args.proposer, args.input);
+  } catch (err) {
+    log("fixer", `${finding.findingId}: no fix proposed: ${errorMessage(err)}`);
+    return null;
+  }
+  const report = new FixReport(args.worker, args.runId, {
+    findingId: finding.findingId,
+    stage: "proposed",
+    summary: proposal.summary,
+    patchJs: proposal.patchJs,
+    sourceFile: null,
+    before: null,
+    after: null,
+    prUrl: null,
+    category: finding.category,
+  });
+  await report.update({});
+  return report;
+}

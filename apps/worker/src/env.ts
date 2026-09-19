@@ -1,5 +1,5 @@
 export interface Env {
-  /** D1: runs, personas, events, findings. */
+  /** D1: runs, events, findings. */
   DB: D1Database;
   /** R2: evidence screenshots. */
   EVIDENCE: R2Bucket;

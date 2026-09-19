@@ -16,3 +16,6 @@ coverage/
 # Stagehand caches / inference logs
 .stagehand/
 inference_summary/
+
+# Claude Code worktrees (separate branches; never track here)
+.claude/worktrees/

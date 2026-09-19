@@ -5,7 +5,7 @@ export function errorMessage(err: unknown): string {
   return String(err).slice(0, 300);
 }
 
-/** Every call that leaves this process gets a deadline. A hung SDK must not hang a persona. */
+/** Every call that leaves this process gets a deadline. A hung SDK must not hang a run. */
 export async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_, reject) => {
@@ -29,28 +29,6 @@ export async function retry<T>(attempts: number, baseDelayMs: number, work: (att
     }
   }
   throw lastError;
-}
-
-/** Caps how many personas hold a browser at once (Browserbase plans limit concurrency). */
-export class Semaphore {
-  private waiting: Array<() => void> = [];
-  private available: number;
-
-  constructor(slots: number) {
-    this.available = slots;
-  }
-
-  async run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.available > 0) this.available -= 1;
-    else await new Promise<void>((resume) => this.waiting.push(resume));
-    try {
-      return await work();
-    } finally {
-      const next = this.waiting.shift();
-      if (next) next();
-      else this.available += 1;
-    }
-  }
 }
 
 export function log(scope: string, message: string, extra?: unknown): void {

@@ -1,5 +1,5 @@
 /**
- * OBSERVE: what the persona can see right now.
+ * OBSERVE: what the agent can see right now.
  *   - a viewport screenshot, twice: full size as evidence for R2, and
  *     downscaled in the browser for the model (this is where the token bill is)
  *   - the accessibility tree, pruned to interactive elements plus headings
@@ -68,7 +68,7 @@ export async function captureEvidence(page: StagehandPage): Promise<Buffer | nul
  * Downscale inside the browser: Page.captureScreenshot takes a clip with a
  * scale factor, so there is no image library to install. The clip is relative
  * to the DOCUMENT, not the viewport, hence the scroll offsets: without them a
- * scrolled persona would be shown the top of the page.
+ * scrolled agent would be shown the top of the page.
  */
 async function captureForModel(page: StagehandPage, state: PageState): Promise<string | null> {
   try {

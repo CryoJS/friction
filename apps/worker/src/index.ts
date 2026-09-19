@@ -10,9 +10,10 @@ import { cors } from "hono/cors";
 import { demoShopResponse } from "@friction/shared/demo-shop";
 import {
   CreateRunRequestSchema,
+  FixUpsertSchema,
   GOLDEN_EVIDENCE_PREFIX,
   GOLDEN_RUN_ID,
-  PersonaPatchBodySchema,
+  RunPatchSchema,
   assembleReport,
   buildReportFromSnapshot,
   formatIssues,
@@ -21,6 +22,8 @@ import {
   parseEventBatch,
   renderMockScreenshot,
   type CreateRunResponse,
+  type FixListResponse,
+  type PostFixResponse,
   type PostEventsResponse,
   type RunListResponse,
   type RunSnapshot,
@@ -31,12 +34,13 @@ import {
   createRun,
   ensureSchema,
   getEvents,
-  getPersonas,
+  getFixes,
   getReportRows,
   getRun,
   insertEvents,
   listRuns,
-  patchPersonas,
+  patchRun,
+  upsertFix,
 } from "./db";
 import type { AppEnv } from "./env";
 import { broadcast } from "./hub";
@@ -97,17 +101,19 @@ app.get("/api/runs", async (c) => {
   return c.json(body);
 });
 
-/** The orchestrator reports live_view_url / session_id / replay_url as sessions come up. */
-app.patch("/api/runs/:id/personas", async (c) => {
+/**
+ * The orchestrator reports the primary session's live_view_url / session_id /
+ * replay_url as it comes up, and marks the run verifying / completed.
+ */
+app.patch("/api/runs/:id", async (c) => {
   const runId = c.req.param("id");
-  const parsed = PersonaPatchBodySchema.safeParse(await readJson(c.req.raw));
+  const parsed = RunPatchSchema.safeParse(await readJson(c.req.raw));
   if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
   if (!(await getRun(c.env.DB, runId))) return c.json({ error: `run ${runId} not found` }, 404);
 
-  const patches = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
-  const personas = await patchPersonas(c.env.DB, runId, patches);
-  for (const persona of personas) broadcast(runId, { kind: "persona", persona });
-  return c.json({ personas });
+  const run = await patchRun(c.env.DB, runId, parsed.data);
+  if (run) broadcast(runId, { kind: "run", run });
+  return c.json({ run });
 });
 
 /** Single event or array. Valid events are stored even if others in the batch are not. */
@@ -118,6 +124,11 @@ app.post("/api/runs/:id/events", async (c) => {
 
   const batch = parseEventBatch(raw);
   const events = batch.events.filter((event, index) => {
+    if (event.type === "fix") {
+      // The Worker assigns fix events their seq; accepting one here could collide with it.
+      batch.rejected.push({ index, error: `fix events go to POST /api/runs/${runId}/fixes` });
+      return false;
+    }
     if (event.runId === runId) return true;
     batch.rejected.push({ index, error: `runId "${event.runId}" does not match /api/runs/${runId}` });
     return false;
@@ -128,10 +139,48 @@ app.post("/api/runs/:id/events", async (c) => {
   }
   if (!(await getRun(c.env.DB, runId))) return c.json({ error: `run ${runId} not found` }, 404);
 
-  const { inserted, duplicates } = await insertEvents(c.env.DB, runId, events);
+  const { inserted, duplicates, runChanged } = await insertEvents(c.env.DB, runId, events);
   for (const { rowId, event } of inserted) broadcast(runId, { kind: "event", rowId, event });
+  if (runChanged) {
+    const run = await getRun(c.env.DB, runId);
+    if (run) broadcast(runId, { kind: "run", run });
+  }
 
   const body: PostEventsResponse = { accepted: inserted.length, duplicates, rejected: batch.rejected };
+  return c.json(body);
+});
+
+/**
+ * Upsert the fix for one finding. Stores the row (including the complete new
+ * file content, when sent), records a `fix` event in the verify lane with a
+ * Worker-assigned seq, and broadcasts it. Returns both, seq included.
+ */
+app.post("/api/runs/:id/fixes", async (c) => {
+  const runId = c.req.param("id");
+  const parsed = FixUpsertSchema.safeParse(await readJson(c.req.raw));
+  if (!parsed.success) return c.json({ error: formatIssues(parsed.error.issues) }, 400);
+  if (!(await getRun(c.env.DB, runId))) return c.json({ error: `run ${runId} not found` }, 404);
+
+  const { fix, event, rowId } = await upsertFix(c.env.DB, runId, parsed.data);
+  broadcast(runId, { kind: "event", rowId, event });
+  const body: PostFixResponse = { fix, event };
+  return c.json(body);
+});
+
+app.get("/api/runs/:id/fixes", async (c) => {
+  const runId = c.req.param("id");
+  if (runId === GOLDEN_RUN_ID) {
+    // The fixture has fix events, not rows: the latest event per finding is the row.
+    const latest = new Map<string, FixListResponse["fixes"][number]>();
+    for (const e of getGoldenRun().events) {
+      if (e.type !== "fix") continue;
+      latest.set(e.payload.findingId, { ...e.payload, id: `${runId}:${e.payload.findingId}`, runId, newFileContent: null, sourceSha: null, createdAt: e.ts, updatedAt: e.ts });
+    }
+    const body: FixListResponse = { fixes: [...latest.values()] };
+    return c.json(body);
+  }
+  if (!(await getRun(c.env.DB, runId))) return c.json({ error: `run ${runId} not found` }, 404);
+  const body: FixListResponse = { fixes: await getFixes(c.env.DB, runId) };
   return c.json(body);
 });
 
@@ -149,7 +198,7 @@ app.get("/api/runs/:id", async (c) => {
   const events = await getEvents(c.env.DB, runId);
   if (events.length === 0) return c.json(rebaseGoldenRun({ runId, run, startTs: run.createdAt }));
 
-  const snapshot: RunSnapshot = { run, personas: await getPersonas(c.env.DB, runId), events, source: "live" };
+  const snapshot: RunSnapshot = { run, events, source: "live" };
   return c.json(snapshot);
 });
 
@@ -165,8 +214,8 @@ app.get("/api/runs/:id/report", async (c) => {
     return c.json(buildReportFromSnapshot(rebaseGoldenRun({ runId, run, startTs: run.createdAt })));
   }
 
-  const [personas, rows] = await Promise.all([getPersonas(c.env.DB, runId), getReportRows(c.env.DB, runId)]);
-  return c.json(assembleReport({ run, personas, findings: rows.findings, events: rows.events, source: "live" }));
+  const rows = await getReportRows(c.env.DB, runId);
+  return c.json(assembleReport({ run, findings: rows.findings, events: rows.events, source: "live" }));
 });
 
 /* ---------------------------------------------------------------- evidence */
