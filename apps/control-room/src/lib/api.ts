@@ -58,10 +58,14 @@ const json = (body: unknown): RequestInit => ({
  * /suggest-tasks remain for scripts (smoke-local.ts); nothing here calls them.
  */
 export const api = {
-  /** Starts the crawl, task generation and every task's run in the background; answers with the scan id at once. */
-  startScan: (url: string) => request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url }), 12_000),
+  /**
+   * Starts the crawl, task generation and every task's run in the background; answers with the scan id at once.
+   * `repo` is one of /health's repositories; with `autoPr` the scan opens one draft pull request per fixable task.
+   */
+  startScan: (url: string, options: { repo?: string; autoPr?: boolean } = {}) =>
+    request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url, ...options }), 12_000),
 
-  /** The user's click, and the only way a pull request is ever opened. Opens it as a draft. */
+  /** The user's click on one fix. Opens it as a draft; a fix its task's pull request already covers answers with that one. */
   openPullRequest: (runId: string, findingId: string) =>
     request<OpenPullRequestResponse>(
       `${ORCHESTRATOR_URL}/runs/${encodeURIComponent(runId)}/fixes/${encodeURIComponent(findingId)}/pull-request`,

@@ -6,6 +6,8 @@ import {
   type ScanNode,
   type ScanStatus,
   type ScanTreeResponse,
+  type CoveredBy,
+  type TaskPullRequestStatus,
   type TaskVerdict,
 } from "@friction/shared";
 import type { Tone } from "../components/badges";
@@ -32,6 +34,23 @@ export const VERDICT: Readonly<Record<TaskVerdict, { label: string; tone: Tone }
   fail: { label: "Fail", tone: "bad" },
   pending: { label: "Pending", tone: "idle" },
 };
+
+/** A task's pull request chip. Open is white like every finished good thing; a preview is still the violet glow. */
+export const TASK_PR: Readonly<Record<TaskPullRequestStatus, { label: string; tone: Tone }>> = {
+  opened: { label: "Draft PR", tone: "good" },
+  dry_run: { label: "Preview", tone: "glow" },
+  covered: { label: "Covered", tone: "idle" },
+  nothing_to_fix: { label: "Nothing to fix", tone: "idle" },
+  skipped: { label: "PR skipped", tone: "warn" },
+  failed: { label: "PR failed", tone: "bad" },
+};
+
+/** "Covered by task 3", or by an open pull request from an earlier scan. */
+export function coveredByLabel(by: CoveredBy | undefined): string {
+  if (typeof by === "number") return `Covered by task ${by + 1}`;
+  const number = typeof by === "string" ? /\/pull\/(\d+)/.exec(by)?.[1] : undefined;
+  return number ? `Covered by PR #${number}` : "Covered";
+}
 
 export const VERDICT_ORDER: readonly TaskVerdict[] = ["pass", "fail", "pending"];
 

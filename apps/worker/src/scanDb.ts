@@ -3,9 +3,11 @@
  * this module is the camelCase contract from @friction/shared.
  */
 import {
+  TaskPullRequestSchema,
   type AgentState,
   type CrawledPage,
   type FrictionCategory,
+  type RunScanLink,
   type RunStatus,
   type ScanFindingInput,
   type ScanListItem,
@@ -16,6 +18,7 @@ import {
   type ScanTreeTask,
   type Severity,
   type StepEvent,
+  type TaskPullRequest,
   type TaskSource,
 } from "@friction/shared";
 import { newId, toEvent } from "./db";
@@ -29,6 +32,8 @@ interface ScanRow {
   task_source: string | null;
   created_at: number;
   completed_at: number | null;
+  repo: string | null;
+  auto_pr: number | null;
 }
 
 interface ScanListRow extends ScanRow {
@@ -44,6 +49,10 @@ interface TaskRow {
   success_check: string;
   status: string;
   state: string;
+}
+
+interface PullRequestRow {
+  body_json: string;
 }
 
 interface StepCountRow {
@@ -92,10 +101,12 @@ function toScan(row: ScanRow): ScanRecord {
     taskSource: row.task_source as TaskSource | null,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    repo: row.repo ?? null,
+    autoPr: row.auto_pr === 1,
   };
 }
 
-export async function createScan(db: D1Database, url: string): Promise<ScanRecord> {
+export async function createScan(db: D1Database, url: string, options: { repo?: string; autoPr?: boolean } = {}): Promise<ScanRecord> {
   const scan: ScanRecord = {
     id: newId("s_"),
     url,
@@ -105,10 +116,13 @@ export async function createScan(db: D1Database, url: string): Promise<ScanRecor
     taskSource: null,
     createdAt: Date.now(),
     completedAt: null,
+    repo: options.repo ?? null,
+    // Without a repository there is nothing to open a pull request against.
+    autoPr: options.repo !== undefined && options.autoPr === true,
   };
   await db
-    .prepare("INSERT INTO scans (id, url, status, message, pages, created_at) VALUES (?, ?, ?, ?, '[]', ?)")
-    .bind(scan.id, scan.url, scan.status, scan.message, scan.createdAt)
+    .prepare("INSERT INTO scans (id, url, status, message, pages, created_at, repo, auto_pr) VALUES (?, ?, ?, ?, '[]', ?, ?, ?)")
+    .bind(scan.id, scan.url, scan.status, scan.message, scan.createdAt, scan.repo ?? null, scan.autoPr ? 1 : 0)
     .run();
   return scan;
 }
@@ -166,12 +180,12 @@ export async function listScans(db: D1Database, limit: number): Promise<ScanList
 }
 
 /**
- * Tasks in rank order, each with its run's live state. Three queries, one
- * round trip. Steps are counted from the primary lane's events: the run row
+ * Tasks in rank order, each with its run's live state, and each task's pull
+ * request once it has one. Four queries, one round trip. Steps are counted from the primary lane's events: the run row
  * only learns its step total when the agent finishes.
  */
 export async function getScanTree(db: D1Database, scan: ScanRecord): Promise<ScanTreeResponse> {
-  const [tasks, steps, counts] = await db.batch<TaskRow | StepCountRow | FindingCountRow>([
+  const [tasks, steps, counts, prs] = await db.batch<TaskRow | StepCountRow | FindingCountRow | PullRequestRow>([
     db
       .prepare(
         `SELECT t.task_index, t.run_id, r.task, t.why_critical, t.success_check, r.status, r.state
@@ -196,6 +210,7 @@ export async function getScanTree(db: D1Database, scan: ScanRecord): Promise<Sca
          GROUP BY f.run_id`,
       )
       .bind(scan.id),
+    db.prepare("SELECT body_json FROM task_pull_requests WHERE scan_id = ? ORDER BY task_index ASC").bind(scan.id),
   ]);
 
   const stepsOf = new Map<string, number>();
@@ -218,7 +233,49 @@ export async function getScanTree(db: D1Database, scan: ScanRecord): Promise<Sca
       worstSeverity: count ? (count.worst as Severity) : null,
     };
   });
-  return { scan, tasks: treeTasks };
+  return { scan, tasks: treeTasks, pullRequests: ((prs?.results ?? []) as PullRequestRow[]).flatMap(toPullRequest) };
+}
+
+/** The scan a run belongs to, with the repository that scan was started with. */
+export async function getRunScanLink(db: D1Database, runId: string): Promise<RunScanLink | null> {
+  const row = await db
+    .prepare("SELECT t.scan_id, t.task_index, s.repo FROM scan_tasks t JOIN scans s ON s.id = t.scan_id WHERE t.run_id = ?")
+    .bind(runId)
+    .first<{ scan_id: string; task_index: number; repo: string | null }>();
+  return row ? { scanId: row.scan_id, taskIndex: row.task_index, repo: row.repo ?? null } : null;
+}
+
+/** A row that no longer parses costs that task's chip, not the tree. */
+function toPullRequest(row: PullRequestRow): TaskPullRequest[] {
+  try {
+    const parsed = TaskPullRequestSchema.safeParse(JSON.parse(row.body_json));
+    return parsed.success ? [parsed.data] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One row per (scan, run): replaying an upsert changes nothing, a later one
+ * replaces the whole record. Null when the run is not a task of the scan.
+ */
+export async function upsertTaskPullRequest(db: D1Database, pr: TaskPullRequest): Promise<TaskPullRequest | null> {
+  const task = await db.prepare("SELECT task_index FROM scan_tasks WHERE scan_id = ? AND run_id = ?").bind(pr.scanId, pr.runId).first<{ task_index: number }>();
+  if (!task) return null;
+  // The scan's own task index wins over the caller's.
+  const stored: TaskPullRequest = { ...pr, taskIndex: task.task_index };
+  const now = Date.now();
+  await db
+    .prepare(
+      `INSERT INTO task_pull_requests (scan_id, run_id, task_index, status, pr_url, body_json, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+       ON CONFLICT (scan_id, run_id) DO UPDATE SET
+         task_index = excluded.task_index, status = excluded.status, pr_url = excluded.pr_url,
+         body_json = excluded.body_json, updated_at = excluded.updated_at`,
+    )
+    .bind(stored.scanId, stored.runId, stored.taskIndex, stored.status, stored.prUrl ?? null, JSON.stringify(stored), now)
+    .run();
+  return stored;
 }
 
 export interface ScanFindingRows {

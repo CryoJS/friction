@@ -4,8 +4,10 @@
  *
  *   proposeFix -> verifyFix -> (if verified) findSourceFile -> generateSourceFix
  *
- * and then it waits. A pull request is opened only when the user clicks "Open
- * pull request" in the control room (see pr.ts); never automatically.
+ * and then it waits. A pull request is opened when the user clicks "Open pull
+ * request" in the control room (see pr.ts), or, for a scan started with
+ * automatic pull requests, by the scan once all its runs are over (see
+ * scanPullRequests.ts); never by the run itself.
  *
  * create() and execute() are separate so a scan can create all its runs (and
  * post every primary lane's idle status) before any of them starts. Every live
@@ -15,12 +17,13 @@
 import { evidenceKey, selectTopFindings, type LaneResult, type Outcome, type ScanTaskLink, type StepEvent, type StructuredCaller } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { runAgent, type AgentResult } from "./agentRunner";
-import type { Config } from "./config";
+import { githubFor, type Config, type GitHubConfig } from "./config";
 import { LaneEmitter } from "./emitter";
 import { findingForFix, openAIFixer, proposeAndReport, type FindingForFix, type FixProposer } from "./fixer";
 import type { FixReport } from "./fixReport";
 import { openAIJudge } from "./judge";
 import { goldenFixer, goldenJudge, runMockAgent } from "./mockRunner";
+import { mockSourceFix } from "./mockSource";
 import { OpenAIPlanner } from "./planner";
 import { findSourceFile, generateSourceFix, openAISourceFixer, type SourceFixer } from "./repo";
 import { errorMessage, log, type Semaphore } from "./util";
@@ -33,6 +36,8 @@ export interface PreparedRun {
   task: string;
   /** From a scan's generated task: tells the planner what "done" looks like. */
   successCheck?: string;
+  /** "owner/name" of the scan's repository. Absent: the env default, exactly as before scans could choose one. */
+  repo?: string;
   /** The primary lane's emitter; its idle status is already in the Worker. */
   emitter: LaneEmitter;
 }
@@ -79,12 +84,12 @@ export class RunManager {
    * as having no producer and falls back to the fixture, so the producer has
    * to be visibly attached before the UI can possibly connect.
    */
-  async create(url: string, task: string, options: { scan?: ScanTaskLink; successCheck?: string } = {}): Promise<PreparedRun> {
+  async create(url: string, task: string, options: { scan?: ScanTaskLink; successCheck?: string; repo?: string } = {}): Promise<PreparedRun> {
     const runId = await this.worker.createRun(url, task, options.scan);
     const emitter = new LaneEmitter(this.worker, runId, "primary", task, this.judge());
     emitter.status("idle", this.mock ? "Queued (mock mode)." : "Queued. Waiting for a browser session.");
     await emitter.flush();
-    return { runId, url, task, successCheck: options.successCheck, emitter };
+    return { runId, url, task, successCheck: options.successCheck, repo: options.repo, emitter };
   }
 
   /**
@@ -185,7 +190,9 @@ export class RunManager {
 
     const before: LaneResult = { outcome: primary.outcome, steps: primary.steps, durationMs: primary.durationMs };
     const proposer: FixProposer = this.mock ? goldenFixer(config.mockSpeed) : openAIFixer(config);
-    const sourceFixer: SourceFixer | null = config.github && !this.mock ? openAISourceFixer(config) : null;
+    // A scan's runs map to the scan's repository; any other run to the env default.
+    const github = run.repo ? githubFor(config, run.repo) : config.github;
+    const sourceFixer: SourceFixer | null = github && !this.mock ? openAISourceFixer(config) : null;
     let seqFloor = 0;
 
     for (const { finding } of top) {
@@ -218,7 +225,10 @@ export class RunManager {
         );
         seqFloor = outcome.lastSeq;
 
-        if (outcome.verdict.stage === "verified") await this.mapToSource(finding, report, sourceFixer);
+        if (outcome.verdict.stage === "verified") {
+          if (this.mock) await this.mockMapToSource(run, finding, report);
+          else await this.mapToSource(finding, report, github, sourceFixer);
+        }
         seqFloor = Math.max(seqFloor, report.lastSeq);
       } catch (err) {
         log("run", `${runId} ${finding.findingId}: ${errorMessage(err)}`);
@@ -227,8 +237,7 @@ export class RunManager {
   }
 
   /** Verified: find the source file and generate its new content. Unmapped is a normal ending. */
-  private async mapToSource(finding: FindingForFix, report: FixReport, sourceFixer: SourceFixer | null): Promise<void> {
-    const github = this.config.github;
+  private async mapToSource(finding: FindingForFix, report: FixReport, github: GitHubConfig | null, sourceFixer: SourceFixer | null): Promise<void> {
     if (!github || !sourceFixer) {
       log("run", `${finding.findingId}: verified; no repository connected, so it stays unmapped`);
       return;
@@ -237,10 +246,22 @@ export class RunManager {
     if (!sourceFile) return;
     try {
       const newFileContent = await generateSourceFix(sourceFixer, finding, report.state, sourceFile);
-      // Held on the fix row until the user clicks "Open pull request".
+      // Held on the fix row until a pull request is opened for it.
       await report.update({ sourceFile: sourceFile.path, newFileContent, sourceSha: sourceFile.sha });
     } catch (err) {
       log("run", `${finding.findingId}: mapped to ${sourceFile.path}, but no acceptable new content: ${errorMessage(err)}`);
     }
+  }
+
+  /**
+   * Mock mode has no repository and no model, so nothing is ever mapped. For a
+   * scan started with a repository, the CANNED mapping of mockSource.ts stands
+   * in, so the scan can end with pull request previews. Never outside a scan.
+   */
+  private async mockMapToSource(run: PreparedRun, finding: FindingForFix, report: FixReport): Promise<void> {
+    const canned = run.repo ? mockSourceFix(finding.category) : null;
+    if (!canned) return;
+    log("run", `${finding.findingId}: mock mode, canned mapping to ${canned.path}`);
+    await report.update({ sourceFile: canned.path, newFileContent: canned.content, sourceSha: null });
   }
 }

@@ -1,6 +1,7 @@
 import {
   SEVERITY_LABELS,
   isScanFinished,
+  summarizeTaskPullRequests,
   type CrawledPage,
   type ScanReportResponse,
   type ScanTreeResponse,
@@ -26,8 +27,10 @@ export function RootPanel({ tree, report, onSelect }: Props) {
   const { scan } = tree;
   const hasTasks = tree.tasks.length > 0;
   const progress = runProgress(tree);
-  // While running, the message is the task-source note, which the notices below already say.
-  const showMessage = scan.message !== null && (scan.status === "crawling" || scan.status === "completed");
+  // While the runs are going, the message is the task-source note, which the notices below already say; after them it is the pull request progress.
+  const runsOver = progress.total > 0 && progress.done === progress.total;
+  const showMessage = scan.message !== null && (scan.status === "crawling" || scan.status === "completed" || (scan.status === "running" && runsOver));
+  const pullRequests = tree.pullRequests ?? [];
 
   return (
     <div className="space-y-5">
@@ -38,6 +41,22 @@ export function RootPanel({ tree, report, onSelect }: Props) {
         </h2>
         {showMessage && <p className="mt-1.5 text-ui text-ash">{scan.message}</p>}
       </header>
+
+      {scan.repo && (
+        <section aria-label="Pull requests" className="rounded-card border border-hairline/10 bg-white/4 p-5">
+          <h3 className="text-caption text-ash">Repository</h3>
+          <p className="mt-1 truncate font-mono text-ui tracking-normal text-bone" title={scan.repo}>
+            {scan.repo}
+          </p>
+          <p className="mt-2 text-caption text-smoke">
+            {pullRequests.length > 0
+              ? summarizeTaskPullRequests(pullRequests).text
+              : scan.autoPr
+                ? "One draft pull request per fixable task, once every run has finished."
+                : "Pull requests are opened by hand, one fix at a time, from a task's control room."}
+          </p>
+        </section>
+      )}
 
       {scan.status === "failed" && <Notice tone="bad">{scan.message ?? "The scan failed."}</Notice>}
       {scan.taskSource === "fallback" && <Notice tone="warn">Couldn't read the site; these tasks are generic.</Notice>}

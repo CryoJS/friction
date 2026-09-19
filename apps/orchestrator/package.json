@@ -8,7 +8,9 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke": "tsx scripts/smoke-local.ts",
-    "smoke:scan": "tsx scripts/smoke-scan.ts"
+    "smoke:scan": "tsx scripts/smoke-scan.ts",
+    "smoke:scan-pr": "tsx scripts/smoke-scan-pr.ts",
+    "smoke:github-fake": "tsx scripts/smoke-github-fake.ts"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.16.0",

@@ -12,7 +12,7 @@ import OpenAI from "openai";
 import { FRICTION_LABELS, checkGeneratedFile, rankSearchHits, searchTermsFor, unwrapFence, type FixPayload, type SearchHit } from "@friction/shared";
 import type { Config, GitHubConfig } from "./config";
 import type { FindingForFix } from "./fixer";
-import { errorMessage, log } from "./util";
+import { errorMessage, log, sleep } from "./util";
 
 /** Search terms tried per finding (the code search API allows ~10 requests a minute). */
 const MAX_TERMS = 4;
@@ -31,18 +31,83 @@ export interface SourceFile {
 }
 
 export function octokitFor(github: GitHubConfig): Octokit {
-  return new Octokit({ auth: github.token, userAgent: "friction-fix-verification", request: { timeout: 20_000 } });
+  return new Octokit({ auth: github.token, userAgent: "friction-fix-verification", request: { timeout: 20_000 }, ...(github.apiUrl ? { baseUrl: github.apiUrl.replace(/\/+$/, "") } : {}) });
+}
+
+/* ------------------------------------------------------------ GitHub calls */
+
+const GITHUB_ATTEMPTS = 3;
+/** The longest a retry-after is honoured for; a longer one ends the call with the wait in its message. */
+const MAX_RETRY_AFTER_MS = 45_000;
+
+export function statusOf(err: unknown): number | undefined {
+  return typeof err === "object" && err !== null && "status" in err ? Number((err as { status: unknown }).status) : undefined;
+}
+
+function headerOf(err: unknown, name: string): string | undefined {
+  const headers = (err as { response?: { headers?: Record<string, string | number | undefined> } } | null)?.response?.headers;
+  const value = headers?.[name];
+  return value === undefined ? undefined : String(value);
+}
+
+/** How long GitHub asked us to wait, or null when the error is not a rate limit. */
+function rateLimitWaitMs(err: unknown): number | null {
+  const status = statusOf(err);
+  if (status !== 429 && status !== 403) return null;
+  const retryAfter = Number(headerOf(err, "retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter >= 0) return retryAfter * 1000;
+  if (headerOf(err, "x-ratelimit-remaining") === "0") {
+    const reset = Number(headerOf(err, "x-ratelimit-reset"));
+    return Number.isFinite(reset) ? Math.max(0, reset * 1000 - Date.now()) + 1000 : 60_000;
+  }
+  return status === 429 ? 5000 : null;
+}
+
+/**
+ * Every GitHub call goes through here: the client's own 20s timeout, plus
+ * bounded retries. A rate limit is retried after GitHub's retry-after. A read
+ * is also retried on a 5xx or a network error; a write is not, because it may
+ * have been applied, and repeating it would hit our own branch or commit.
+ */
+export async function githubCall<T>(kind: "read" | "write", label: string, call: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      const status = statusOf(err);
+      const limited = rateLimitWaitMs(err);
+      const transient = kind === "read" && (status === undefined || status >= 500);
+      if (attempt >= GITHUB_ATTEMPTS || (limited === null && !transient) || (limited !== null && limited > MAX_RETRY_AFTER_MS)) throw err;
+      const waitMs = limited ?? 500 * 2 ** (attempt - 1);
+      log("github", `${label} failed (${status ?? "network"}); retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1} of ${GITHUB_ATTEMPTS})`);
+      await sleep(waitMs);
+    }
+  }
+}
+
+/** One human sentence for a GitHub failure: what a person would need to do about it. */
+export function describeGitHubError(err: unknown, github: GitHubConfig): string {
+  const status = statusOf(err);
+  const slug = `${github.owner}/${github.repo}`;
+  const limited = rateLimitWaitMs(err);
+  if (limited !== null) return `GitHub's rate limit was reached; try again in about ${Math.max(1, Math.round(limited / 1000))} seconds.`;
+  if (status === 401) return "GitHub rejected GITHUB_TOKEN (401): it is wrong or has expired.";
+  if (status === 403) return `The token may not do this on ${slug} (403): it needs Contents and Pull requests set to read and write.`;
+  if (status === 404) return `${slug} was not found, or the token cannot see it (404).`;
+  if (status === 409) return `GitHub reported a conflict on ${slug} (409): ${errorMessage(err)}`;
+  if (status === 422) return `GitHub refused the request (422): ${errorMessage(err)}`;
+  return status === undefined ? `GitHub could not be reached: ${errorMessage(err)}` : `GitHub answered ${status}: ${errorMessage(err)}`;
 }
 
 /** GITHUB_BASE_BRANCH, or the repository's default branch. */
 export async function baseBranch(octokit: Octokit, github: GitHubConfig): Promise<string> {
   if (github.baseBranch) return github.baseBranch;
-  const { data } = await octokit.rest.repos.get({ owner: github.owner, repo: github.repo });
+  const { data } = await githubCall("read", "repos.get", () => octokit.rest.repos.get({ owner: github.owner, repo: github.repo }));
   return data.default_branch;
 }
 
 async function readFile(octokit: Octokit, github: GitHubConfig, path: string, ref: string): Promise<SourceFile | null> {
-  const { data } = await octokit.rest.repos.getContent({ owner: github.owner, repo: github.repo, path, ref });
+  const { data } = await githubCall("read", "repos.getContent", () => octokit.rest.repos.getContent({ owner: github.owner, repo: github.repo, path, ref }));
   if (Array.isArray(data) || data.type !== "file" || !("content" in data)) return null;
   if (data.size > MAX_FILE_BYTES) {
     log("repo", `${path} is ${data.size} bytes; too large to rewrite whole`);
@@ -67,7 +132,9 @@ export async function findSourceFile(github: GitHubConfig, finding: FindingForFi
     const hits: SearchHit[] = [];
     for (const term of terms) {
       try {
-        const { data } = await octokit.rest.search.code({ q: `"${term.replace(/"/g, "")}" repo:${github.owner}/${github.repo}`, per_page: 30 });
+        const { data } = await githubCall("read", "search.code", () =>
+          octokit.rest.search.code({ q: `"${term.replace(/"/g, "")}" repo:${github.owner}/${github.repo}`, per_page: 30 }),
+        );
         for (const item of data.items) hits.push({ path: item.path, terms: [term] });
       } catch (err) {
         // One bad term (rate limit, a query GitHub refuses) must not sink the others.

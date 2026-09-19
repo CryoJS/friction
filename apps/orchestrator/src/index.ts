@@ -1,12 +1,14 @@
 /**
  * Friction orchestrator.
- *   POST /scans          { url }       -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background
+ *   POST /scans          { url, repo?, autoPr? }
+ *                                      -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background.
+ *                                         `repo` must be on the allow-list; with `autoPr`, one draft PR per fixable task at the end
  *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
  *   POST /runs/:runId/fixes/:findingId/pull-request
  *                                      -> opens a DRAFT PR for a verified, mapped fix.
  *                                         Only ever called by the user's click.
- *   GET  /health                       -> live or mock, and which env vars are missing
+ *   GET  /health                       -> live or mock, which env vars are missing, and the repositories a scan may choose
  */
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
@@ -15,6 +17,7 @@ import {
   SuggestTasksRequestSchema,
   formatIssues,
   isAllowedOrigin,
+  matchAllowedRepo,
   normalizeTargetUrl,
   type CreateRunResponse,
   type CreateScanResponse,
@@ -56,7 +59,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.get("/health", (_req, res) => {
-  const body: OrchestratorHealth = { ok: true, mode: config.mode, missingEnv: config.missingEnv };
+  // Names only. The token never leaves this process.
+  const body: OrchestratorHealth = { ok: true, mode: config.mode, missingEnv: config.missingEnv, repos: config.allowedRepos, githubDryRun: config.githubDryRun };
   res.json(body);
 });
 
@@ -88,8 +92,15 @@ app.post("/scans", async (req, res) => {
     res.status(400).json({ error: "url: not a valid http(s) URL" });
     return;
   }
+  // This process has no auth: a scan may only name a repository from the allow-list, never a free-text one.
+  const requested = parsed.success ? parsed.data.repo : undefined;
+  const repo = requested === undefined ? undefined : matchAllowedRepo(config.allowedRepos, requested);
+  if (repo === null) {
+    res.status(400).json({ error: `repo: ${requested} is not one of this orchestrator's allowed repositories` });
+    return;
+  }
   try {
-    const body: CreateScanResponse = { scanId: await scans.start(url) };
+    const body: CreateScanResponse = { scanId: await scans.start(url, { repo, autoPr: repo !== undefined && parsed.success && parsed.data.autoPr === true }) };
     res.status(201).json(body);
   } catch (err) {
     log("http", `could not start a scan: ${errorMessage(err)}`);
@@ -110,7 +121,7 @@ app.post("/suggest-tasks", async (req, res) => {
 app.post("/runs/:runId/fixes/:findingId/pull-request", async (req, res) => {
   const { runId, findingId } = req.params;
   try {
-    const prUrl = await openPullRequest({ runId, findingId, worker, github: config.github, workerUrl: config.workerUrl });
+    const prUrl = await openPullRequest({ runId, findingId, worker, config, workerUrl: config.workerUrl });
     const body: OpenPullRequestResponse = { prUrl };
     res.status(201).json(body);
   } catch (err) {
