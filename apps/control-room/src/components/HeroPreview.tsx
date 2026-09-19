@@ -123,7 +123,16 @@ export function HeroPreview() {
                 className="hero-preview-copy-sketch"
                 style={{ "--preview-accent": ACCENTS[issueAccent] } as CSSProperties}
                 aria-hidden="true"
-              />
+              >
+                <span className="hero-preview-copy-sketch-handle hero-preview-copy-sketch-handle--top-left" />
+                <span className="hero-preview-copy-sketch-handle hero-preview-copy-sketch-handle--top-right" />
+                <span className="hero-preview-copy-sketch-handle hero-preview-copy-sketch-handle--bottom-left" />
+                <span className="hero-preview-copy-sketch-handle hero-preview-copy-sketch-handle--bottom-right" />
+                <span className="hero-preview-copy-sketch-label">
+                  <span className="hero-preview-copy-sketch-label-dot" />
+                  agent focus
+                </span>
+              </span>
               <span
                 className="hero-preview-copy-sketch-line"
                 style={{ "--preview-accent": ACCENTS[issueAccent] } as CSSProperties}

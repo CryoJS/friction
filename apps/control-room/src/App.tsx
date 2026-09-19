@@ -73,7 +73,7 @@ export default function App() {
   if (query.scan) {
     return (
       <div className="flex h-full flex-col">
-        <Nav onHome={goHome} compact action={newScan} />
+        <Nav onHome={goHome} action={newScan} />
         <ScanPage key={query.scan} scanId={query.scan} nodeId={query.node} onSelectNode={selectNode} onOpenRun={openRun} />
       </div>
     );
@@ -97,7 +97,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <Nav onHome={goHome} compact action={newScan}>
+      <Nav onHome={goHome} action={newScan}>
         <TabButton tab="room" current={query.tab} onTab={(tab) => setQuery({ tab })}>
           <span className="sm:hidden">Room</span>
           <span className="hidden sm:inline">Control room</span>
