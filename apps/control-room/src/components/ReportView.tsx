@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { FRICTION_LABELS, SEVERITY_LABELS, type PersonaId, type ReportFinding, type ReportResponse, type Severity, type StepPayload } from "@friction/shared";
+import { FRICTION_LABELS, SEVERITY_LABELS, type FixEvent, type ReportFinding, type ReportResponse, type Severity, type StepPayload } from "@friction/shared";
+import { fixList, type RunView } from "../lib/runState";
+import { FixComparison, type PullRequestAvailability } from "./FixComparison";
 import { ACTION_VERBS, formatDuration, percent } from "../lib/format";
 import { EvidenceImage } from "./EvidenceImage";
-import { SEVERITY_STYLES, SeverityBadge, StateBadge, categoryLabel } from "./badges";
+import { SEVERITY_STYLES, SeverityBadge, StageBadge, StateBadge, categoryLabel } from "./badges";
 import { ArrowUpRight } from "./icons";
 
 interface Props {
@@ -11,19 +12,19 @@ interface Props {
   /** Assembled in the browser because the Worker did not answer. */
   local: boolean;
   /** Full step payloads the control room already holds, so wireframe evidence renders offline. */
-  findStep: (personaId: PersonaId, seq: number) => StepPayload | undefined;
+  findStep: (seq: number) => StepPayload | undefined;
+  /** The run as the room sees it: the lanes and fixes the comparisons are drawn from. */
+  view: RunView;
+  allowLiveView: boolean;
+  pullRequests: PullRequestAvailability;
+  onOpenPullRequest: (findingId: string) => Promise<string>;
 }
 
 const SEVERITIES: Severity[] = [5, 4, 3, 2, 1];
 
-export function ReportView({ report, loading, local, findStep }: Props) {
-  const [persona, setPersona] = useState<PersonaId | "all">("all");
-
-  const findings = useMemo(
-    () => (report ? report.findings.filter((finding) => persona === "all" || finding.personaId === persona) : []),
-    [report, persona],
-  );
-
+export function ReportView({ report, loading, local, findStep, view, allowLiveView, pullRequests, onOpenPullRequest }: Props) {
+  const fixes = fixList(view);
+  const fixByFinding = new Map(fixes.map((fix) => [fix.payload.findingId, fix] as const));
   if (!report) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 text-body text-smoke" aria-busy={loading}>
@@ -36,6 +37,40 @@ export function ReportView({ report, loading, local, findStep }: Props) {
   return (
     <main className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-300 px-4 pb-20 pt-5 sm:px-6">
+        {fixes.length > 0 && (
+          <section className="mb-14" aria-labelledby="fixes-heading">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 id="fixes-heading" className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">
+                  Fixes, tested
+                </h2>
+                <p className="mt-1 max-w-[70ch] text-caption text-smoke">
+                  The top findings got a proposed fix. Each was tested by re-running the same task in a fresh browser with the fix installed, and compared with the
+                  original run.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-6">
+              {fixes.map((fix) => {
+                const finding = report.findings.find((f) => f.id === fix.payload.findingId) ?? null;
+                return (
+                  <FixComparison
+                    key={fix.payload.findingId}
+                    fix={fix}
+                    finding={finding ? { severity: finding.severity, summary: finding.summary, hitCount: finding.hitCount } : null}
+                    before={view.primary}
+                    after={view.verify[fix.payload.findingId]}
+                    allowLiveView={allowLiveView}
+                    startTs={view.firstTs}
+                    pullRequests={pullRequests}
+                    onOpenPullRequest={onOpenPullRequest}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <section className="relative isolate overflow-hidden rounded-large border border-hairline/10 bg-white/4 p-6 sm:p-8" aria-label="Summary">
           <div aria-hidden="true" className="spotlight pointer-events-none absolute -left-40 -top-48 -z-10 h-[480px] w-[480px]" />
 
@@ -45,23 +80,16 @@ export function ReportView({ report, loading, local, findStep }: Props) {
               <span className="pb-2 text-subheading text-ash">
                 friction {report.totals.findings === 1 ? "finding" : "findings"}
                 <br />
-                across {report.personas.length} personas
+                in one run of the task
               </span>
             </div>
 
-            <ul className="grid gap-2" aria-label="Personas">
-              {report.personas.map((section) => (
-                <li key={section.personaId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-ui lg:justify-end">
-                  <span className="text-bone">{section.displayName}</span>
-                  <span className="flex items-center gap-3">
-                    <span className="tabular-nums text-smoke">
-                      {section.stepCount} steps{section.durationMs !== null && ` · ${formatDuration(section.durationMs)}`}
-                    </span>
-                    <StateBadge state={section.state} />
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-ui lg:justify-end" aria-label="How the run went">
+              <span className="tabular-nums text-smoke">
+                {report.primary.stepCount} steps{report.primary.durationMs !== null && ` · ${formatDuration(report.primary.durationMs)}`}
+              </span>
+              <StateBadge state={report.primary.state} />
+            </div>
           </div>
 
           <SeveritySpectrum counts={report.totals.bySeverity} total={report.totals.findings} />
@@ -79,34 +107,14 @@ export function ReportView({ report, loading, local, findStep }: Props) {
             <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Findings</h2>
             <p className="mt-1 text-caption text-smoke">Ranked by severity, then confidence.</p>
           </div>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by persona">
-            <Filter active={persona === "all"} onClick={() => setPersona("all")} label="All personas" count={report.totals.findings} />
-            {report.personas.map((section) => (
-              <Filter
-                key={section.personaId}
-                active={persona === section.personaId}
-                onClick={() => setPersona(section.personaId)}
-                label={section.displayName}
-                count={section.findings.length}
-              />
-            ))}
-          </div>
         </div>
 
         <div className="mt-6 space-y-4">
-          {findings.length === 0 && (
-            <p className="rounded-card border border-dashed border-hairline/20 px-6 py-12 text-center text-body text-smoke">
-              No friction found{persona === "all" ? " yet" : " for this persona"}.
-            </p>
+          {report.findings.length === 0 && (
+            <p className="rounded-card border border-dashed border-hairline/20 px-6 py-12 text-center text-body text-smoke">No friction found yet.</p>
           )}
-          {findings.map((finding, index) => (
-            <FindingCard
-              key={finding.id}
-              rank={index + 1}
-              finding={finding}
-              personaName={report.personas.find((section) => section.personaId === finding.personaId)?.displayName ?? finding.personaId}
-              payload={findStep(finding.personaId, finding.evidenceSeq)}
-            />
+          {report.findings.map((finding, index) => (
+            <FindingCard key={finding.id} rank={index + 1} finding={finding} payload={findStep(finding.evidenceSeq)} fix={fixByFinding.get(finding.id) ?? null} />
           ))}
         </div>
       </div>
@@ -140,15 +148,7 @@ function SeveritySpectrum({ counts, total }: { counts: Record<Severity, number>;
   );
 }
 
-function Filter({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={active} className="pill-ghost">
-      {label} <span className="tabular-nums text-smoke">{count}</span>
-    </button>
-  );
-}
-
-function FindingCard({ finding, rank, personaName, payload }: { finding: ReportFinding; rank: number; personaName: string; payload: StepPayload | undefined }) {
+function FindingCard({ finding, rank, payload, fix }: { finding: ReportFinding; rank: number; payload: StepPayload | undefined; fix: FixEvent | null }) {
   const style = SEVERITY_STYLES[finding.severity];
   const evidence = finding.evidence;
 
@@ -175,7 +175,16 @@ function FindingCard({ finding, rank, personaName, payload }: { finding: ReportF
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="mr-1 font-heading text-heading-sm tabular-nums leading-none text-ash">{String(rank).padStart(2, "0")}</span>
             <SeverityBadge severity={finding.severity} withLabel />
-            <span className="tag">{personaName}</span>
+            {fix && (
+              <a href="#fixes-heading" className="rounded-full" title="See the fix and its verification above">
+                <StageBadge stage={fix.payload.stage} />
+              </a>
+            )}
+            {finding.hitCount > 1 && (
+              <span className="tag" title="Times the agent ran into this in one run">
+                Hit {finding.hitCount}×
+              </span>
+            )}
             <Confidence value={finding.confidence} />
           </div>
 

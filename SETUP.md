@@ -38,7 +38,7 @@ Open http://localhost:5173.
 
 ```bash
 pnpm typecheck           # all four packages, TypeScript strict
-pnpm test                # friction detector unit tests against the fixture (42 tests)
+pnpm test                # friction detector unit tests against the fixture
 pnpm golden:generate     # regenerate fixtures/golden-run.json (deterministic)
 ```
 
@@ -58,9 +58,8 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `LOCAL_BROWSER_PATH` | | auto-detected | Chrome/Edge binary for `BROWSER_ENV=LOCAL` |
 | `FRICTION_MOCK` | | off | `1` forces mock mode even with keys set |
 | `MOCK_SPEED` | | `3` | Mock mode playback speed |
-| `PERSONA_CONCURRENCY` | | `3` | Personas at once. Lower it if your Browserbase plan caps concurrent sessions |
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
-| `PERSONA_TIMEOUT_MS` | | `300000` | Wall-clock budget per persona |
+| `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
 | `STAGEHAND_MODEL` | | `OPENAI_MODEL` | Model for Stagehand's `observe()` fallback |
 | `OPENAI_REASONING_EFFORT` | | unset | Only for reasoning models that accept it |
 | `OPENAI_IMAGE_DETAIL` | | `high` | `high`, `low` or `auto` |
@@ -84,7 +83,9 @@ pnpm db:migrate:local    # wrangler d1 migrations apply friction --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply friction --remote
 ```
 
-Local dev does not strictly need the first one: if the Worker finds an unmigrated database it runs `migrations/0001_init.sql` itself (every statement is `IF NOT EXISTS`, so both paths are safe in either order). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
+Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order.
+
+`0002_lanes.sql` replaces the three-persona schema with lanes. It is lossy for runs recorded before it: their "cautious" persona becomes the primary lane and the other two personas' events are dropped (R2 screenshots are untouched). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
 
 ## Deploy the Worker
 
@@ -130,6 +131,6 @@ The demo is **replay**. Live is the bonus.
 
 Things that bite:
 
-- **Browserbase concurrency.** Three personas means three concurrent sessions. On a plan that allows fewer, session creation returns 429; the orchestrator waits and retries, but set `PERSONA_CONCURRENCY=1` to be safe. "Suggest tasks" opens a fourth session.
+- **Browserbase concurrency.** A run holds one session at a time (verification runs open their own, one after another). "Suggest tasks" opens another; on a plan that caps concurrency, session creation returns 429 and the orchestrator waits and retries.
 - **Bot protection.** Big retail sites may CAPTCHA a cloud browser. Rehearse on your real target, and keep `/demo-shop` as the target that always works.
 - **`OPENAI_MODEL` unset** puts the orchestrator in mock mode. Check `/health`.

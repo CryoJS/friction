@@ -8,7 +8,7 @@
  * Kept out of the main entry point so importing "@friction/shared" stays light.
  */
 import raw from "../../../fixtures/golden-run.json";
-import { RunSnapshotSchema, type PersonaRecord, type RunRecord, type RunSnapshot } from "./api";
+import { RunSnapshotSchema, type RunRecord, type RunSnapshot } from "./api";
 import { compareEvents, type RunEvent } from "./events";
 
 let cached: RunSnapshot | null = null;
@@ -47,20 +47,16 @@ export function rebaseGoldenRun(options: RebaseOptions): RunSnapshot {
   const { runId } = options;
 
   const events: RunEvent[] = golden.events.map((e) => ({ ...e, runId, ts: e.ts + shift }));
-  const personas: PersonaRecord[] = golden.personas.map((p) => ({
-    ...p,
-    id: `${runId}:${p.personaId}`,
-    runId,
-  }));
   const lastTs = events[events.length - 1]?.ts ?? golden.run.createdAt + shift;
-  const run: RunRecord = options.run
-    ? { ...options.run, status: "completed", completedAt: options.run.completedAt ?? lastTs }
-    : {
-        ...golden.run,
-        id: runId,
-        createdAt: golden.run.createdAt + shift,
-        completedAt: golden.run.completedAt === null ? null : golden.run.completedAt + shift,
-      };
+  // The story (state, outcome, sessions) is the fixture's; identity and url/task may be the caller's.
+  const run: RunRecord = {
+    ...golden.run,
+    id: runId,
+    createdAt: golden.run.createdAt + shift,
+    completedAt: golden.run.completedAt === null ? null : golden.run.completedAt + shift,
+    ...(options.run ? { url: options.run.url, task: options.run.task, createdAt: options.run.createdAt, completedAt: options.run.completedAt ?? lastTs } : {}),
+    status: "completed",
+  };
 
-  return { run, personas, events, source: "fixture" };
+  return { run, events, source: "fixture" };
 }

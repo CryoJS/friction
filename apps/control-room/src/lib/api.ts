@@ -1,6 +1,7 @@
 import type {
   CreateRunRequest,
   CreateRunResponse,
+  OpenPullRequestResponse,
   OrchestratorHealth,
   ReportResponse,
   RunListResponse,
@@ -53,7 +54,7 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const api = {
-  /** Normal path: the orchestrator creates the run and starts three personas. */
+  /** Normal path: the orchestrator creates the run and starts the agent. */
   startRun: (body: CreateRunRequest) => request<CreateRunResponse>(`${ORCHESTRATOR_URL}/runs`, json(body), 12_000),
 
   /** Orchestrator down: create the run on the Worker; its stream falls back to the golden run. */
@@ -61,6 +62,14 @@ export const api = {
 
   /** Opens a real browser session, so give it time. Callers must tolerate failure. */
   suggestTasks: (url: string) => request<SuggestTasksResponse>(`${ORCHESTRATOR_URL}/suggest-tasks`, json({ url }), 45_000),
+
+  /** The user's click, and the only way a pull request is ever opened. Opens it as a draft. */
+  openPullRequest: (runId: string, findingId: string) =>
+    request<OpenPullRequestResponse>(
+      `${ORCHESTRATOR_URL}/runs/${encodeURIComponent(runId)}/fixes/${encodeURIComponent(findingId)}/pull-request`,
+      json({}),
+      60_000,
+    ),
 
   orchestratorHealth: () => request<OrchestratorHealth>(`${ORCHESTRATOR_URL}/health`, undefined, 2500),
 

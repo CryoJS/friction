@@ -1,7 +1,10 @@
 /**
  * Friction orchestrator.
- *   POST /runs           { url, task } -> { runId } at once; three personas run in the background
+ *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
+ *   POST /runs/:runId/fixes/:findingId/pull-request
+ *                                      -> opens a DRAFT PR for a verified, mapped fix.
+ *                                         Only ever called by the user's click.
  *   GET  /health                       -> live or mock, and which env vars are missing
  */
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -12,9 +15,11 @@ import {
   isAllowedOrigin,
   normalizeTargetUrl,
   type CreateRunResponse,
+  type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
+import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
 import { suggestTasks } from "./suggest";
 import { errorMessage, log } from "./util";
@@ -79,11 +84,23 @@ app.post("/suggest-tasks", async (req, res) => {
   res.json(await suggestTasks(config, url));
 });
 
+app.post("/runs/:runId/fixes/:findingId/pull-request", async (req, res) => {
+  const { runId, findingId } = req.params;
+  try {
+    const prUrl = await openPullRequest({ runId, findingId, worker, github: config.github, workerUrl: config.workerUrl });
+    const body: OpenPullRequestResponse = { prUrl };
+    res.status(201).json(body);
+  } catch (err) {
+    log("pr", `could not open a pull request for ${runId}/${findingId}: ${errorMessage(err)}`);
+    res.status(err instanceof PullRequestError ? err.status : 502).json({ error: errorMessage(err) });
+  }
+});
+
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(400).json({ error: errorMessage(err) });
 });
 
-// A persona must never be able to take the process down with it.
+// A run must never be able to take the process down with it.
 process.on("unhandledRejection", (reason) => log("process", `unhandled rejection: ${errorMessage(reason)}`));
 process.on("uncaughtException", (err) => log("process", `uncaught exception: ${errorMessage(err)}`));
 
@@ -93,7 +110,7 @@ app.listen(config.port, () => {
     const why = config.missingEnv.length > 0 ? `missing ${config.missingEnv.join(", ")}` : "FRICTION_MOCK is set";
     log("http", `MOCK MODE (${why}): runs replay the golden fixture through the real pipeline.`);
   } else {
-    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL, ${config.personaConcurrency} personas at a time.`);
+    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL.`);
   }
   void worker.healthy().then((ok) => {
     if (!ok) log("http", `WARNING: the Worker at ${config.workerUrl} is not answering. Start it with: pnpm dev:worker`);

@@ -1,13 +1,15 @@
 /**
  * Pure report assembly. The Worker feeds it rows from D1; the control room
  * feeds it a snapshot when the Worker is unreachable. Same output either way.
+ *
+ * The report is about the primary lane. Verify-lane friction exists only to be
+ * compared against it, so it never becomes a finding of its own.
  */
 import type {
   DataSource,
-  PersonaRecord,
   ReportEvidence,
   ReportFinding,
-  ReportPersonaSection,
+  ReportLaneSummary,
   ReportResponse,
   RunRecord,
   RunSnapshot,
@@ -19,17 +21,16 @@ import {
   isStepEvent,
   type DoneEvent,
   type FrictionCategory,
-  type PersonaId,
+  type FrictionEvent,
   type RunEvent,
   type Severity,
   type StepEvent,
 } from "./events";
-import { PERSONAS } from "./personas";
 
 /** A finding before it is joined to its evidence step. */
 export interface FindingInput {
   id: string;
-  personaId: PersonaId;
+  findingKey: string;
   category: FrictionCategory;
   severity: Severity;
   evidenceSeq: number;
@@ -37,6 +38,8 @@ export interface FindingInput {
   confidence: number;
   summary?: string | null;
   whyItMatters?: string | null;
+  hitCount: number;
+  selector: string;
 }
 
 export function toReportEvidence(step: StepEvent): ReportEvidence {
@@ -57,19 +60,35 @@ export function toReportEvidence(step: StepEvent): ReportEvidence {
   };
 }
 
-/** Severity desc, then confidence desc, then a stable tiebreak. */
+/** Severity desc, then confidence desc, then hits desc, then a stable tiebreak. */
 export function compareFindings(a: ReportFinding, b: ReportFinding): number {
   if (a.severity !== b.severity) return b.severity - a.severity;
   if (a.confidence !== b.confidence) return b.confidence - a.confidence;
-  if (a.personaId !== b.personaId) return a.personaId < b.personaId ? -1 : 1;
+  if (a.hitCount !== b.hitCount) return b.hitCount - a.hitCount;
   return a.evidenceSeq - b.evidenceSeq;
 }
 
-/** Findings implied by the friction events of a run. */
+/** The id a friction event's finding goes by. Older events without one fall back to their own seq. */
+export function findingIdOf(event: FrictionEvent): string {
+  return event.payload.findingId ?? `f${event.seq}`;
+}
+
+/**
+ * Findings implied by the primary lane's friction events. A finding hit
+ * several times was emitted several times under one id; the latest emission
+ * (highest hitCount) wins.
+ */
 export function findingsFromEvents(events: readonly RunEvent[]): FindingInput[] {
-  return events.filter(isFrictionEvent).map((e) => ({
-    id: `${e.personaId}:${e.seq}`,
-    personaId: e.personaId,
+  const byId = new Map<string, FrictionEvent>();
+  for (const e of events) {
+    if (!isFrictionEvent(e) || e.lane !== "primary") continue;
+    const id = findingIdOf(e);
+    const current = byId.get(id);
+    if (!current || (e.payload.hitCount ?? 1) >= (current.payload.hitCount ?? 1)) byId.set(id, e);
+  }
+  return [...byId.entries()].map(([id, e]) => ({
+    id,
+    findingKey: e.payload.findingKey ?? `${e.payload.category}:${id}`,
     category: e.payload.category,
     severity: e.payload.severity,
     evidenceSeq: e.payload.evidenceSeq,
@@ -77,12 +96,13 @@ export function findingsFromEvents(events: readonly RunEvent[]): FindingInput[] 
     confidence: e.payload.confidence,
     summary: e.payload.summary ?? null,
     whyItMatters: e.payload.whyItMatters ?? null,
+    hitCount: e.payload.hitCount ?? 1,
+    selector: e.payload.selector ?? "",
   }));
 }
 
 export interface AssembleReportArgs {
   run: RunRecord;
-  personas: readonly PersonaRecord[];
   findings: readonly FindingInput[];
   /** Step events to join evidence from, and done events for outcomes. */
   events: readonly RunEvent[];
@@ -91,22 +111,22 @@ export interface AssembleReportArgs {
 }
 
 export function assembleReport(args: AssembleReportArgs): ReportResponse {
-  const { run, personas, findings, events, source } = args;
+  const { run, findings, events, source } = args;
 
-  const steps = new Map<string, StepEvent>();
-  const dones = new Map<PersonaId, DoneEvent>();
+  const steps = new Map<number, StepEvent>();
+  let done: DoneEvent | null = null;
   for (const e of events) {
-    if (isStepEvent(e)) steps.set(`${e.personaId}:${e.seq}`, e);
-    else if (isDoneEvent(e)) dones.set(e.personaId, e);
+    if (e.lane !== "primary") continue;
+    if (isStepEvent(e)) steps.set(e.seq, e);
+    else if (isDoneEvent(e)) done = e;
   }
-  const recordByPersona = new Map(personas.map((p) => [p.personaId, p] as const));
 
   const joined: ReportFinding[] = findings
     .map((f) => {
-      const step = steps.get(`${f.personaId}:${f.evidenceSeq}`);
+      const step = steps.get(f.evidenceSeq);
       return {
         id: f.id,
-        personaId: f.personaId,
+        findingKey: f.findingKey,
         category: f.category,
         severity: f.severity,
         confidence: f.confidence,
@@ -114,8 +134,10 @@ export function assembleReport(args: AssembleReportArgs): ReportResponse {
         summary: f.summary ?? null,
         whyItMatters: f.whyItMatters ?? null,
         evidenceSeq: f.evidenceSeq,
+        hitCount: f.hitCount,
+        selector: f.selector,
         evidence: step ? toReportEvidence(step) : null,
-        replayUrl: recordByPersona.get(f.personaId)?.replayUrl ?? null,
+        replayUrl: run.replayUrl,
       };
     })
     .sort(compareFindings);
@@ -127,25 +149,14 @@ export function assembleReport(args: AssembleReportArgs): ReportResponse {
     byCategory[f.category] = (byCategory[f.category] ?? 0) + 1;
   }
 
-  const sections: ReportPersonaSection[] = PERSONAS.map((def) => {
-    const record = recordByPersona.get(def.id);
-    const done = dones.get(def.id);
-    const stepCount =
-      done?.payload.totalSteps ??
-      record?.stepCount ??
-      events.filter((e) => e.personaId === def.id && e.type === "step").length;
-    return {
-      personaId: def.id,
-      displayName: def.displayName,
-      state: record?.state ?? "idle",
-      outcome: done?.payload.outcome ?? null,
-      stepCount,
-      durationMs: done?.payload.durationMs ?? null,
-      sessionId: record?.sessionId ?? null,
-      replayUrl: record?.replayUrl ?? null,
-      findings: joined.filter((f) => f.personaId === def.id),
-    };
-  });
+  const primary: ReportLaneSummary = {
+    state: run.state,
+    outcome: done?.payload.outcome ?? run.outcome,
+    stepCount: done?.payload.totalSteps ?? run.totalSteps ?? events.filter((e) => e.lane === "primary" && e.type === "step").length,
+    durationMs: done?.payload.durationMs ?? run.durationMs,
+    sessionId: run.sessionId,
+    replayUrl: run.replayUrl,
+  };
 
   return {
     run,
@@ -153,7 +164,7 @@ export function assembleReport(args: AssembleReportArgs): ReportResponse {
     generatedAt: args.now ?? Date.now(),
     totals: { findings: joined.length, bySeverity, byCategory },
     findings: joined,
-    personas: sections,
+    primary,
   };
 }
 
@@ -161,7 +172,6 @@ export function assembleReport(args: AssembleReportArgs): ReportResponse {
 export function buildReportFromSnapshot(snapshot: RunSnapshot, now?: number): ReportResponse {
   return assembleReport({
     run: snapshot.run,
-    personas: snapshot.personas,
     findings: findingsFromEvents(snapshot.events),
     events: snapshot.events,
     source: snapshot.source,

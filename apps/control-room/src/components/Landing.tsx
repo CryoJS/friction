@@ -20,8 +20,8 @@ type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "
 
 const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
-    title: "Three isolated browsers",
-    detail: "Each persona gets its own Browserbase session inside its own context, so no cookies leak between them. All three run at the same time.",
+    title: "One isolated browser",
+    detail: "One agent, a competent first-time visitor, attempts your task in its own Browserbase session inside a fresh context, on the live site.",
   },
   {
     title: "Observe the page",
@@ -29,7 +29,7 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
   },
   {
     title: "Plan, act and keep the evidence",
-    detail: "One model call picks a single action in the persona's own voice. The action runs, the screenshot is stored, and the step streams straight into the control room. Each persona is capped at 15 steps.",
+    detail: "One model call picks a single action and says why. The action runs, the screenshot is stored, and the step streams straight into the control room. The run is capped at 15 steps.",
   },
   {
     title: "Detect friction deterministically",
@@ -88,7 +88,7 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
         <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
           <h1 className="max-w-[21ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
             <span className="lg:block">
-              <HeadlineTarget className="hero-headline-target--users">Three users.</HeadlineTarget>{" "}
+              <HeadlineTarget className="hero-headline-target--users">One agent.</HeadlineTarget>{" "}
               <HeadlineTarget className="hero-headline-target--task">One task.</HeadlineTarget>
             </span>
             <span className="lg:block">
@@ -118,7 +118,7 @@ export function Landing({ onOpen, onStarted, onOverHero, scrollerRef }: Props) {
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL and a task. Friction opens three isolated Browserbase sessions, one per persona, and lets each attempt the task on the live site. Friction is
+            Enter a URL and a task. Friction opens an isolated Browserbase session and lets one agent attempt the task on the live site. Friction is
             detected as it happens and ends up in a ranked report with screenshot evidence.
           </p>
         </div>

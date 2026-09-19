@@ -11,7 +11,10 @@
  *   D1   tailed every 1.5-3s, so events still arrive when the producer's POSTs
  *        hit a different isolate than this stream (normal once deployed)
  * Row ids de-duplicate the two paths. Clients also de-duplicate on
- * (personaId, seq), so an overlap on reconnect is harmless.
+ * (lane, seq), so an overlap on reconnect is harmless.
+ *
+ * The stream ends when the run is `completed`, not when the primary lane is
+ * done: fix verification (lane "verify") streams after it.
  *
  * The free plan allows 50 D1 queries per request. A connection recycles itself
  * (`reconnect` event) before it gets there; the client resumes with ?after=.
@@ -20,16 +23,14 @@ import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   GOLDEN_RUN_ID,
-  PERSONA_IDS,
   SSE,
-  type PersonaRecord,
   type RunEvent,
   type RunRecord,
   type StreamEnd,
   type StreamHello,
 } from "@friction/shared";
 import { rebaseGoldenRun } from "@friction/shared/golden";
-import { countEvents, getEventsAfter, getPersonas, getRun } from "./db";
+import { countEvents, getEventsAfter, getRun } from "./db";
 import type { AppEnv } from "./env";
 import { subscribe, unsubscribe, type HubClient } from "./hub";
 
@@ -106,14 +107,11 @@ export function handleStream(c: Context<AppEnv>): Response {
           return;
         }
 
-        const personas = await getPersonas(db, runId);
-        budget.queries += 1;
-
-        if (!(await producerAttached(session, db, runId, personas, client, budget))) {
+        if (!(await producerAttached(session, db, runId, run, client, budget))) {
           await playFixture(session, runId, run, null);
           return;
         }
-        await tailLive(session, db, runId, run, personas, client, after, budget);
+        await tailLive(session, db, runId, run, client, after, budget);
       } finally {
         unsubscribe(runId, client);
       }
@@ -134,12 +132,12 @@ async function producerAttached(
   session: Session,
   db: D1Database,
   runId: string,
-  personas: readonly PersonaRecord[],
+  run: RunRecord,
   client: HubClient,
   budget: { queries: number },
 ): Promise<boolean> {
   if (client.queue.length > 0) return true;
-  if (personas.some((p) => p.sessionId !== null || p.liveViewUrl !== null)) return true;
+  if (run.status !== "pending" || run.sessionId !== null || run.liveViewUrl !== null) return true;
 
   const deadline = Date.now() + FIXTURE_GRACE_MS;
   let nextCheck = 0;
@@ -161,33 +159,34 @@ async function tailLive(
   session: Session,
   db: D1Database,
   runId: string,
-  run: RunRecord,
-  personas: PersonaRecord[],
+  initial: RunRecord,
   client: HubClient,
   after: string,
   budget: { queries: number },
 ): Promise<void> {
-  const hello: StreamHello = { runId, mode: "live", run, personas };
+  const hello: StreamHello = { runId, mode: "live", run: initial };
   await session.send(SSE.hello, hello);
 
   const sent = new Set<number>();
-  const done = new Set<string>();
-  const personaJson = new Map(personas.map((p) => [p.personaId, JSON.stringify(p)]));
+  let run = initial;
+  let runJson = JSON.stringify(initial);
+  let primaryDone = false;
   // Rewind a little on resume: hub-delivered ids can run ahead of undelivered rows.
   let cursor = Math.max(0, (Number.parseInt(after, 10) || 0) - REWIND_ROWS);
 
   const emit = async (rowId: number, event: RunEvent): Promise<void> => {
     if (sent.has(rowId)) return;
     sent.add(rowId);
-    if (event.type === "done") done.add(event.personaId);
+    if (event.type === "done" && event.lane === "primary") primaryDone = true;
     await session.send(SSE.event, event, String(rowId));
   };
 
-  const emitPersona = async (persona: PersonaRecord): Promise<void> => {
-    const json = JSON.stringify(persona);
-    if (personaJson.get(persona.personaId) === json) return;
-    personaJson.set(persona.personaId, json);
-    await session.send(SSE.persona, persona);
+  const emitRun = async (next: RunRecord): Promise<void> => {
+    const json = JSON.stringify(next);
+    if (json === runJson) return;
+    run = next;
+    runJson = json;
+    await session.send(SSE.run, next);
   };
 
   const pullD1 = async (): Promise<void> => {
@@ -207,10 +206,10 @@ async function tailLive(
   let lastPoll = Date.now();
   let lastBeat = Date.now();
   let lastHubDelivery = 0;
-  let personaPollToggle = false;
+  let runPollToggle = false;
 
   while (session.isOpen()) {
-    if (done.size >= PERSONA_IDS.length) {
+    if (run.status === "completed") {
       await pullD1();
       const end: StreamEnd = { reason: "complete" };
       await session.send(SSE.end, end);
@@ -227,7 +226,7 @@ async function tailLive(
       lastHubDelivery = Date.now();
       for (const message of client.queue.splice(0, client.queue.length)) {
         if (message.kind === "event") await emit(message.rowId, message.event);
-        else await emitPersona(message.persona);
+        else await emitRun(message.run);
       }
     }
 
@@ -237,13 +236,15 @@ async function tailLive(
       lastPoll = now;
       await pullD1();
 
-      // Live view URLs arrive via PATCH, not as events. Keep checking (every
-      // other poll) until every persona has its session.
-      const waitingForSessions = [...personaJson.values()].some((json) => json.includes('"sessionId":null'));
-      personaPollToggle = !personaPollToggle;
-      if (waitingForSessions && personaPollToggle) {
+      // The run row changes out of band (session URLs via PATCH, status at the
+      // end of the pipeline). Check it (every other poll) while a change is
+      // expected: before the session is up, and after the primary lane is done.
+      const expecting = (run.sessionId === null && !primaryDone) || primaryDone;
+      runPollToggle = !runPollToggle;
+      if (expecting && runPollToggle) {
         budget.queries += 1;
-        for (const persona of await getPersonas(db, runId)) await emitPersona(persona);
+        const latest = await getRun(db, runId);
+        if (latest) await emitRun(latest);
       }
     }
 
@@ -266,8 +267,7 @@ async function playFixture(
   const hello: StreamHello = {
     runId,
     mode: "fixture",
-    run: { ...snapshot.run, status: "running", completedAt: null },
-    personas: snapshot.personas.map((p) => ({ ...p, state: "idle", stepCount: 0 })),
+    run: { ...snapshot.run, status: "running", completedAt: null, state: "idle", outcome: null, totalSteps: null, durationMs: null },
   };
   await session.send(SSE.hello, hello);
 

@@ -11,7 +11,7 @@
  * how long the page took to settle, whether the DOM or URL changed, whether an
  * overlay or error text appeared, whether focus moved.
  */
-import { evidenceKey, normalizeUrlForVisit, type ActionType, type BBox, type PersonaDefinition, type StepPayload, type StepSignals } from "@friction/shared";
+import { normalizeUrlForVisit, type ActionType, type BBox, type StepPayload, type StepSignals } from "@friction/shared";
 import { cleanLabel, idFromDescription, sameLabelCount } from "./a11y";
 import type { BrowserHandle, StagehandPage } from "./browser";
 import { VIEWPORT } from "./config";
@@ -27,18 +27,21 @@ const SETTLE_MAX_MS = 3000;
 
 export interface StepOutcome {
   payload: StepPayload;
-  /** Counts towards the persona's abandonment threshold. */
+  /** Counts towards the agent's abandonment threshold. */
   failedAttempt: boolean;
-  /** One line for the planner's history, so the persona can react next turn. */
+  /** One line for the planner's history, so the agent can react next turn. */
   historyAction: string;
   historyOutcome: string;
+  /** The pruned accessibility tree the agent saw before acting. A fix is written against it. */
+  treeLines: string[];
 }
 
 export interface ActContext {
   browser: BrowserHandle;
   worker: WorkerClient;
   runId: string;
-  persona: PersonaDefinition;
+  /** R2 key for this step's evidence screenshot. */
+  evidenceKeyFor: (stepNumber: number) => string;
   startUrl: string;
   stepNumber: number;
 }
@@ -107,7 +110,8 @@ async function settle(page: StagehandPage, urlBefore: string): Promise<void> {
 
 export async function performStep(ctx: ActContext, plan: PlannedAction, observation: Observation): Promise<StepOutcome> {
   const { page, stagehand } = ctx.browser;
-  const keyboardOnly = ctx.persona.inputMode === "keyboard";
+  // "type" with no target: the agent tabbed into a field itself and types into whatever has focus.
+  const intoFocus = plan.actionType === "type" && plan.targetDescription.trim() === "";
   const urlBefore = plan.actionType === "navigate" && observation.state.url === "about:blank" ? (plan.value ?? ctx.startUrl) : observation.state.url;
   // "text\n" means type, then Enter. The payload keeps the text; the Enter is recorded as a key press.
   const submits = plan.actionType === "type" && (plan.value ?? "").endsWith("\n");
@@ -123,7 +127,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
 
   /* ---- resolve the target (pointer actions only) ---- */
   let description = plan.targetDescription;
-  if (POINTER_TARGETED.has(plan.actionType) && !(keyboardOnly && plan.actionType === "type")) {
+  if (POINTER_TARGETED.has(plan.actionType) && !intoFocus) {
     const node = observation.tree.byId.get(idFromDescription(plan.targetDescription) ?? "");
     if (node?.xpath) {
       selector = `xpath=${node.xpath}`;
@@ -167,7 +171,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
           await withTimeout(stagehand.act({ selector, description, method: "click", arguments: [] }), 30_000, "click");
           break;
         case "type":
-          if (keyboardOnly) {
+          if (intoFocus) {
             const focus = await focusProbe(page);
             label = focus.label;
             bbox = focus.bbox;
@@ -248,8 +252,8 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   const freshErrors = treeAfter.errorTexts.filter((text) => !observation.tree.errorTexts.includes(text));
   if (treeAfter.errorTexts.length > 0) signals.errorTexts = treeAfter.errorTexts;
 
-  // An overlay the persona did not ask for. Popups open on timers, so "it appeared right after my
-  // click" proves nothing. It only counts as the persona's own doing when the thing they activated
+  // An overlay the agent did not ask for. Popups open on timers, so "it appeared right after my
+  // click" proves nothing. It only counts as the agent's own doing when the thing they activated
   // plausibly opens it: it declares a popup, or the two are named alike ("Add to cart" -> "Added to cart").
   const overlayNow = after.overlay?.label ?? treeAfter.dialogLabel;
   const overlayBefore = observation.state.overlay?.label ?? observation.tree.dialogLabel;
@@ -277,7 +281,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
 
   let screenshotKey = "";
   if (evidence) {
-    const key = evidenceKey(ctx.runId, ctx.persona.id, ctx.stepNumber, "jpg");
+    const key = ctx.evidenceKeyFor(ctx.stepNumber);
     if (await ctx.worker.putEvidence(key, evidence, "image/jpeg")) screenshotKey = key;
   }
 
@@ -299,7 +303,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   const deadClick = plan.actionType === "click" && !actionError && !domChanged;
   const what = `${plan.actionType}${label ? ` "${label}"` : ""}${value && plan.actionType !== "click" ? ` (${value})` : ""}`;
   let outcome = urlChanged ? `went to ${after.url}` : domChanged ? "the page changed" : "NO VISIBLE EFFECT: nothing on the page changed";
-  // Moving focus IS the effect of a key press; do not tell the persona that nothing happened.
+  // Moving focus IS the effect of a key press; do not tell the agent that nothing happened.
   if (plan.actionType === "press" && !urlChanged && !domChanged) outcome = `focus is now on ${signals.focusLabel ? `"${signals.focusLabel}"` : "the page body"}`;
   if (actionError) outcome = `FAILED: ${actionError}`;
   if (signals.focusMoved === false) outcome = "FOCUS DID NOT MOVE: Tab had no effect";
@@ -307,5 +311,11 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   if (freshErrors.length > 0) outcome += `; error shown: "${freshErrors[0]}"`;
   if (durationMs > 5000) outcome += `; it took ${(durationMs / 1000).toFixed(1)}s`;
 
-  return { payload, failedAttempt: Boolean(actionError) || deadClick || signals.focusMoved === false, historyAction: what, historyOutcome: outcome };
+  return {
+    payload,
+    failedAttempt: Boolean(actionError) || deadClick || signals.focusMoved === false,
+    historyAction: what,
+    historyOutcome: outcome,
+    treeLines: observation.tree.lines,
+  };
 }

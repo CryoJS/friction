@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PERSONA_IDS, isTerminalState } from "@friction/shared";
+import { isTerminalState } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { ACTION_VERBS, formatElapsed, shortUrl } from "../lib/format";
-import { viewFromSnapshot, type PersonaView } from "../lib/runState";
+import { viewFromSnapshot, type LaneView } from "../lib/runState";
 import { Chip, Dot, SEVERITY_STYLES, categoryLabel, stateTone } from "./badges";
 import { EvidenceImage } from "./EvidenceImage";
 
@@ -63,7 +63,7 @@ export function HeroPreview() {
     <div
       ref={frame}
       role="img"
-      aria-label="Preview: the control room replaying the bundled golden run, three personas side by side with friction appearing as it is detected."
+      aria-label="Preview: the control room replaying the bundled golden run, one agent attempting the task with friction appearing as it is detected."
       className="hero-preview-frame relative w-full rounded-t-large border border-b-0 border-white/25 bg-white/10 p-2 pb-0 backdrop-blur-[4px]"
     >
       <div className="hero-preview-screen overflow-hidden rounded-t-[32px] border border-b-0 border-hairline/10 bg-void">
@@ -77,26 +77,20 @@ export function HeroPreview() {
           <span className="ml-auto font-mono text-[12px] tabular-nums tracking-normal text-bone">{formatElapsed(elapsed)}</span>
         </div>
         <p className="truncate px-5 pb-3 text-[14px] text-bone">{view.run?.task ?? "The golden run"}</p>
-        <div className="grid grid-cols-3 gap-2 px-3 pb-3">
-          {PERSONA_IDS.map((id) => (
-            <Lane key={id} persona={view.personas[id]} />
-          ))}
+        <div className="px-3 pb-3">
+          <Lane lane={view.primary} />
         </div>
       </div>
     </div>
   );
 }
 
-function Lane({ persona }: { persona: PersonaView }) {
-  const latest = persona.steps[persona.steps.length - 1] ?? null;
-  const frictions = [...persona.frictions].reverse().slice(0, 2);
-  const finished = isTerminalState(persona.state);
+function Lane({ lane }: { lane: LaneView }) {
+  const latest = lane.steps[lane.steps.length - 1] ?? null;
+  const frictions = [...lane.frictions].reverse().slice(0, 3);
+  const finished = isTerminalState(lane.state);
   return (
-    <div className="flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-hairline/10 bg-white/4">
-      <div className="flex items-center justify-between gap-2 px-2.5 py-2">
-        <span className="truncate text-[11px] text-bone">{persona.def.displayName.split(" ")[0]}</span>
-        <Dot tone={stateTone(persona.state)} size={6} />
-      </div>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] overflow-hidden rounded-[16px] border border-hairline/10 bg-white/4">
       {latest ? (
         <EvidenceImage
           source={{ screenshotKey: latest.payload.screenshotKey, bbox: latest.payload.bbox, viewport: latest.payload.viewport, payload: latest.payload }}
@@ -105,19 +99,26 @@ function Lane({ persona }: { persona: PersonaView }) {
       ) : (
         <div className="aspect-video w-full bg-graphite" />
       )}
-      <div className="flex min-h-[64px] flex-col gap-1.5 px-2.5 py-2">
+      <div className="flex min-w-0 flex-col gap-1.5 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[11px] text-bone">Step {lane.steps.length}</span>
+          <Dot tone={stateTone(lane.state)} size={6} />
+        </div>
         {latest ? (
-          <p key={latest.seq} className="step-in truncate text-[11px] text-ash">
+          <p key={latest.seq} className="step-in line-clamp-2 text-[11px] text-ash">
             <span className="text-bone">{ACTION_VERBS[latest.payload.actionType]}</span> {latest.payload.targetLabel || latest.payload.value || ""}
           </p>
         ) : (
           <p className="text-[11px] text-smoke">Opening a browser</p>
         )}
-        {!finished && persona.state === "running" && <div className="wash wash-sweep h-px w-full" />}
+        {!finished && lane.state === "running" && <div className="wash wash-sweep h-px w-full" />}
         {frictions.map((friction) => (
-          <p key={friction.seq} className="step-in flex min-w-0 items-center gap-1.5 text-[11px]">
+          <p key={friction.payload.findingId ?? friction.seq} className="step-in flex min-w-0 items-center gap-1.5 text-[11px]">
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEVERITY_STYLES[friction.payload.severity].dot}`} />
-            <span className={`min-w-0 truncate ${SEVERITY_STYLES[friction.payload.severity].text}`}>{categoryLabel(friction.payload.category)}</span>
+            <span className={`min-w-0 truncate ${SEVERITY_STYLES[friction.payload.severity].text}`}>
+              {categoryLabel(friction.payload.category)}
+              {(friction.payload.hitCount ?? 1) > 1 && ` ×${friction.payload.hitCount}`}
+            </span>
           </p>
         ))}
       </div>
