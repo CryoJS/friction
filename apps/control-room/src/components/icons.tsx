@@ -104,13 +104,6 @@ export const Minus = (p: IconProps) => (
   </Icon>
 );
 
-export const Wand = (p: IconProps) => (
-  <Icon {...p}>
-    <path d="m3.5 16.5 9-9M11 6l3 3" />
-    <path d="M15 2.5v3M13.5 4h3M16.5 10v2M15.5 11h2" strokeWidth={1.3} />
-  </Icon>
-);
-
 /** Impatient: straight for the loudest button. */
 export const Bolt = (p: IconProps) => (
   <Icon {...p}>

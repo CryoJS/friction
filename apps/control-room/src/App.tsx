@@ -5,7 +5,6 @@ import { Nav } from "./components/Nav";
 import { PersonaColumn } from "./components/PersonaColumn";
 import { ReportView } from "./components/ReportView";
 import { RunBar } from "./components/RunBar";
-import type { StartedRun } from "./components/RunForm";
 import { Play, Plus, Sparkle } from "./components/icons";
 import { ScanPage } from "./components/scan/ScanPage";
 import { useReport } from "./hooks/useReport";
@@ -15,7 +14,6 @@ import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
   const [query, setQuery] = useQuery();
-  const [startNotice, setStartNotice] = useState<string | null>(null);
   const [overHero, setOverHero] = useState(true);
 
   // The single-run view only: a scan page streams its selected persona node itself.
@@ -41,58 +39,39 @@ export default function App() {
     [view, stream.snapshot],
   );
 
-  const onStarted = useCallback(
-    (run: StartedRun) => {
-      setStartNotice(run.notice);
-      setQuery({ run: run.runId, scan: null, node: null, replay: run.replay, tab: "room" });
-    },
+  const goHome = useCallback(() => setQuery({ run: null, scan: null, node: null, replay: false, tab: "room" }), [setQuery]);
+  const openScan = useCallback((scanId: string) => setQuery({ scan: scanId, node: null, run: null, replay: false, tab: "room" }), [setQuery]);
+  const openRun = useCallback(
+    (id: string, replay = false) => setQuery({ run: id, scan: null, node: null, replay, tab: "room" }),
     [setQuery],
   );
-
-  const open = useCallback(
-    (id: string, replay: boolean) => {
-      setStartNotice(null);
-      setQuery({ run: id, scan: null, node: null, replay, tab: "room" });
-    },
-    [setQuery],
-  );
-
-  const openRun = useCallback((id: string) => open(id, false), [open]);
   const selectNode = useCallback((node: string) => setQuery({ node }), [setQuery]);
 
-  const goHome = useCallback(() => {
-    setStartNotice(null);
-    setQuery({ run: null, scan: null, node: null, replay: false, tab: "room" });
-  }, [setQuery]);
-
-  const notice = startNotice ?? stream.notice;
+  // Every view but the landing carries the same white pill: scans start on the home page.
+  const newScan = (
+    <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
+      <Plus size={14} />
+      <span className="hidden sm:inline">New scan</span>
+    </button>
+  );
 
   if (query.scan) {
     return (
       <div className="flex h-full flex-col">
-        <Nav
-          onHome={goHome}
-          compact
-          action={
-            <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
-              <Plus size={14} />
-              <span className="hidden sm:inline">New scan</span>
-            </button>
-          }
-        />
+        <Nav onHome={goHome} compact action={newScan} />
         <ScanPage key={query.scan} scanId={query.scan} nodeId={query.node} onSelectNode={selectNode} onOpenRun={openRun} />
       </div>
     );
   }
 
-  if (!query.run) {
+  if (!runId) {
     return (
       <div className="flex h-full flex-col">
         <Nav
           onHome={goHome}
           frosted={overHero}
           action={
-            <button type="button" onClick={() => open(GOLDEN_RUN_ID, true)} className="pill-cta h-8.5 px-4 text-ui">
+            <button type="button" onClick={() => openRun(GOLDEN_RUN_ID, true)} className="pill-cta h-8.5 px-4 text-ui">
               <Play size={12} />
               Watch the demo
             </button>
@@ -101,27 +80,18 @@ export default function App() {
           <a href="#how" className="pill-ghost hidden border-transparent md:inline-flex">
             How it works
           </a>
-          <a href="#runs" className="pill-ghost hidden border-transparent md:inline-flex">
-            Recent runs
+          <a href="#scans" className="pill-ghost hidden border-transparent md:inline-flex">
+            Recent scans
           </a>
         </Nav>
-        <Landing onOpen={open} onStarted={onStarted} onOverHero={setOverHero} />
+        <Landing onOpenScan={openScan} onOpenRun={openRun} onOverHero={setOverHero} />
       </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col">
-      <Nav
-        onHome={goHome}
-        compact
-        action={
-          <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New run">
-            <Plus size={14} />
-            <span className="hidden sm:inline">New run</span>
-          </button>
-        }
-      >
+      <Nav onHome={goHome} compact action={newScan}>
         <TabButton tab="room" current={query.tab} onTab={(tab) => setQuery({ tab })}>
           <span className="sm:hidden">Room</span>
           <span className="hidden sm:inline">Control room</span>
@@ -143,18 +113,15 @@ export default function App() {
         elapsedMs={stream.elapsedMs}
         replay={stream.replay}
         isReplay={query.replay}
-        onToggleReplay={() => {
-          setStartNotice(null);
-          setQuery({ replay: !query.replay });
-        }}
+        onToggleReplay={() => setQuery({ replay: !query.replay })}
       />
 
-      {notice && (
+      {stream.notice && (
         <div className="flex shrink-0 justify-center px-4 pt-4">
           <p role="status" className="glass inline-flex max-w-3xl items-start gap-2.5 rounded-nav border border-hairline/20 px-4 py-2 text-ui text-bone">
             <Sparkle size={14} className="mt-0.75 shrink-0 text-white" />
             <span>
-              <span className="text-white">Heads up.</span> {notice}
+              <span className="text-white">Heads up.</span> {stream.notice}
             </span>
           </p>
         </div>
