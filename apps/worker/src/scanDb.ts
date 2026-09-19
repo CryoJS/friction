@@ -3,11 +3,10 @@
  * this module is the camelCase contract from @friction/shared.
  */
 import {
-  PERSONA_IDS,
+  type AgentState,
   type CrawledPage,
   type FrictionCategory,
-  type PersonaId,
-  type PersonaState,
+  type RunStatus,
   type ScanFindingInput,
   type ScanListItem,
   type ScanPatch,
@@ -43,26 +42,25 @@ interface TaskRow {
   task: string;
   why_critical: string;
   success_check: string;
+  status: string;
+  state: string;
 }
 
-interface PersonaStateRow {
+interface StepCountRow {
   run_id: string;
-  persona_id: string;
-  state: string;
-  step_count: number;
+  n: number;
 }
 
 interface FindingCountRow {
   run_id: string;
-  persona_id: string;
   n: number;
   worst: number;
 }
 
 interface ScanFindingRow {
-  id: number;
+  id: string;
   run_id: string;
-  persona_id: string;
+  finding_key: string;
   category: string;
   severity: number;
   evidence_seq: number;
@@ -70,6 +68,8 @@ interface ScanFindingRow {
   confidence: number;
   summary: string | null;
   why_it_matters: string | null;
+  selector: string;
+  hit_count: number;
   e_seq: number | null;
   e_ts: number | null;
   e_payload: string | null;
@@ -148,29 +148,33 @@ export async function patchScan(db: D1Database, scanId: string, patch: ScanPatch
   return getScan(db, scanId);
 }
 
-/** Newest first, with how many tasks every persona completed. */
+/** Newest first, with how many tasks the agent completed. */
 export async function listScans(db: D1Database, limit: number): Promise<ScanListItem[]> {
   const { results } = await db
     .prepare(
       `SELECT s.*,
          (SELECT COUNT(*) FROM scan_tasks t WHERE t.scan_id = s.id) AS tasks_total,
-         (SELECT COUNT(*) FROM scan_tasks t WHERE t.scan_id = s.id
-            AND (SELECT COUNT(*) FROM personas p WHERE p.run_id = t.run_id AND p.state = 'succeeded') = ?2) AS tasks_passed
+         (SELECT COUNT(*) FROM scan_tasks t JOIN runs r ON r.id = t.run_id
+            WHERE t.scan_id = s.id AND r.state = 'succeeded') AS tasks_passed
        FROM scans s
        ORDER BY s.created_at DESC
-       LIMIT ?1`,
+       LIMIT ?`,
     )
-    .bind(limit, PERSONA_IDS.length)
+    .bind(limit)
     .all<ScanListRow>();
   return results.map((row) => ({ ...toScan(row), tasksTotal: row.tasks_total, tasksPassed: row.tasks_passed }));
 }
 
-/** Tasks in rank order, each with its three personas' live state. Three queries, one round trip. */
+/**
+ * Tasks in rank order, each with its run's live state. Three queries, one
+ * round trip. Steps are counted from the primary lane's events: the run row
+ * only learns its step total when the agent finishes.
+ */
 export async function getScanTree(db: D1Database, scan: ScanRecord): Promise<ScanTreeResponse> {
-  const [tasks, personas, counts] = await db.batch<TaskRow | PersonaStateRow | FindingCountRow>([
+  const [tasks, steps, counts] = await db.batch<TaskRow | StepCountRow | FindingCountRow>([
     db
       .prepare(
-        `SELECT t.task_index, t.run_id, r.task, t.why_critical, t.success_check
+        `SELECT t.task_index, t.run_id, r.task, t.why_critical, t.success_check, r.status, r.state
          FROM scan_tasks t JOIN runs r ON r.id = t.run_id
          WHERE t.scan_id = ?
          ORDER BY t.task_index ASC`,
@@ -178,44 +182,42 @@ export async function getScanTree(db: D1Database, scan: ScanRecord): Promise<Sca
       .bind(scan.id),
     db
       .prepare(
-        `SELECT p.run_id, p.persona_id, p.state, p.step_count
-         FROM personas p JOIN scan_tasks t ON t.run_id = p.run_id
-         WHERE t.scan_id = ?`,
+        `SELECT e.run_id, COUNT(*) AS n
+         FROM events e JOIN scan_tasks t ON t.run_id = e.run_id
+         WHERE t.scan_id = ? AND e.lane = 'primary' AND e.type = 'step'
+         GROUP BY e.run_id`,
       )
       .bind(scan.id),
     db
       .prepare(
-        `SELECT f.run_id, f.persona_id, COUNT(*) AS n, MAX(f.severity) AS worst
+        `SELECT f.run_id, COUNT(*) AS n, MAX(f.severity) AS worst
          FROM findings f JOIN scan_tasks t ON t.run_id = f.run_id
          WHERE t.scan_id = ?
-         GROUP BY f.run_id, f.persona_id`,
+         GROUP BY f.run_id`,
       )
       .bind(scan.id),
   ]);
 
-  const stateOf = new Map<string, PersonaStateRow>();
-  for (const row of (personas?.results ?? []) as PersonaStateRow[]) stateOf.set(`${row.run_id}:${row.persona_id}`, row);
+  const stepsOf = new Map<string, number>();
+  for (const row of (steps?.results ?? []) as StepCountRow[]) stepsOf.set(row.run_id, row.n);
   const countOf = new Map<string, FindingCountRow>();
-  for (const row of (counts?.results ?? []) as FindingCountRow[]) countOf.set(`${row.run_id}:${row.persona_id}`, row);
+  for (const row of (counts?.results ?? []) as FindingCountRow[]) countOf.set(row.run_id, row);
 
-  const treeTasks: ScanTreeTask[] = ((tasks?.results ?? []) as TaskRow[]).map((row) => ({
-    index: row.task_index,
-    runId: row.run_id,
-    title: row.task,
-    whyCritical: row.why_critical,
-    successCheck: row.success_check,
-    personas: PERSONA_IDS.map((personaId) => {
-      const state = stateOf.get(`${row.run_id}:${personaId}`);
-      const count = countOf.get(`${row.run_id}:${personaId}`);
-      return {
-        personaId,
-        state: (state?.state ?? "idle") as PersonaState,
-        stepCount: state?.step_count ?? 0,
-        findingCount: count?.n ?? 0,
-        worstSeverity: count ? (count.worst as Severity) : null,
-      };
-    }),
-  }));
+  const treeTasks: ScanTreeTask[] = ((tasks?.results ?? []) as TaskRow[]).map((row) => {
+    const count = countOf.get(row.run_id);
+    return {
+      index: row.task_index,
+      runId: row.run_id,
+      title: row.task,
+      whyCritical: row.why_critical,
+      successCheck: row.success_check,
+      status: row.status as RunStatus,
+      state: row.state as AgentState,
+      stepCount: stepsOf.get(row.run_id) ?? 0,
+      findingCount: count?.n ?? 0,
+      worstSeverity: count ? (count.worst as Severity) : null,
+    };
+  });
   return { scan, tasks: treeTasks };
 }
 
@@ -224,17 +226,17 @@ export interface ScanFindingRows {
   evidence: StepEvent[];
 }
 
-/** Every finding of the scan's runs, each joined to its evidence step. One query. */
+/** Every finding of the scan's runs (findings are primary-lane only), each joined to its evidence step. One query. */
 export async function getScanFindingRows(db: D1Database, scanId: string): Promise<ScanFindingRows> {
   const { results } = await db
     .prepare(
-      `SELECT f.id, f.run_id, f.persona_id, f.category, f.severity, f.evidence_seq, f.recommendation,
-              f.confidence, f.summary, f.why_it_matters,
+      `SELECT f.id, f.run_id, f.finding_key, f.category, f.severity, f.evidence_seq, f.recommendation,
+              f.confidence, f.summary, f.why_it_matters, f.selector, f.hit_count,
               e.seq AS e_seq, e.ts AS e_ts, e.payload AS e_payload
        FROM findings f
        JOIN scan_tasks t ON t.run_id = f.run_id
        LEFT JOIN events e
-         ON e.run_id = f.run_id AND e.persona_id = f.persona_id
+         ON e.run_id = f.run_id AND e.lane = 'primary'
         AND e.seq = f.evidence_seq AND e.type = 'step'
        WHERE t.scan_id = ?`,
     )
@@ -245,9 +247,9 @@ export async function getScanFindingRows(db: D1Database, scanId: string): Promis
   const evidence: StepEvent[] = [];
   for (const row of results) {
     findings.push({
-      id: String(row.id),
+      id: row.id,
+      findingKey: row.finding_key,
       runId: row.run_id,
-      personaId: row.persona_id as PersonaId,
       category: row.category as FrictionCategory,
       severity: row.severity as Severity,
       evidenceSeq: row.evidence_seq,
@@ -255,9 +257,11 @@ export async function getScanFindingRows(db: D1Database, scanId: string): Promis
       confidence: row.confidence,
       summary: row.summary,
       whyItMatters: row.why_it_matters,
+      hitCount: row.hit_count,
+      selector: row.selector,
     });
     if (row.e_seq !== null && row.e_ts !== null && row.e_payload !== null) {
-      const step = toEvent({ run_id: row.run_id, persona_id: row.persona_id, seq: row.e_seq, ts: row.e_ts, type: "step", payload: row.e_payload });
+      const step = toEvent({ run_id: row.run_id, lane: "primary", seq: row.e_seq, ts: row.e_ts, type: "step", payload: row.e_payload, fix_id: null });
       if (step?.type === "step") evidence.push(step);
     }
   }

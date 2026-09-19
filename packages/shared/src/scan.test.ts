@@ -57,23 +57,18 @@ describe("parseGeneratedTasks", () => {
 });
 
 describe("taskVerdict", () => {
-  it("is pending while any persona is still going, or before there are any", () => {
-    expect(taskVerdict([])).toBe("pending");
-    expect(taskVerdict(["succeeded", "running", "succeeded"])).toBe("pending");
-    expect(taskVerdict(["idle", "idle", "idle"])).toBe("pending");
+  it("is pending until the agent finishes", () => {
+    expect(taskVerdict("idle")).toBe("pending");
+    expect(taskVerdict("running")).toBe("pending");
   });
 
-  it("is pass when every persona succeeded", () => {
-    expect(taskVerdict(["succeeded", "succeeded", "succeeded"])).toBe("pass");
+  it("is pass when the agent succeeded", () => {
+    expect(taskVerdict("succeeded")).toBe("pass");
   });
 
-  it("is partial when some succeeded", () => {
-    expect(taskVerdict(["succeeded", "failed", "timeout"])).toBe("partial");
-    expect(taskVerdict(["failed", "succeeded", "succeeded"])).toBe("partial");
-  });
-
-  it("is fail when none succeeded", () => {
-    expect(taskVerdict(["failed", "timeout", "failed"])).toBe("fail");
+  it("is fail when it failed or ran out of time", () => {
+    expect(taskVerdict("failed")).toBe("fail");
+    expect(taskVerdict("timeout")).toBe("fail");
   });
 });
 
@@ -153,17 +148,20 @@ describe("issue keys", () => {
 });
 
 describe("scan node ids", () => {
-  it("round-trips root, task and persona nodes", () => {
-    for (const id of ["root", "t0", "t9", "t3.keyboard", "t0.impatient"]) expect(scanNodeId(parseScanNode(id))).toBe(id);
+  it("round-trips root and task nodes", () => {
+    for (const id of ["root", "t0", "t9"]) expect(scanNodeId(parseScanNode(id))).toBe(id);
   });
 
   it("parses the parts", () => {
-    expect(parseScanNode("t2.cautious")).toEqual({ kind: "persona", index: 2, personaId: "cautious" });
     expect(parseScanNode("t4")).toEqual({ kind: "task", index: 4 });
   });
 
+  it("opens the task for a link from when tasks had persona children", () => {
+    expect(parseScanNode("t2.cautious")).toEqual({ kind: "task", index: 2 });
+  });
+
   it("falls back to root for anything else", () => {
-    for (const id of [null, undefined, "", "x", "t", "t1.robot", "t1.keyboard.extra", "T1"]) expect(parseScanNode(id)).toEqual({ kind: "root" });
+    for (const id of [null, undefined, "", "x", "t", "t1.keyboard.extra", "t1.", "T1"]) expect(parseScanNode(id)).toEqual({ kind: "root" });
   });
 });
 

@@ -15,7 +15,7 @@ export interface ScanPoll {
 
 /**
  * Polls GET /api/scans/:id every 2s until the scan completes or fails. One
- * small request per poll; the selected persona node streams on its own.
+ * small request per poll; the selected task streams its run on its own.
  */
 export function useScan(scanId: string): ScanPoll {
   const [state, setState] = useState<ScanPoll>({ tree: null, stale: false, missing: false });

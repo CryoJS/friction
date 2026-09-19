@@ -2,7 +2,7 @@
   "name": "friction",
   "private": true,
   "version": "0.1.0",
-  "description": "Friction: three AI personas stress-test a website's UX in parallel Browserbase sessions and report where it hurts.",
+  "description": "Friction: an AI agent attempts a task on a live site, finds the UX friction, and proves which fixes remove it.",
   "packageManager": "pnpm@11.4.0",
   "engines": {
     "node": ">=22.12.0"

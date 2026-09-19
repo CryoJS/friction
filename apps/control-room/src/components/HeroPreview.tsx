@@ -1,27 +1,35 @@
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PERSONA_IDS, isTerminalState } from "@friction/shared";
+import type { FrictionEvent, StepEvent } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { ACTION_VERBS, formatElapsed, shortUrl } from "../lib/format";
-import { viewFromSnapshot, type PersonaView } from "../lib/runState";
-import { Chip, Dot, SEVERITY_STYLES, categoryLabel, stateTone } from "./badges";
-import { EvidenceImage } from "./EvidenceImage";
+import { Chip, Dot, categoryLabel } from "./badges";
 
-/** Pace of the loop: brisk enough to feel live, slow enough to read a verb. */
+/** Pace of the loop: brisk enough to feel live, slow enough to read a finding. */
 const EVENT_MS = 520;
 const HOLD_MS = 5200;
 const LEAD_MS = 900;
 
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
-  useEffect(() => {
-    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!query) return;
-    const onChange = (): void => setReduced(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
+type AgentAccent = "coral" | "amber" | "cobalt";
+
+interface PreviewAgent {
+  id: string;
+  label: string;
+  role: string;
+  accent: AgentAccent;
 }
+
+const AGENTS: PreviewAgent[] = [
+  { id: "scan", label: "agent 01", role: "scan", accent: "cobalt" },
+  { id: "trace", label: "agent 02", role: "trace", accent: "coral" },
+  { id: "sketch", label: "agent 03", role: "sketch", accent: "amber" },
+];
+
+const ACCENTS: Record<AgentAccent, string> = {
+  coral: "var(--color-sev-5)",
+  amber: "var(--color-sev-4)",
+  cobalt: "var(--color-sev-1)",
+};
 
 function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
   const [visible, setVisible] = useState(true);
@@ -36,91 +44,142 @@ function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
 }
 
 /**
- * The control room in miniature, replaying the golden run that ships inside
- * this bundle. No network: it is the same fixture and the same reducer the
- * real control room uses, just scaled down and looped.
+ * A copied browser in miniature, replaying the bundled run as several agents
+ * inspect one page and leave comments or sketches directly on the UI.
  */
 export function HeroPreview() {
   const golden = useMemo(() => getGoldenRun(), []);
   const total = golden.events.length;
-  const reduced = usePrefersReducedMotion();
   const frame = useRef<HTMLDivElement>(null);
   const visible = useInView(frame);
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (reduced || !visible) return;
+    if (!visible) return;
     const delay = count >= total ? HOLD_MS : count === 0 ? LEAD_MS : EVENT_MS;
     const timer = window.setTimeout(() => setCount((current) => (current >= total ? 0 : current + 1)), delay);
     return () => window.clearTimeout(timer);
-  }, [count, total, visible, reduced]);
+  }, [count, total, visible]);
 
-  const shown = reduced ? total : count;
-  const view = useMemo(() => viewFromSnapshot(golden, shown), [golden, shown]);
-  const elapsed = view.firstTs !== null && view.lastTs !== null ? view.lastTs - view.firstTs : 0;
+  const events = useMemo(() => golden.events.slice(0, count), [golden, count]);
+  const elapsed = events.length > 1 ? (events[events.length - 1]?.ts ?? 0) - (events[0]?.ts ?? 0) : 0;
+  const steps = events.filter((event): event is StepEvent => event.type === "step");
+  const findings = events.filter((event): event is FrictionEvent => event.type === "friction");
+  const latestStep = steps[steps.length - 1];
+  const latestFinding = findings[findings.length - 1];
+  const activeAgentIndex = total > 0 ? Math.min(AGENTS.length - 1, Math.floor((count / total) * AGENTS.length)) : 0;
+  const activeAgent = AGENTS[activeAgentIndex] ?? AGENTS[0]!;
+  const issueAccent = latestFinding ? accentForSeverity(latestFinding.payload.severity) : activeAgent.accent;
+  const currentTarget = latestFinding
+    ? categoryLabel(latestFinding.payload.category)
+    : latestStep
+      ? latestStep.payload.targetLabel || latestStep.payload.value || ACTION_VERBS[latestStep.payload.actionType]
+      : "interactive surface";
 
   return (
     <div
       ref={frame}
       role="img"
-      aria-label="Preview: the control room replaying the bundled golden run, three personas side by side with friction appearing as it is detected."
-      className="relative w-full rounded-t-large border border-b-0 border-white/25 bg-white/10 p-2 pb-0 backdrop-blur-[4px]"
+      aria-label="Preview: multiple agents inspect a copied browser and inject comments and sketches as they find issues."
+      className="hero-preview-frame relative w-full rounded-t-large border border-b-0 border-white/25 bg-white/10 p-2 pb-0 backdrop-blur-[4px]"
     >
-      <div className="overflow-hidden rounded-t-[32px] border border-b-0 border-hairline/10 bg-void">
-        <div className="flex items-center gap-3 px-5 pb-2.5 pt-4">
+      <div className="hero-preview-screen flex min-h-0 flex-col overflow-hidden rounded-t-[32px] border border-b-0 border-hairline/10 bg-void">
+        <div className="flex shrink-0 items-center gap-2.5 px-4 pb-1.5 pt-3 sm:gap-3 sm:px-5 sm:pt-4">
           <span className="shrink-0">
-            <Chip tone="good">Golden run · replay</Chip>
+            <Chip tone="glow">Agent pass - replay</Chip>
           </span>
           <span className="min-w-0 truncate rounded-full border border-hairline/10 px-3 py-0.5 font-mono text-[11px] tracking-normal text-smoke">
-            {view.run ? shortUrl(view.run.url) : "golden"}
+            {shortUrl(golden.run.url)}
           </span>
           <span className="ml-auto font-mono text-[12px] tabular-nums tracking-normal text-bone">{formatElapsed(elapsed)}</span>
         </div>
-        <p className="truncate px-5 pb-3 text-[14px] text-bone">{view.run?.task ?? "The golden run"}</p>
-        <div className="grid grid-cols-3 gap-2 px-3 pb-3">
-          {PERSONA_IDS.map((id) => (
-            <Lane key={id} persona={view.personas[id]} />
-          ))}
+        <p className="shrink-0 truncate px-4 pb-2 text-[13px] text-bone sm:px-5">{golden.run.task || "Agents mark friction in the copied page"}</p>
+
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+          <div className="hero-preview-copy min-h-0 flex-1">
+            <div className="hero-preview-copy-bar">
+              <span className="hero-preview-copy-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+              <span className="truncate">copy / isolated browser</span>
+              <span className="ml-auto shrink-0 text-[9px] uppercase tracking-[0.12em] text-smoke">3 agents</span>
+            </div>
+
+            <div className="hero-preview-copy-body">
+              <div className="hero-preview-copy-heading">
+                <span className="hero-preview-copy-heading-line hero-preview-copy-heading-line--wide" />
+                <span className="hero-preview-copy-heading-line hero-preview-copy-heading-line--short" />
+              </div>
+              <span className="hero-preview-copy-line hero-preview-copy-line--wide" />
+              <span className="hero-preview-copy-line hero-preview-copy-line--medium" />
+              <div className="hero-preview-copy-grid">
+                <span className="hero-preview-copy-card" />
+                <span className="hero-preview-copy-card hero-preview-copy-card--quiet" />
+              </div>
+
+              <span
+                className="hero-preview-copy-sketch"
+                style={{ "--preview-accent": ACCENTS[issueAccent] } as CSSProperties}
+                aria-hidden="true"
+              />
+              <span
+                className="hero-preview-copy-sketch-line"
+                style={{ "--preview-accent": ACCENTS[issueAccent] } as CSSProperties}
+                aria-hidden="true"
+              />
+
+              {AGENTS.map((agent, index) => {
+                const finding = findings[findings.length - index - 1];
+                const accent = finding ? accentForSeverity(finding.payload.severity) : agent.accent;
+                const note = finding
+                  ? categoryLabel(finding.payload.category)
+                  : index === activeAgentIndex
+                    ? currentTarget
+                    : agent.role === "scan"
+                      ? "map controls"
+                      : agent.role === "trace"
+                        ? "check retry path"
+                        : "sketch target";
+
+                return (
+                  <span
+                    key={agent.id}
+                    className={`hero-preview-copy-comment hero-preview-copy-comment--${index + 1}`}
+                    style={{ "--preview-accent": ACCENTS[accent] } as CSSProperties}
+                  >
+                    <span className="hero-preview-copy-comment-agent">{agent.label}</span>
+                    <span className="hero-preview-copy-comment-text">{note}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="hero-preview-agent-rail" aria-hidden="true">
+            {AGENTS.map((agent, index) => {
+              const active = index === activeAgentIndex;
+              const noted = index < activeAgentIndex;
+              return (
+                <div key={agent.id} className={`hero-preview-agent ${active ? "hero-preview-agent--active" : ""}`}>
+                  <Dot tone={active ? "glow" : noted ? "good" : "idle"} size={5} />
+                  <span className="hero-preview-agent-copy">
+                    <span className="hero-preview-agent-name">{agent.label}</span>
+                    <span className="hero-preview-agent-role">{active ? "annotating" : noted ? "noted" : "watching"}</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function Lane({ persona }: { persona: PersonaView }) {
-  const latest = persona.steps[persona.steps.length - 1] ?? null;
-  const frictions = [...persona.frictions].reverse().slice(0, 2);
-  const finished = isTerminalState(persona.state);
-  return (
-    <div className="flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-hairline/10 bg-white/4">
-      <div className="flex items-center justify-between gap-2 px-2.5 py-2">
-        <span className="truncate text-[11px] text-bone">{persona.def.displayName.split(" ")[0]}</span>
-        <Dot tone={stateTone(persona.state)} size={6} />
-      </div>
-      {latest ? (
-        <EvidenceImage
-          source={{ screenshotKey: latest.payload.screenshotKey, bbox: latest.payload.bbox, viewport: latest.payload.viewport, payload: latest.payload }}
-          boxClass="border-white"
-        />
-      ) : (
-        <div className="aspect-video w-full bg-graphite" />
-      )}
-      <div className="flex min-h-[64px] flex-col gap-1.5 px-2.5 py-2">
-        {latest ? (
-          <p key={latest.seq} className="step-in truncate text-[11px] text-ash">
-            <span className="text-bone">{ACTION_VERBS[latest.payload.actionType]}</span> {latest.payload.targetLabel || latest.payload.value || ""}
-          </p>
-        ) : (
-          <p className="text-[11px] text-smoke">Opening a browser</p>
-        )}
-        {!finished && persona.state === "running" && <div className="wash wash-sweep h-px w-full" />}
-        {frictions.map((friction) => (
-          <p key={friction.seq} className="step-in flex min-w-0 items-center gap-1.5 text-[11px]">
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SEVERITY_STYLES[friction.payload.severity].dot}`} />
-            <span className={`min-w-0 truncate ${SEVERITY_STYLES[friction.payload.severity].text}`}>{categoryLabel(friction.payload.category)}</span>
-          </p>
-        ))}
-      </div>
-    </div>
-  );
+function accentForSeverity(severity: number): AgentAccent {
+  if (severity >= 4) return "coral";
+  if (severity === 3) return "amber";
+  return "cobalt";
 }

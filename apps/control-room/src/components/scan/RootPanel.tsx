@@ -1,5 +1,4 @@
 import {
-  PERSONAS,
   SEVERITY_LABELS,
   isScanFinished,
   type CrawledPage,
@@ -10,7 +9,7 @@ import {
 import { pathOf } from "../../lib/format";
 import { VERDICT, VERDICT_ORDER, hostOf, runProgress } from "../../lib/scan";
 import { Dot, SEVERITY_STYLES } from "../badges";
-import { PERSONA_GLYPHS, Plus } from "../icons";
+import { Plus } from "../icons";
 import { IssueCard } from "./IssueCard";
 import { Notice } from "./Notice";
 
@@ -121,7 +120,7 @@ function ReportBody({ report, onSelect }: { report: ScanReportResponse; onSelect
     <>
       <section aria-label="Summary" className="rounded-card border border-hairline/10 bg-white/4 p-5">
         <h3 className="text-caption text-ash">Tasks</h3>
-        <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <ul className="mt-2 grid grid-cols-3 gap-2">
           {VERDICT_ORDER.map((verdict) => (
             <li key={verdict} className="rounded-ui border border-hairline/10 px-3 py-2.5">
               <span className="block text-heading-sm tabular-nums leading-none text-white">{summary.verdicts[verdict]}</span>
@@ -131,25 +130,6 @@ function ReportBody({ report, onSelect }: { report: ScanReportResponse; onSelect
               </span>
             </li>
           ))}
-        </ul>
-
-        <h3 className="mt-5 text-caption text-ash">Tasks completed, by persona</h3>
-        <ul className="mt-2 space-y-2">
-          {PERSONAS.map((persona) => {
-            const stats = summary.personas[persona.id];
-            const Glyph = PERSONA_GLYPHS[persona.id];
-            return (
-              <li key={persona.id} className="flex items-center gap-3 text-ui">
-                <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-icon bg-white text-black">
-                  <Glyph size={12} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-bone">{persona.displayName}</span>
-                <span className="shrink-0 tabular-nums text-smoke">
-                  <span className="text-white">{stats.succeeded}</span> of {stats.total}
-                </span>
-              </li>
-            );
-          })}
         </ul>
 
         <h3 className="mt-5 text-caption text-ash">Issues by severity</h3>

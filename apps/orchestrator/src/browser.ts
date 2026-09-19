@@ -1,7 +1,8 @@
 /**
- * One isolated browser per persona.
+ * One isolated browser per agent run. Never shared: every primary and verify
+ * run gets its own session.
  *
- * BROWSERBASE (default): a fresh Browserbase *context* per persona keeps
+ * BROWSERBASE (default): a fresh Browserbase *context* per run keeps
  * cookies and storage isolated, a session is created inside it, and Stagehand
  * attaches to that existing session over CDP (browserbaseSessionID). The live
  * view URL comes from sessions.debug().
@@ -90,17 +91,17 @@ async function openBrowserbase(config: Config, label: string): Promise<BrowserHa
   if (!apiKey || !projectId) throw new Error("BROWSERBASE_API_KEY / BROWSERBASE_PROJECT_ID are not set");
   const bb = new Browserbase({ apiKey, maxRetries: 2, timeout: 30_000 });
 
-  // Own context per persona: no cookie, cache or storage leaks between personas.
+  // Own context per run: no cookie, cache or storage leaks between runs (a verify run starts clean).
   const context = await bb.contexts.create({ projectId });
 
-  // Plans cap concurrent sessions. Three personas start at once, so wait out a 429 instead of failing.
+  // Plans cap concurrent sessions ("Suggest tasks" may hold one), so wait out a 429 instead of failing.
   let session: Awaited<ReturnType<typeof bb.sessions.create>> | null = null;
   for (let attempt = 1; session === null; attempt++) {
     try {
       session = await bb.sessions.create({
         projectId,
         keepAlive: false,
-        api_timeout: Math.ceil(config.personaTimeoutMs / 1000) + 120,
+        api_timeout: Math.ceil(config.agentTimeoutMs / 1000) + 120,
         ...(config.browserbaseRegion ? { region: config.browserbaseRegion as "us-west-2" } : {}),
         browserSettings: {
           context: { id: context.id, persist: false },

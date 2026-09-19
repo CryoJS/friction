@@ -86,7 +86,7 @@ export function ScanForm({ onStarted, onReplayGolden }: Props) {
         </button>
       </div>
 
-      <p className="mt-3 px-2 text-caption text-ash">Friction reads the site, picks its 10 most critical tasks and runs each one with all three personas.</p>
+      <p className="mt-3 px-2 text-caption text-ash">Friction reads the site, picks its 10 most critical tasks and has the agent attempt each one.</p>
 
       {failure && (
         <p id="scan-form-error" role="alert" className="mt-2 px-2 text-caption text-sev-5">

@@ -18,7 +18,7 @@ import {
   SSE,
   compareEvents,
   safeParseEvent,
-  type PersonaRecord,
+  type RunRecord,
   type RunSnapshot,
   type StreamHello,
 } from "@friction/shared";
@@ -27,7 +27,7 @@ import { api } from "../lib/api";
 import {
   applyEvent,
   applyHello,
-  applyPersonaRecord,
+  applyRunRecord,
   emptyRunView,
   summarize,
   viewFromSnapshot,
@@ -155,9 +155,9 @@ function useLiveStream(runId: string | null, enabled: boolean): LiveState {
         enqueue((current) => applyEvent(current, parsed.data));
       });
 
-      source.addEventListener(SSE.persona, (message) => {
-        const record = parse<PersonaRecord>(message);
-        if (record) enqueue((current) => applyPersonaRecord(current, record));
+      source.addEventListener(SSE.run, (message) => {
+        const record = parse<RunRecord>(message);
+        if (record) enqueue((current) => applyRunRecord(current, record));
       });
 
       // The Worker recycles long connections to stay inside its D1 budget.

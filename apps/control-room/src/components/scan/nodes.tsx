@@ -1,5 +1,5 @@
 /**
- * The three node kinds on the scan canvas. Each node is one <button>, so Tab
+ * The two node kinds on the scan canvas: the site and its tasks. Each node is one <button>, so Tab
  * reaches it and Enter selects it; React Flow's own selection, dragging and
  * connecting are off (see ScanGraph).
  *
@@ -8,12 +8,12 @@
  * with pointer-events-auto.
  */
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { PERSONA_BY_ID, type PersonaState } from "@friction/shared";
+import type { AgentState } from "@friction/shared";
 import { MAX_STEPS } from "../../lib/config";
-import { SCAN_STATE_LABELS, SCAN_STATUS, VERDICT, VERDICT_ORDER, personaShortName } from "../../lib/scan";
-import type { PersonaFlowNode, RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
-import { Chip, Dot, SEVERITY_STYLES, StateBadge } from "../badges";
-import { Check, Cross, PERSONA_GLYPHS } from "../icons";
+import { SCAN_STATE_LABELS, SCAN_STATUS, VERDICT, VERDICT_ORDER } from "../../lib/scan";
+import type { RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
+import { Chip, Dot, SEVERITY_STYLES } from "../badges";
+import { Check, Cross } from "../icons";
 
 /** Shared by every node: opaque graphite, text lifts to white on hover, a white ring set 4px off the edge when selected. */
 function frame(selected: boolean): string {
@@ -77,8 +77,8 @@ export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
   );
 }
 
-/** ✓ / ✗ / … for one persona on a task node, in the system's lights. */
-function Mark({ state }: { state: PersonaState }) {
+/** ✓ / ✗ / … for a task's run, in the system's lights. */
+function Mark({ state }: { state: AgentState }) {
   switch (state) {
     case "succeeded":
       return <Check size={14} className="text-white" />;
@@ -95,6 +95,7 @@ function Mark({ state }: { state: PersonaState }) {
 
 export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
   const border = data.worst !== null ? SEVERITY_STYLES[data.worst].box : neutralBorder(data.selected);
+  const stateLabel = data.status === "verifying" ? "Verifying fixes" : SCAN_STATE_LABELS[data.state];
   return (
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
@@ -103,62 +104,27 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
         onClick={() => data.onSelect(id)}
         aria-current={data.selected ? "true" : undefined}
         title={data.title}
-        className={`${frame(data.selected)} ${border} flex h-28 w-70 flex-col rounded-2xl border p-3`}
+        className={`${frame(data.selected)} ${border} flex h-28 w-80 flex-col rounded-2xl border p-3`}
       >
         <span className="flex items-center gap-2">
           <span className="font-mono text-caption tabular-nums tracking-normal text-ash">T{data.index + 1}</span>
-          <span className="ml-auto flex items-center gap-1.5">
-            {data.personas.map((p) => {
-              const label = `${personaShortName(p.personaId)}: ${SCAN_STATE_LABELS[p.state]}`;
-              return (
-                <span key={p.personaId} className="flex h-4 w-4 items-center justify-center" title={label}>
-                  <Mark state={p.state} />
-                  <span className="sr-only">{label}</span>
-                </span>
-              );
-            })}
+          <span className="ml-auto flex items-center gap-1.5 text-caption text-smoke">
+            {stateLabel}
+            <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center">
+              {data.status === "verifying" ? <Dot tone="glow" size={8} /> : <Mark state={data.state} />}
+            </span>
           </span>
         </span>
         <span className="mt-1.5 line-clamp-2 text-ui leading-snug text-bone group-hover:text-white">{data.title}</span>
-        <span className="mt-auto text-caption tabular-nums text-smoke">
-          <span className={data.findingCount > 0 ? "text-bone" : undefined}>{data.findingCount}</span>{" "}
-          {data.findingCount === 1 ? "finding" : "findings"}
+        <span className="mt-auto flex items-center gap-3 text-caption tabular-nums text-smoke">
+          <span title={`${data.stepCount} of ${MAX_STEPS} steps`}>
+            {data.stepCount}/{MAX_STEPS} steps
+          </span>
+          <span>
+            <span className={data.findingCount > 0 ? "text-bone" : undefined}>{data.findingCount}</span>{" "}
+            {data.findingCount === 1 ? "finding" : "findings"}
+          </span>
         </span>
-      </button>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
-    </>
-  );
-}
-
-export function PersonaNode({ id, data }: NodeProps<PersonaFlowNode>) {
-  const Glyph = PERSONA_GLYPHS[data.personaId];
-  const findings = `${data.findingCount} ${data.findingCount === 1 ? "finding" : "findings"}`;
-  return (
-    <>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
-      <button
-        type="button"
-        onClick={() => data.onSelect(id)}
-        aria-current={data.selected ? "true" : undefined}
-        title={PERSONA_BY_ID[data.personaId].displayName}
-        className={`${frame(data.selected)} ${neutralBorder(data.selected)} flex h-11 w-84 items-center gap-2 rounded-full border pl-2.5 pr-2`}
-      >
-        <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-icon bg-white text-black">
-          <Glyph size={13} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-ui text-bone group-hover:text-white">{personaShortName(data.personaId)}</span>
-        <span className="shrink-0 font-mono text-caption tabular-nums tracking-normal text-smoke" title={`${data.stepCount} of ${MAX_STEPS} steps`}>
-          {data.stepCount}/{MAX_STEPS}
-        </span>
-        <span
-          className="flex shrink-0 items-center gap-1.5 text-caption tabular-nums text-bone"
-          title={data.worst !== null ? `${findings}, worst S${data.worst}` : findings}
-        >
-          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${data.worst !== null ? SEVERITY_STYLES[data.worst].dot : "bg-slate"}`} />
-          {data.findingCount}
-          <span className="sr-only">{data.findingCount === 1 ? "finding" : "findings"}</span>
-        </span>
-        <StateBadge state={data.state} idleLabel="Queued" />
       </button>
     </>
   );

@@ -1,5 +1,6 @@
 import type {
   CreateScanResponse,
+  OpenPullRequestResponse,
   OrchestratorHealth,
   ReportResponse,
   RunSnapshot,
@@ -57,8 +58,16 @@ const json = (body: unknown): RequestInit => ({
  * /suggest-tasks remain for scripts (smoke-local.ts); nothing here calls them.
  */
 export const api = {
-  /** Starts the crawl, task generation and every persona run in the background; answers with the scan id at once. */
+  /** Starts the crawl, task generation and every task's run in the background; answers with the scan id at once. */
   startScan: (url: string) => request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url }), 12_000),
+
+  /** The user's click, and the only way a pull request is ever opened. Opens it as a draft. */
+  openPullRequest: (runId: string, findingId: string) =>
+    request<OpenPullRequestResponse>(
+      `${ORCHESTRATOR_URL}/runs/${encodeURIComponent(runId)}/fixes/${encodeURIComponent(findingId)}/pull-request`,
+      json({}),
+      60_000,
+    ),
 
   orchestratorHealth: () => request<OrchestratorHealth>(`${ORCHESTRATOR_URL}/health`, undefined, 2500),
 

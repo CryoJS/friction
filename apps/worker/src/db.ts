@@ -3,34 +3,49 @@
  * that leaves this module is the camelCase contract from @friction/shared.
  */
 import {
-  PERSONA_IDS,
   stateForOutcome,
+  type AgentState,
   type FindingInput,
-  type PersonaId,
-  type PersonaPatch,
-  type PersonaRecord,
-  type PersonaState,
+  type FixEvent,
+  type FixPayload,
+  type FixRecord,
+  type FixStage,
+  type FixUpsert,
+  type LaneResult,
+  type FrictionCategory,
+  type Lane,
+  type Outcome,
   type RunEvent,
+  type RunPatch,
   type RunRecord,
   type RunStatus,
   type Severity,
-  type FrictionCategory,
   type ScanTaskLink,
 } from "@friction/shared";
 import initSql from "../migrations/0001_init.sql";
-import scansSql from "../migrations/0002_scans.sql";
+import lanesSql from "../migrations/0002_lanes.sql";
+import fixesSql from "../migrations/0003_fixes.sql";
+import scansSql from "../migrations/0004_scans.sql";
 
 /* ------------------------------------------------------------------ schema */
 
-let schemaChecked = false;
+interface Migration {
+  name: string;
+  sql: string;
+  /** True when the database already has this migration's effect. */
+  applied: (db: D1Database) => Promise<boolean>;
+}
 
-/** Each migration, and a table whose absence means it has never run here. */
-const MIGRATIONS: ReadonlyArray<{ name: string; sentinel: string; sql: string }> = [
-  { name: "0001_init", sentinel: "findings", sql: initSql },
-  { name: "0002_scans", sentinel: "scans", sql: scansSql },
+const tableSql = (db: D1Database, table: string) =>
+  db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first<{ sql: string }>();
+
+/** Same names wrangler records, so either path can run first without the other repeating it. */
+const MIGRATIONS: Migration[] = [
+  { name: "0001_init.sql", sql: initSql, applied: async (db) => (await tableSql(db, "findings")) !== null },
+  { name: "0002_lanes.sql", sql: lanesSql, applied: async (db) => /\blane\b/.test((await tableSql(db, "events"))?.sql ?? "") },
+  { name: "0003_fixes.sql", sql: fixesSql, applied: async (db) => (await tableSql(db, "fixes")) !== null },
+  { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
 ];
-
-/** One statement per `;`, with `--` comments stripped. */
 function statementsOf(sql: string): string[] {
   return (
     sql
@@ -45,24 +60,28 @@ function statementsOf(sql: string): string[] {
   );
 }
 
+let schemaChecked = false;
+
 /**
- * Applies any migration this database has never had. `wrangler d1 migrations
- * apply` remains the documented path; this is the safety net for the
- * teammate (or the demo laptop) that skipped it. Every statement is
- * IF NOT EXISTS, so running after wrangler (or before it) is harmless. A plain
- * flag rather than a shared promise: promises must not be awaited across
- * Worker requests.
+ * Brings a database that skipped `wrangler d1 migrations apply` up to date.
+ * That remains the documented path; this is the safety net for the teammate
+ * (or the demo laptop) that skipped it. Each migration runs only if its effect
+ * is missing, and is recorded in d1_migrations so wrangler will not repeat it.
+ * A plain flag rather than a shared promise: promises must not be awaited
+ * across Worker requests.
  */
 export async function ensureSchema(db: D1Database): Promise<void> {
   if (schemaChecked) return;
   for (const migration of MIGRATIONS) {
-    const existing = await db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .bind(migration.sentinel)
-      .first<{ name: string }>();
-    if (existing) continue;
+    if (await migration.applied(db)) continue;
     const statements = statementsOf(migration.sql);
-    await db.batch(statements.map((statement) => db.prepare(statement)));
+    await db.batch([
+      ...statements.map((statement) => db.prepare(statement)),
+      db.prepare(
+        "CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)",
+      ),
+      db.prepare("INSERT OR IGNORE INTO d1_migrations (name) VALUES (?)").bind(migration.name),
+    ]);
     console.log(`[db] applied ${migration.name} (${statements.length} statements)`);
   }
   schemaChecked = true;
@@ -77,14 +96,10 @@ interface RunRow {
   status: string;
   created_at: number;
   completed_at: number | null;
-}
-
-interface PersonaRow {
-  id: string;
-  run_id: string;
-  persona_id: string;
   state: string;
-  step_count: number;
+  outcome: string | null;
+  total_steps: number | null;
+  duration_ms: number | null;
   live_view_url: string | null;
   session_id: string | null;
   replay_url: string | null;
@@ -93,11 +108,12 @@ interface PersonaRow {
 interface EventRow {
   id: number;
   run_id: string;
-  persona_id: string;
+  lane: string;
   seq: number;
   ts: number;
   type: string;
   payload: string;
+  fix_id?: string | null;
 }
 
 function toRun(row: RunRow): RunRecord {
@@ -108,16 +124,10 @@ function toRun(row: RunRow): RunRecord {
     status: row.status as RunStatus,
     createdAt: row.created_at,
     completedAt: row.completed_at,
-  };
-}
-
-function toPersona(row: PersonaRow): PersonaRecord {
-  return {
-    id: row.id,
-    runId: row.run_id,
-    personaId: row.persona_id as PersonaId,
-    state: row.state as PersonaState,
-    stepCount: row.step_count,
+    state: row.state as AgentState,
+    outcome: row.outcome as Outcome | null,
+    totalSteps: row.total_steps,
+    durationMs: row.duration_ms,
     liveViewUrl: row.live_view_url,
     sessionId: row.session_id,
     replayUrl: row.replay_url,
@@ -125,13 +135,14 @@ function toPersona(row: PersonaRow): PersonaRecord {
 }
 
 /** Rows were validated on the way in, so reading them back is a plain cast. */
-export function toEvent(row: Pick<EventRow, "run_id" | "persona_id" | "seq" | "ts" | "type" | "payload">): RunEvent | null {
+export function toEvent(row: Pick<EventRow, "run_id" | "lane" | "seq" | "ts" | "type" | "payload" | "fix_id">): RunEvent | null {
   try {
     return {
       runId: row.run_id,
-      personaId: row.persona_id,
+      lane: row.lane,
       seq: row.seq,
       ts: row.ts,
+      ...(row.fix_id ? { fixId: row.fix_id } : {}),
       type: row.type,
       payload: JSON.parse(row.payload),
     } as RunEvent;
@@ -164,16 +175,18 @@ export async function createRun(db: D1Database, input: { url: string; task: stri
     status: "pending",
     createdAt: Date.now(),
     completedAt: null,
+    state: "idle",
+    outcome: null,
+    totalSteps: null,
+    durationMs: null,
+    liveViewUrl: null,
+    sessionId: null,
+    replayUrl: null,
   };
   const statements: D1PreparedStatement[] = [
     db
-      .prepare("INSERT INTO runs (id, url, task, status, created_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(run.id, run.url, run.task, run.status, run.createdAt),
-    ...PERSONA_IDS.map((personaId) =>
-      db
-        .prepare("INSERT INTO personas (id, run_id, persona_id, state, step_count) VALUES (?, ?, ?, 'idle', 0)")
-        .bind(`${run.id}:${personaId}`, run.id, personaId),
-    ),
+      .prepare("INSERT INTO runs (id, url, task, status, created_at, state) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(run.id, run.url, run.task, run.status, run.createdAt, run.state),
   ];
   if (input.scan) {
     // OR REPLACE: a retried POST re-points the task at the newest run instead of failing the batch.
@@ -193,57 +206,28 @@ export async function getRun(db: D1Database, runId: string): Promise<RunRecord |
 }
 
 export async function listRuns(db: D1Database, limit: number): Promise<RunRecord[]> {
-  const { results } = await db
-    .prepare("SELECT * FROM runs ORDER BY created_at DESC LIMIT ?")
-    .bind(limit)
-    .all<RunRow>();
+  const { results } = await db.prepare("SELECT * FROM runs ORDER BY created_at DESC LIMIT ?").bind(limit).all<RunRow>();
   return results.map(toRun);
 }
 
-/* ---------------------------------------------------------------- personas */
-
-export async function getPersonas(db: D1Database, runId: string): Promise<PersonaRecord[]> {
-  const { results } = await db.prepare("SELECT * FROM personas WHERE run_id = ?").bind(runId).all<PersonaRow>();
-  const order = new Map<string, number>(PERSONA_IDS.map((id, index) => [id, index]));
-  return results
-    .map(toPersona)
-    .sort((a, b) => (order.get(a.personaId) ?? 99) - (order.get(b.personaId) ?? 99));
-}
-
-export async function patchPersonas(
-  db: D1Database,
-  runId: string,
-  patches: readonly PersonaPatch[],
-): Promise<PersonaRecord[]> {
-  const statements: D1PreparedStatement[] = [];
-  for (const patch of patches) {
-    const id = `${runId}:${patch.personaId}`;
-    statements.push(
-      db
-        .prepare("INSERT OR IGNORE INTO personas (id, run_id, persona_id, state, step_count) VALUES (?, ?, ?, 'idle', 0)")
-        .bind(id, runId, patch.personaId),
-    );
-    const sets: string[] = [];
-    const binds: Array<string | null> = [];
-    if (patch.liveViewUrl !== undefined) {
-      sets.push("live_view_url = ?");
-      binds.push(patch.liveViewUrl);
-    }
-    if (patch.sessionId !== undefined) {
-      sets.push("session_id = ?");
-      binds.push(patch.sessionId);
-    }
-    if (patch.replayUrl !== undefined) {
-      sets.push("replay_url = ?");
-      binds.push(patch.replayUrl);
-    }
-    if (sets.length > 0) {
-      statements.push(db.prepare(`UPDATE personas SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, id));
-    }
+/** Session URLs as the primary session comes up, and the orchestrator's end-of-pipeline status. */
+export async function patchRun(db: D1Database, runId: string, patch: RunPatch): Promise<RunRecord | null> {
+  const sets: string[] = [];
+  const binds: Array<string | number | null> = [];
+  const set = (column: string, value: string | number | null): void => {
+    sets.push(`${column} = ?`);
+    binds.push(value);
+  };
+  if (patch.liveViewUrl !== undefined) set("live_view_url", patch.liveViewUrl);
+  if (patch.sessionId !== undefined) set("session_id", patch.sessionId);
+  if (patch.replayUrl !== undefined) set("replay_url", patch.replayUrl);
+  if (patch.status === "verifying") sets.push("status = CASE WHEN status = 'completed' THEN status ELSE 'verifying' END");
+  if (patch.status === "completed") {
+    sets.push("status = 'completed'");
+    set("completed_at", Date.now());
   }
-  if (statements.length > 0) await db.batch(statements);
-  const touched = new Set(patches.map((p) => p.personaId));
-  return (await getPersonas(db, runId)).filter((p) => touched.has(p.personaId));
+  if (sets.length > 0) await db.prepare(`UPDATE runs SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, runId).run();
+  return getRun(db, runId);
 }
 
 /* ------------------------------------------------------------------ events */
@@ -255,20 +239,12 @@ export async function countEvents(db: D1Database, runId: string): Promise<number
 
 /** REPLAY: every event of a run, ordered by ts (row id breaks ties). */
 export async function getEvents(db: D1Database, runId: string): Promise<RunEvent[]> {
-  const { results } = await db
-    .prepare("SELECT * FROM events WHERE run_id = ? ORDER BY ts ASC, id ASC")
-    .bind(runId)
-    .all<EventRow>();
+  const { results } = await db.prepare("SELECT * FROM events WHERE run_id = ? ORDER BY ts ASC, id ASC").bind(runId).all<EventRow>();
   return results.map(toEvent).filter((e): e is RunEvent => e !== null);
 }
 
 /** LIVE: events stored after a row id, in insertion order. */
-export async function getEventsAfter(
-  db: D1Database,
-  runId: string,
-  afterRowId: number,
-  limit = 500,
-): Promise<StoredEvent[]> {
+export async function getEventsAfter(db: D1Database, runId: string, afterRowId: number, limit = 500): Promise<StoredEvent[]> {
   const { results } = await db
     .prepare("SELECT * FROM events WHERE run_id = ? AND id > ? ORDER BY id ASC LIMIT ?")
     .bind(runId, afterRowId, limit)
@@ -284,24 +260,31 @@ export async function getEventsAfter(
 export interface InsertResult {
   inserted: StoredEvent[];
   duplicates: number;
+  /** True when a primary-lane event changed the run row (state, outcome, status). */
+  runChanged: boolean;
 }
 
+const PRIMARY: Lane = "primary";
+
 /**
- * Stores validated events and applies their side effects:
- *   friction      -> findings row
- *   step          -> personas.step_count
- *   status / done -> personas.state
- *   first event   -> runs.status = running; every persona done -> completed
- * (run, persona, seq) is unique, so re-posting an event is a harmless no-op.
+ * Stores validated events and applies their side effects, primary lane only:
+ *   friction      -> findings row (upsert: a repeat raises hit_count)
+ *   status / done -> runs.state; done also sets outcome, total_steps,
+ *                    duration_ms, and completes the run unless the
+ *                    orchestrator has marked it as verifying
+ *   first event   -> runs.status = running
+ * Verify-lane events are stored and streamed, nothing more: they are compared
+ * against the primary run, never reported as findings of their own.
+ * (run, lane, seq) is unique, so re-posting an event is a harmless no-op.
  */
 export async function insertEvents(db: D1Database, runId: string, events: readonly RunEvent[]): Promise<InsertResult> {
-  if (events.length === 0) return { inserted: [], duplicates: 0 };
+  if (events.length === 0) return { inserted: [], duplicates: 0, runChanged: false };
 
   const results = await db.batch(
     events.map((e) =>
       db
-        .prepare("INSERT OR IGNORE INTO events (run_id, persona_id, seq, ts, type, payload) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(runId, e.personaId, e.seq, e.ts, e.type, JSON.stringify(e.payload)),
+        .prepare("INSERT OR IGNORE INTO events (run_id, lane, seq, ts, type, payload, fix_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(runId, e.lane, e.seq, e.ts, e.type, JSON.stringify(e.payload), e.fixId ?? null),
     ),
   );
 
@@ -311,29 +294,28 @@ export async function insertEvents(db: D1Database, runId: string, events: readon
     if (event && result.meta.changes > 0) inserted.push({ rowId: result.meta.last_row_id, event });
   });
   const duplicates = events.length - inserted.length;
-  if (inserted.length === 0) return { inserted, duplicates };
+  const primary = inserted.filter(({ event }) => event.lane === PRIMARY);
+  if (primary.length === 0) return { inserted, duplicates, runChanged: false };
 
-  const effects: D1PreparedStatement[] = [
-    db.prepare("UPDATE runs SET status = 'running' WHERE id = ? AND status = 'pending'").bind(runId),
-  ];
+  const effects: D1PreparedStatement[] = [db.prepare("UPDATE runs SET status = 'running' WHERE id = ? AND status = 'pending'").bind(runId)];
 
-  // Latest state-bearing event per persona in this batch.
-  const nextState = new Map<PersonaId, { seq: number; state: PersonaState }>();
-  const touched = new Set<PersonaId>();
-  let sawDone = false;
+  // Latest state-bearing event in this batch.
+  let nextState: { seq: number; state: AgentState } | null = null;
 
-  for (const { event } of inserted) {
-    touched.add(event.personaId);
+  for (const { event } of primary) {
     if (event.type === "friction") {
       const p = event.payload;
       effects.push(
         db
           .prepare(
-            "INSERT OR IGNORE INTO findings (run_id, persona_id, category, severity, evidence_seq, recommendation, confidence, summary, why_it_matters) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            `INSERT INTO findings (id, run_id, finding_key, category, severity, evidence_seq, recommendation, confidence, summary, why_it_matters, selector, hit_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (run_id, id) DO UPDATE SET hit_count = MAX(hit_count, excluded.hit_count)`,
           )
           .bind(
+            p.findingId ?? `f${event.seq}`,
             runId,
-            event.personaId,
+            p.findingKey ?? `${p.category}:f${event.seq}`,
             p.category,
             p.severity,
             p.evidenceSeq,
@@ -341,62 +323,179 @@ export async function insertEvents(db: D1Database, runId: string, events: readon
             p.confidence,
             p.summary ?? null,
             p.whyItMatters ?? null,
+            p.selector ?? "",
+            p.hitCount ?? 1,
           ),
       );
     }
-    let state: PersonaState | null = null;
+    let state: AgentState | null = null;
     if (event.type === "status") state = event.payload.state;
     if (event.type === "done") {
       state = stateForOutcome(event.payload.outcome);
-      sawDone = true;
+      effects.push(
+        db
+          .prepare(
+            `UPDATE runs SET outcome = ?1, total_steps = ?2, duration_ms = ?3,
+               status = CASE WHEN status = 'verifying' THEN status ELSE 'completed' END,
+               completed_at = CASE WHEN status = 'verifying' THEN completed_at ELSE ?4 END
+             WHERE id = ?5`,
+          )
+          .bind(event.payload.outcome, event.payload.totalSteps, Math.round(event.payload.durationMs), Date.now(), runId),
+      );
     }
-    if (state) {
-      const current = nextState.get(event.personaId);
-      if (!current || event.seq >= current.seq) nextState.set(event.personaId, { seq: event.seq, state });
-    }
+    if (state && (!nextState || event.seq >= nextState.seq)) nextState = { seq: event.seq, state };
   }
 
-  for (const personaId of touched) {
-    const id = `${runId}:${personaId}`;
-    const state = nextState.get(personaId)?.state ?? null;
-    // A terminal state is final: a late or re-ordered status event never reopens a persona.
+  if (nextState) {
+    // A terminal state is final: a late or re-ordered status event never reopens the run's agent.
     effects.push(
       db
-        .prepare(
-          `UPDATE personas SET
-             step_count = (SELECT COUNT(*) FROM events WHERE run_id = ?1 AND persona_id = ?2 AND type = 'step'),
-             state = CASE
-               WHEN ?3 IS NULL THEN state
-               WHEN state IN ('succeeded', 'failed', 'timeout') THEN state
-               ELSE ?3
-             END
-           WHERE id = ?4`,
-        )
-        .bind(runId, personaId, state, id),
-    );
-  }
-
-  if (sawDone) {
-    effects.push(
-      db
-        .prepare(
-          `UPDATE runs SET status = 'completed', completed_at = ?1
-           WHERE id = ?2 AND status != 'completed'
-             AND (SELECT COUNT(DISTINCT persona_id) FROM events WHERE run_id = ?2 AND type = 'done') >= ?3`,
-        )
-        .bind(Date.now(), runId, PERSONA_IDS.length),
+        .prepare("UPDATE runs SET state = CASE WHEN state IN ('succeeded', 'failed', 'timeout') THEN state ELSE ? END WHERE id = ?")
+        .bind(nextState.state, runId),
     );
   }
 
   await db.batch(effects);
-  return { inserted, duplicates };
+  return { inserted, duplicates, runChanged: true };
+}
+
+/* ------------------------------------------------------------------- fixes */
+
+interface FixRow {
+  id: string;
+  run_id: string;
+  finding_id: string;
+  stage: string;
+  summary: string;
+  patch_js: string;
+  source_file: string | null;
+  new_file_content: string | null;
+  source_sha: string | null;
+  before_json: string | null;
+  after_json: string | null;
+  pr_url: string | null;
+  created_at: number;
+  category: string | null;
+  note: string | null;
+  verify_live_view_url: string | null;
+  verify_replay_url: string | null;
+  updated_at: number;
+}
+
+function parseResult(json: string | null): LaneResult | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as LaneResult;
+  } catch {
+    return null;
+  }
+}
+
+function toFix(row: FixRow): FixRecord {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    findingId: row.finding_id,
+    stage: row.stage as FixStage,
+    summary: row.summary,
+    patchJs: row.patch_js,
+    sourceFile: row.source_file,
+    newFileContent: row.new_file_content,
+    sourceSha: row.source_sha,
+    before: parseResult(row.before_json),
+    after: parseResult(row.after_json),
+    prUrl: row.pr_url,
+    ...(row.category ? { category: row.category as FrictionCategory } : {}),
+    ...(row.note ? { note: row.note } : {}),
+    liveViewUrl: row.verify_live_view_url,
+    replayUrl: row.verify_replay_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** The event form of a fix: everything but the file content, which is too big to stream. */
+export function fixPayloadOf(fix: FixRecord): FixPayload {
+  const { id: _id, runId: _runId, newFileContent: _content, sourceSha: _sha, createdAt: _created, updatedAt: _updated, ...payload } = fix;
+  return payload;
+}
+
+export async function getFixes(db: D1Database, runId: string): Promise<FixRecord[]> {
+  const { results } = await db.prepare("SELECT * FROM fixes WHERE run_id = ? ORDER BY created_at ASC").bind(runId).all<FixRow>();
+  return results.map(toFix);
+}
+
+export async function getFix(db: D1Database, runId: string, findingId: string): Promise<FixRecord | null> {
+  const row = await db.prepare("SELECT * FROM fixes WHERE run_id = ? AND finding_id = ?").bind(runId, findingId).first<FixRow>();
+  return row ? toFix(row) : null;
+}
+
+/**
+ * Upserts the fix row, then records it as a `fix` event in the verify lane.
+ * The event's seq is allocated here, atomically (MAX + 1 inside the INSERT),
+ * and returned: the orchestrator starts its verify run's counter after it, so
+ * the two writers never collide. newFileContent is only replaced when the
+ * upsert carries it; omitted, the stored content is kept.
+ */
+export async function upsertFix(db: D1Database, runId: string, upsert: FixUpsert): Promise<{ fix: FixRecord; event: FixEvent; rowId: number }> {
+  const now = Date.now();
+  const { newFileContent, sourceSha, ...payload } = upsert;
+  const hasContent = newFileContent !== undefined ? 1 : 0;
+  const [, inserted] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO fixes (id, run_id, finding_id, stage, summary, patch_js, source_file, new_file_content, before_json, after_json, pr_url, created_at,
+                            category, note, verify_live_view_url, verify_replay_url, updated_at, source_sha)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?12, ?18)
+         ON CONFLICT (run_id, finding_id) DO UPDATE SET
+           stage = excluded.stage, summary = excluded.summary, patch_js = excluded.patch_js, source_file = excluded.source_file,
+           new_file_content = CASE WHEN ?17 = 1 THEN excluded.new_file_content ELSE fixes.new_file_content END,
+           source_sha = CASE WHEN ?17 = 1 THEN excluded.source_sha ELSE fixes.source_sha END,
+           before_json = excluded.before_json, after_json = excluded.after_json, pr_url = excluded.pr_url,
+           category = excluded.category, note = excluded.note,
+           verify_live_view_url = excluded.verify_live_view_url, verify_replay_url = excluded.verify_replay_url,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        `${runId}:${payload.findingId}`,
+        runId,
+        payload.findingId,
+        payload.stage,
+        payload.summary,
+        payload.patchJs,
+        payload.sourceFile,
+        newFileContent ?? null,
+        payload.before ? JSON.stringify(payload.before) : null,
+        payload.after ? JSON.stringify(payload.after) : null,
+        payload.prUrl,
+        now,
+        payload.category ?? null,
+        payload.note ?? null,
+        payload.liveViewUrl ?? null,
+        payload.replayUrl ?? null,
+        hasContent,
+        sourceSha ?? null,
+      ),
+    db
+      .prepare(
+        `INSERT INTO events (run_id, lane, seq, ts, type, payload, fix_id)
+         SELECT ?1, 'verify', COALESCE(MAX(seq), 0) + 1, ?2, 'fix', ?3, ?4 FROM events WHERE run_id = ?1 AND lane = 'verify'`,
+      )
+      .bind(runId, now, JSON.stringify(payload), payload.findingId),
+  ]);
+  const rowId = inserted?.meta.last_row_id ?? 0;
+  const row = await db.prepare("SELECT * FROM events WHERE id = ?").bind(rowId).first<EventRow>();
+  const event = row ? (toEvent(row) as FixEvent | null) : null;
+  const fix = await getFix(db, runId, payload.findingId);
+  if (!fix || !event) throw new Error(`fix ${payload.findingId} could not be stored`);
+  return { fix, event, rowId };
 }
 
 /* ------------------------------------------------------------------ report */
 
 interface FindingJoinRow {
-  id: number;
-  persona_id: string;
+  id: string;
+  finding_key: string;
   category: string;
   severity: number;
   evidence_seq: number;
@@ -404,6 +503,8 @@ interface FindingJoinRow {
   confidence: number;
   summary: string | null;
   why_it_matters: string | null;
+  selector: string;
+  hit_count: number;
   e_seq: number | null;
   e_ts: number | null;
   e_payload: string | null;
@@ -411,7 +512,7 @@ interface FindingJoinRow {
 
 export interface ReportRows {
   findings: FindingInput[];
-  /** The joined evidence steps plus every done event. */
+  /** The joined evidence steps plus the primary done event. */
   events: RunEvent[];
 }
 
@@ -420,18 +521,18 @@ export async function getReportRows(db: D1Database, runId: string): Promise<Repo
   const [joined, dones] = await db.batch<FindingJoinRow | EventRow>([
     db
       .prepare(
-        `SELECT f.id, f.persona_id, f.category, f.severity, f.evidence_seq, f.recommendation,
-                f.confidence, f.summary, f.why_it_matters,
+        `SELECT f.id, f.finding_key, f.category, f.severity, f.evidence_seq, f.recommendation,
+                f.confidence, f.summary, f.why_it_matters, f.selector, f.hit_count,
                 e.seq AS e_seq, e.ts AS e_ts, e.payload AS e_payload
          FROM findings f
          LEFT JOIN events e
-           ON e.run_id = f.run_id AND e.persona_id = f.persona_id
+           ON e.run_id = f.run_id AND e.lane = 'primary'
           AND e.seq = f.evidence_seq AND e.type = 'step'
          WHERE f.run_id = ?
-         ORDER BY f.severity DESC, f.confidence DESC, f.id ASC`,
+         ORDER BY f.severity DESC, f.confidence DESC, f.hit_count DESC`,
       )
       .bind(runId),
-    db.prepare("SELECT * FROM events WHERE run_id = ? AND type = 'done'").bind(runId),
+    db.prepare("SELECT * FROM events WHERE run_id = ? AND lane = 'primary' AND type = 'done'").bind(runId),
   ]);
 
   const findings: FindingInput[] = [];
@@ -439,8 +540,8 @@ export async function getReportRows(db: D1Database, runId: string): Promise<Repo
 
   for (const row of (joined?.results ?? []) as FindingJoinRow[]) {
     findings.push({
-      id: String(row.id),
-      personaId: row.persona_id as PersonaId,
+      id: row.id,
+      findingKey: row.finding_key,
       category: row.category as FrictionCategory,
       severity: row.severity as Severity,
       evidenceSeq: row.evidence_seq,
@@ -448,16 +549,11 @@ export async function getReportRows(db: D1Database, runId: string): Promise<Repo
       confidence: row.confidence,
       summary: row.summary,
       whyItMatters: row.why_it_matters,
+      selector: row.selector,
+      hitCount: row.hit_count,
     });
     if (row.e_seq !== null && row.e_ts !== null && row.e_payload !== null) {
-      const step = toEvent({
-        run_id: runId,
-        persona_id: row.persona_id,
-        seq: row.e_seq,
-        ts: row.e_ts,
-        type: "step",
-        payload: row.e_payload,
-      });
+      const step = toEvent({ run_id: runId, lane: PRIMARY, seq: row.e_seq, ts: row.e_ts, type: "step", payload: row.e_payload });
       if (step) events.push(step);
     }
   }

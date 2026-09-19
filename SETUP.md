@@ -29,10 +29,10 @@ Open http://localhost:5173.
 | You want to... | Do this |
 | --- | --- |
 | See the UI with zero setup | Click **Replay the golden run**, or open `/?run=golden&replay=1` |
-| Exercise the whole pipeline with no keys | Start all three apps, enter any URL, **Scan & test** (mock mode: a scripted crawl, 10 canned tasks, 30 runs that replay the golden run through the real pipeline), or run `pnpm --filter @friction/orchestrator smoke:scan` |
+| Exercise the whole pipeline with no keys | Start all three apps, enter any URL, **Scan & test** (mock mode: a scripted crawl, 10 canned tasks, 10 runs that replay the golden run, fix verification included, through the real pipeline), or run `pnpm --filter @friction/orchestrator smoke:scan` |
 | Test the real browser loop with no keys | `pnpm --filter @friction/orchestrator smoke` (Worker must be running; drives a local Chrome/Edge with a scripted planner against the built-in demo shop) |
 | Do a real scan | Fill in `.env` (below), restart the orchestrator, **Scan & test**. Read [Scans: time and cost](#scans-time-and-cost) first |
-| Reopen a scan | Landing page > **Recent scans**, or `/?scan=<id>` (add `&node=t2` or `&node=t2.keyboard` to select a node) |
+| Reopen a scan | Landing page > **Recent scans**, or `/?scan=<id>` (add `&node=t2` to select a task) |
 | Watch one run of a scan in full | Select its task node, then **Open full control room**, or open `/?run=<id>` |
 | Replay a past run | `/?run=<id>&replay=1` |
 
@@ -40,7 +40,7 @@ Open http://localhost:5173.
 
 ```bash
 pnpm typecheck           # all four packages, TypeScript strict
-pnpm test                # detector tests against the fixture, plus scan contract and merged-report tests
+pnpm test                # detector tests against the fixture, plus verification, scan contract and merged-report tests
 pnpm golden:generate     # regenerate fixtures/golden-run.json (deterministic)
 ```
 
@@ -60,15 +60,28 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `LOCAL_BROWSER_PATH` | | auto-detected | Chrome/Edge binary for `BROWSER_ENV=LOCAL` |
 | `FRICTION_MOCK` | | off | `1` forces mock mode even with keys set |
 | `MOCK_SPEED` | | `3` | Mock mode playback speed |
-| `MAX_SESSIONS` | | `3` | Browser sessions open at once across every run and scan (1-100): a scan's crawl and every persona take one. Set it to your Browserbase plan's concurrency limit. `PERSONA_CONCURRENCY` is still read as a fallback |
+| `MAX_SESSIONS` | | `3` | Browser sessions open at once across every run and scan (1-100): a scan's crawl, every primary run and every fix verification take one. Set it to your Browserbase plan's concurrency limit. `PERSONA_CONCURRENCY` is still read as a fallback |
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
-| `PERSONA_TIMEOUT_MS` | | `300000` | Wall-clock budget per persona |
+| `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
+| `VERIFY_TOP_N` | | `2` | How many top findings (by severity) get a fix proposed and verified. Each is a full extra browser run. `0` turns verification off |
+| `GITHUB_TOKEN` | PRs | | Personal access token with contents and pull-request write access to the one repository below. No GitHub App, no OAuth |
+| `GITHUB_OWNER` | PRs | | Owner (user or org) of the repository verified fixes are mapped to |
+| `GITHUB_REPO` | PRs | | Repository name |
+| `GITHUB_BASE_BRANCH` | | repo default | Branch that fix branches start from and draft PRs target |
 | `STAGEHAND_MODEL` | | `OPENAI_MODEL` | Model for Stagehand's `observe()` fallback |
 | `OPENAI_REASONING_EFFORT` | | unset | Only for reasoning models that accept it |
 | `OPENAI_IMAGE_DETAIL` | | `high` | `high`, `low` or `auto` |
 | `BROWSERBASE_REGION` | | unset | e.g. `us-east-1` |
 
 `GET http://localhost:8788/health` tells you the mode and exactly which variables are missing.
+
+### Fix verification and pull requests
+
+After the run, the top `VERIFY_TOP_N` findings each get a proposed fix: a small JavaScript patch. It is installed with `page.addInitScript()` into a **brand-new** Browserbase session (fresh context, clean cookies) before the first page loads, and the same task is re-run in the `verify` lane. The patch only ever changes the DOM inside Friction's own disposable browser; it never touches your site, server or repository. The fix is **verified** when the task went from failure/timeout to success, or the finding's category no longer fires on the page where it happened; otherwise it is **rejected**, and says why.
+
+With `GITHUB_*` set, a verified fix is mapped to a source file with GitHub code search (from the element's selector and visible text, never from the browser's DOM), and a model writes the complete new file (never a diff). Nothing is committed until someone clicks **Open pull request** in the report: that creates `friction/fix-<findingId>`, commits the one file (refusing if the file changed since), and opens a **draft** PR. Friction never merges or force-pushes. Without `GITHUB_*` set, verified fixes simply stay unmapped.
+
+Mock mode verifies too: it replays the golden run's recorded verification runs through the real detectors, so the verdicts are computed, not copied.
 
 Control room (`apps/control-room/.env.local`, build-time):
 
@@ -86,11 +99,13 @@ pnpm db:migrate:local    # wrangler d1 migrations apply friction --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply friction --remote
 ```
 
-Local dev does not strictly need the first one: if the Worker finds an unmigrated database it runs any of `migrations/*.sql` it is missing itself (every statement is `IF NOT EXISTS`, so both paths are safe in either order). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
+Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`; `0004_scans.sql` adds `scans` and `scan_tasks`.
+
+`0002_lanes.sql` replaces the three-persona schema with lanes. It is lossy for runs recorded before it: their "cautious" persona becomes the primary lane and the other two personas' events are dropped (R2 screenshots are untouched). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
 
 ## Scans: time and cost
 
-A live scan is up to 30 persona runs (10 tasks x 3 personas) of up to 15 steps each. That is roughly 450+ planner calls with a screenshot each, plus a judge call per friction finding, plus one task-generation call, plus the crawl's one browser session. At `MAX_SESSIONS=3` expect roughly 20-50 minutes per scan; raise `MAX_SESSIONS` to your Browserbase plan's concurrency limit to go faster. Point it at `/demo-shop` first. Mock mode (`FRICTION_MOCK=1`, or no keys) costs nothing and finishes in about a minute.
+A live scan is up to 10 runs (one per task) of up to 15 steps each, plus up to `VERIFY_TOP_N` verification runs per task, each a full re-run of the task. At the defaults that is up to 30 browser runs and roughly 450 planner calls with a screenshot each, plus a judge call per friction finding, a fixer call per verified finding, one task-generation call, and the crawl's one browser session. At `MAX_SESSIONS=3` expect roughly 20-50 minutes per scan; raise `MAX_SESSIONS` to your Browserbase plan's concurrency limit to go faster, or lower `VERIFY_TOP_N` to spend less. Point it at `/demo-shop` first. Mock mode (`FRICTION_MOCK=1`, or no keys) costs nothing and finishes in a few minutes.
 
 ## Deploy the Worker
 
@@ -136,6 +151,6 @@ The demo is **replay**. Live is the bonus.
 
 Things that bite:
 
-- **Browserbase concurrency.** A scan opens one session to crawl, then 30 persona sessions, never more than `MAX_SESSIONS` at once; the rest wait as **Queued**, most critical task first. A single run's three personas share the same pool. On a plan that allows fewer sessions, session creation returns 429 and the orchestrator waits and retries, but set `MAX_SESSIONS` to your plan's limit. `POST /suggest-tasks` (API only now) opens a session outside the pool.
+- **Browserbase concurrency.** A scan opens one session to crawl, then one per run and one per fix verification, never more than `MAX_SESSIONS` at once; the rest wait as **Queued**, most critical task first. A single run's sessions (primary, then each verification in turn) share the same pool. On a plan that allows fewer sessions, session creation returns 429 and the orchestrator waits and retries, but set `MAX_SESSIONS` to your plan's limit. `POST /suggest-tasks` (API only now) opens a session outside the pool.
 - **Bot protection.** Big retail sites may CAPTCHA a cloud browser. Rehearse on your real target, and keep `/demo-shop` as the target that always works.
 - **`OPENAI_MODEL` unset** puts the orchestrator in mock mode. Check `/health`.

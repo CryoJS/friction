@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { GOLDEN_RUN_ID, PERSONAS, type OrchestratorHealth, type PersonaId, type ScanListItem } from "@friction/shared";
+import { GOLDEN_RUN_ID, type ScanListItem } from "@friction/shared";
 import { api } from "../lib/api";
 import { shortUrl, timeAgo } from "../lib/format";
 import { SCAN_STATUS } from "../lib/scan";
-import { Chip, Dot, type Tone } from "./badges";
+import { AgentAmbient } from "./AgentAmbient";
+import { Chip } from "./badges";
 import { HeroPreview } from "./HeroPreview";
-import { ArrowRight, PERSONA_GLYPHS, Play, Plus, Sparkle } from "./icons";
+import { ArrowRight, Plus, Sparkle } from "./icons";
 import { ScanForm } from "./ScanForm";
 
 interface Props {
@@ -13,16 +14,10 @@ interface Props {
   onOpenRun: (runId: string, replay: boolean) => void;
   /** Whether the floating nav currently sits over the hero. */
   onOverHero?: (over: boolean) => void;
+  scrollerRef: React.RefObject<HTMLElement | null>;
 }
 
 type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "down" };
-
-/** One line per persona for the hero; the full descriptions live in the control room. */
-const PERSONA_LINES: Record<PersonaId, string> = {
-  impatient: "gives up after two failed attempts.",
-  cautious: "reads every label, thrown by modals.",
-  keyboard: "Tab, Enter and arrows. Never the mouse.",
-};
 
 const HOW_IT_WORKS: { title: string; detail: string }[] = [
   {
@@ -35,14 +30,14 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
       "One model call reads those pages and ranks the ten tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
   },
   {
-    title: "Thirty isolated browsers",
+    title: "One isolated browser per task",
     detail:
-      "Every task runs with all three personas, each in its own Browserbase session and context, so no cookies leak between them. Sessions come from one shared pool, most critical task first.",
+      "The agent attempts every task in its own Browserbase session and context, so no cookies leak between them. Sessions come from one shared pool, most critical task first.",
   },
   {
     title: "Observe, plan, act",
     detail:
-      "Every step starts with a screenshot and the accessibility tree. One model call picks a single action in the persona's own voice, the action runs, and the evidence is kept. Each persona is capped at 15 steps.",
+      "Every step starts with a screenshot and the accessibility tree. One model call picks a single action, the action runs, and the evidence is kept. Each run is capped at 15 steps.",
   },
   {
     title: "Detect friction deterministically",
@@ -50,24 +45,23 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
       "Nine pure detectors run after every step: dead clicks, navigation loops, retries, step budget, error messages, modal interrupts, long waits, keyboard traps and ambiguous labels. The model never decides whether something happened; it only writes the judgement.",
   },
   {
-    title: "Merge and rank",
+    title: "Verify the fixes",
     detail:
-      "The same problem hit by several runs becomes one issue: same kind of friction, same page, same element. Issues are ranked by severity, then by how many of the thirty runs hit them, each with its screenshot and what to fix.",
+      "For each task's worst findings, Friction proposes a fix and re-runs the task in a fresh browser with it installed. A fix counts as verified only if the friction is gone; a pull request is opened only when you click.",
   },
   {
-    title: "Replay anywhere",
-    detail: "Any single run plays back client-side from one request. No orchestrator, no model, no wifi.",
+    title: "Merge, rank and replay anywhere",
+    detail:
+      "The same problem hit on several tasks becomes one issue: same kind of friction, same page, same element. Issues are ranked by severity, then by how many tasks hit them, each with its screenshot and what to fix. Any single run plays back client-side from one request, with no orchestrator, model or wifi.",
   },
 ];
 
-export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
+export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Props) {
   const [scans, setScans] = useState<Probe<ScanListItem[]>>({ status: "loading" });
-  const [health, setHealth] = useState<Probe<OrchestratorHealth>>({ status: "loading" });
-  const scroller = useRef<HTMLElement>(null);
   const hero = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const main = scroller.current;
+    const main = scrollerRef.current;
     if (!main || !onOverHero) return;
     let frame = 0;
     const check = (): void => {
@@ -85,7 +79,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
       if (frame) window.cancelAnimationFrame(frame);
       onOverHero(true);
     };
-  }, [onOverHero]);
+  }, [onOverHero, scrollerRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,65 +87,34 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
       .listScans()
       .then((body) => !cancelled && setScans({ status: "ok", value: body.scans }))
       .catch(() => !cancelled && setScans({ status: "down" }));
-    api
-      .orchestratorHealth()
-      .then((body) => !cancelled && setHealth({ status: "ok", value: body }))
-      .catch(() => !cancelled && setHealth({ status: "down" }));
     return () => {
       cancelled = true;
     };
   }, []);
 
   return (
-    <main ref={scroller} className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth motion-reduce:scroll-auto">
+    <main ref={scrollerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-none scroll-smooth">
       {/* ---------------------------------------------------------------- hero */}
       <section ref={hero} className="horizon relative isolate overflow-hidden rounded-b-panel">
         <div aria-hidden="true" className="horizon-scrim pointer-events-none absolute inset-0 -z-10" />
+        <AgentAmbient />
 
-        <div className="mx-auto max-w-300 px-4 pt-24 sm:px-6">
-          <ServiceStatus scans={scans} health={health} />
-
-          <h1 className="mt-8 max-w-[21ch] text-[clamp(40px,5.2vw,64px)] leading-[1.04] tracking-[-0.035em] text-white text-balance lg:max-w-none">
-            <span className="lg:block">Autonomous QA that finds the flaw, </span>
-            <span className="lg:block">writes the fix, and opens the PR</span>
+        <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
+          <h1 className="max-w-[21ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
+            <span className="lg:block">
+              <HeadlineTarget className="hero-headline-target--users">Three users.</HeadlineTarget>{" "}
+              <HeadlineTarget className="hero-headline-target--task">One task.</HeadlineTarget>
+            </span>
+            <span className="lg:block">
+              <HeadlineTarget className="hero-headline-target--site">Every place</HeadlineTarget>{" "}
+              your site fights back.
+            </span>
           </h1>
 
           <div className="mt-10 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
             <div className="pb-10 lg:pb-14">
-              <ul className="flex flex-col gap-3" aria-label="The three personas">
-                {PERSONAS.map((persona) => {
-                  const Glyph = PERSONA_GLYPHS[persona.id];
-                  return (
-                    <li key={persona.id} className="flex items-start gap-3 text-body text-bone">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-icon bg-white text-black">
-                        <Glyph size={13} />
-                      </span>
-                      <span>
-                        <span className="text-white">{persona.displayName}</span> <span className="text-bone/80">{PERSONA_LINES[persona.id]}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <div className="dusk-pool mt-7">
+              <div className="dusk-pool">
                 <ScanForm onStarted={onOpenScan} onReplayGolden={() => onOpenRun(GOLDEN_RUN_ID, true)} />
-
-                <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2 px-1 text-ui text-white">
-                  <span>No site handy?</span>
-                  <button type="button" onClick={() => onOpenRun(GOLDEN_RUN_ID, true)} className="pill-ghost h-8 border-white/40 bg-void/45 text-white">
-                    <Play size={12} />
-                    Replay the golden run
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenRun(GOLDEN_RUN_ID, false)}
-                    className="pill-ghost h-8 border-white/40 bg-void/45 text-white"
-                    title="Watch the Worker stream the golden fixture over server-sent events"
-                  >
-                    Stream it over SSE
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -169,8 +132,8 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
             Every step is observed, planned, acted on and judged.
           </h2>
           <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL. Friction reads the site, picks the ten tasks that matter most, and has three personas attempt each one in isolated Browserbase
-            sessions on the live site. Findings from all thirty runs are merged into one ranked report with screenshot evidence.
+            Enter a URL. Friction reads the site, picks the ten tasks that matter most, and has the agent attempt each one in an isolated Browserbase
+            session on the live site. Findings from every run are merged into one ranked report with screenshot evidence.
           </p>
         </div>
 
@@ -196,7 +159,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
       <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
-          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Ten tasks per scan, three personas each.</p>}
+          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to ten tasks per scan, one run each.</p>}
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
@@ -265,35 +228,21 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero }: Props) {
   );
 }
 
-function probeTone(probe: Probe<unknown>): Tone {
-  return probe.status === "ok" ? "good" : probe.status === "down" ? "bad" : "idle";
-}
-
-/** The status banner: what the demo laptop can reach right now. */
-function ServiceStatus({ scans, health }: { scans: Probe<ScanListItem[]>; health: Probe<OrchestratorHealth> }) {
-  const mock = health.status === "ok" && health.value.mode !== "live";
-  const orchestrator =
-    health.status === "ok" ? `Orchestrator ${health.value.mode === "live" ? "live" : `in ${health.value.mode} mode`}` : health.status === "down" ? "Orchestrator offline" : "Orchestrator";
-  const worker = scans.status === "ok" ? "Worker online" : scans.status === "down" ? "Worker offline" : "Worker";
-  const title = health.status === "ok" && health.value.missingEnv.length > 0 ? `Mock mode. Missing: ${health.value.missingEnv.join(", ")}` : undefined;
-
+function HeadlineTarget({ children, className }: { children: React.ReactNode; className: string }) {
   return (
-    <div className="flex justify-center">
-      <p
-        role="status"
-        title={title}
-        className="glass inline-flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-nav border border-hairline/20 px-4 py-1.5 text-center text-ui text-bone"
-      >
-        <Sparkle size={14} className="shrink-0 text-white" />
-        <span className="inline-flex items-center gap-2">
-          <Dot tone={probeTone(scans)} size={7} />
-          {worker}
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <Dot tone={mock ? "warn" : probeTone(health)} size={7} />
-          {orchestrator}
-        </span>
-      </p>
-    </div>
+    <span className={`hero-headline-target ${className}`}>
+      <span className="relative z-[1]">{children}</span>
+      <span className="hero-headline-selection" aria-hidden="true">
+        <span className="hero-headline-handle hero-headline-handle--top-left" />
+        <span className="hero-headline-handle hero-headline-handle--top-right" />
+        <span className="hero-headline-handle hero-headline-handle--bottom-left" />
+        <span className="hero-headline-handle hero-headline-handle--bottom-right" />
+      </span>
+      <span className="hero-headline-label" aria-hidden="true">
+        <span className="hero-headline-label-dot" />
+        agent focus
+      </span>
+      <span className="hero-headline-cursor" aria-hidden="true" />
+    </span>
   );
 }

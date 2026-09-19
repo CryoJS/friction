@@ -10,7 +10,7 @@ export function errorMessage(err: unknown): string {
   return String(err).slice(0, 300);
 }
 
-/** Every call that leaves this process gets a deadline. A hung SDK must not hang a persona. */
+/** Every call that leaves this process gets a deadline. A hung SDK must not hang a run. */
 export async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_, reject) => {

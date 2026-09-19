@@ -1,5 +1,4 @@
 import { FRICTION_LABELS, scanNodeId, type ScanIssue } from "@friction/shared";
-import { personaShortName } from "../../lib/scan";
 import { EvidenceImage } from "../EvidenceImage";
 import { SEVERITY_STYLES, SeverityBadge, categoryLabel } from "../badges";
 
@@ -13,9 +12,6 @@ interface Props {
 /** One merged issue: how bad, how widespread, the evidence, and every run that hit it. */
 export function IssueCard({ issue, rank, onSelect }: Props) {
   const style = SEVERITY_STYLES[issue.severity];
-  // One chip per task x persona run, even when that run hit the issue more than once.
-  const runs = [...new Map(issue.occurrences.map((o) => [`${o.taskIndex}.${o.personaId}`, o] as const)).values()];
-  const tasks = issue.taskIndexes.length;
 
   return (
     <article className="overflow-hidden rounded-card border border-hairline/10 bg-white/4">
@@ -48,7 +44,7 @@ export function IssueCard({ issue, rank, onSelect }: Props) {
           <span className="tabular-nums text-bone">
             {issue.runsHit}/{issue.totalRuns}
           </span>{" "}
-          runs · {tasks} {tasks === 1 ? "task" : "tasks"} · {issue.personas.map(personaShortName).join(", ")}
+          runs
           {issue.page && (
             <>
               {" · "}
@@ -62,15 +58,15 @@ export function IssueCard({ issue, rank, onSelect }: Props) {
           <span className="text-bone">Fix: </span>
           {issue.recommendation}
         </p>
-        <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label="Runs that hit this issue">
-          {runs.map((o) => (
+        <div className="mt-4 flex flex-wrap gap-1.5" role="group" aria-label="Tasks that hit this issue">
+          {issue.taskIndexes.map((taskIndex) => (
             <button
-              key={`${o.taskIndex}.${o.personaId}`}
+              key={taskIndex}
               type="button"
-              onClick={() => onSelect(scanNodeId({ kind: "persona", index: o.taskIndex, personaId: o.personaId }))}
+              onClick={() => onSelect(scanNodeId({ kind: "task", index: taskIndex }))}
               className="pill-ghost h-7 px-2.5 text-caption tabular-nums"
             >
-              T{o.taskIndex + 1} · {personaShortName(o.personaId)}
+              T{taskIndex + 1}
             </button>
           ))}
         </div>

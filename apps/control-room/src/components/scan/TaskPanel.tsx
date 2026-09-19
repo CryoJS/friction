@@ -1,8 +1,11 @@
-import { PERSONA_BY_ID, scanNodeId, taskVerdict, type ScanReportResponse, type ScanTreeTask } from "@friction/shared";
+import { taskVerdict, type ScanReportResponse, type ScanTreeTask } from "@friction/shared";
+import { useRunStream } from "../../hooks/useRunStream";
 import { VERDICT } from "../../lib/scan";
-import { Chip, StateBadge } from "../badges";
-import { ArrowRight, PERSONA_GLYPHS } from "../icons";
+import { LanePane } from "../LanePane";
+import { Chip } from "../badges";
+import { ArrowRight } from "../icons";
 import { IssueCard } from "./IssueCard";
+import { Notice } from "./Notice";
 
 interface Props {
   task: ScanTreeTask;
@@ -11,9 +14,15 @@ interface Props {
   onOpenRun: (runId: string) => void;
 }
 
-/** One task: what it is, why it matters, how its three personas did, and the issues it hit. */
+/**
+ * One task: what it is, why it matters, its run live (the control room's own
+ * LanePane on the run's SSE stream), and the site issues it hit. SidePanel
+ * keys it by run id, so selecting another task opens that run's stream.
+ */
 export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
-  const verdict = VERDICT[taskVerdict(task.personas.map((p) => p.state))];
+  const stream = useRunStream(task.runId, { replay: false });
+  const verdict = VERDICT[taskVerdict(task.state)];
+  const fixes = Object.keys(stream.view.fixes).length;
   const ranked = report
     ? report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(task.index))
     : [];
@@ -24,6 +33,7 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
         <div className="flex items-center gap-2.5">
           <span className="font-mono text-caption tabular-nums tracking-normal text-ash">T{task.index + 1}</span>
           <Chip tone={verdict.tone}>{verdict.label}</Chip>
+          {task.status === "verifying" && <Chip tone="glow">Verifying fixes</Chip>}
         </div>
         <h2 className="mt-2 font-heading text-heading-sm font-medium tracking-[-0.02em] text-white">{task.title}</h2>
       </header>
@@ -39,33 +49,19 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
         </div>
       </dl>
 
-      <section aria-label="Personas">
-        <h3 className="text-caption text-ash">Personas</h3>
-        <ul className="mt-2 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
-          {task.personas.map((p) => {
-            const Glyph = PERSONA_GLYPHS[p.personaId];
-            return (
-              <li key={p.personaId} className="border-b border-hairline/10 last:border-b-0">
-                <button
-                  type="button"
-                  onClick={() => onSelect(scanNodeId({ kind: "persona", index: task.index, personaId: p.personaId }))}
-                  className="group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-white/3"
-                >
-                  <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-icon bg-white text-black">
-                    <Glyph size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ui text-bone group-hover:text-white">{PERSONA_BY_ID[p.personaId].displayName}</span>
-                    <span className="block text-caption tabular-nums text-smoke">
-                      {p.stepCount} steps · {p.findingCount} {p.findingCount === 1 ? "finding" : "findings"}
-                    </span>
-                  </span>
-                  <StateBadge state={p.state} idleLabel="Queued" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      <section aria-label="The run">
+        {stream.notice && <Notice tone="warn">{stream.notice}</Notice>}
+        {/* From lg the panel scrolls on its own, so the pane gets a fixed height and scrolls its findings and timeline inside it. */}
+        <div className="mt-3 grid lg:h-160">
+          <LanePane
+            lane={stream.view.primary}
+            title="The agent"
+            allowLiveView={stream.origin === "live"}
+            startTs={stream.view.firstTs}
+            layout="stacked"
+            idleLabel="Queued"
+          />
+        </div>
         {/* A real link, so it opens in a new tab too; a plain click stays in the app. */}
         <a
           href={`?run=${encodeURIComponent(task.runId)}`}
@@ -76,7 +72,7 @@ export function TaskPanel({ task, report, onSelect, onOpenRun }: Props) {
           }}
           className="pill-ghost mt-3"
         >
-          Open full control room
+          {fixes > 0 ? `Open full control room · ${fixes} ${fixes === 1 ? "fix" : "fixes"}` : "Open full control room"}
           <ArrowRight size={14} />
         </a>
       </section>

@@ -30,10 +30,9 @@ async function follow(scanId: string): Promise<ScanTreeResponse> {
   const started = Date.now();
   for (;;) {
     const tree = await json<ScanTreeResponse>(`${WORKER}/api/scans/${scanId}`);
-    const personas = tree.tasks.flatMap((task) => task.personas);
-    const done = personas.filter((p) => isTerminalState(p.state)).length;
+    const done = tree.tasks.filter((task) => isTerminalState(task.state)).length;
     console.log(
-      `${Math.round((Date.now() - started) / 1000)}s  ${tree.scan.status}  pages=${tree.scan.pages.length}  tasks=${tree.tasks.length}  runs done=${done}/${personas.length}  ${tree.scan.message ?? ""}`,
+      `${Math.round((Date.now() - started) / 1000)}s  ${tree.scan.status}  pages=${tree.scan.pages.length}  tasks=${tree.tasks.length}  runs done=${done}/${tree.tasks.length}  ${tree.scan.message ?? ""}`,
     );
     if (isScanFinished(tree.scan.status)) return tree;
     if (Date.now() - started > DEADLINE_MS) fail("the scan did not finish within 5 minutes");
@@ -53,13 +52,13 @@ if (tree.scan.status !== "completed") fail(`scan ended as ${tree.scan.status}: $
 if (tree.scan.taskSource !== "mock") fail(`expected taskSource "mock", got ${tree.scan.taskSource}`);
 if (tree.scan.pages.length !== 3) fail(`expected 3 crawled pages, got ${tree.scan.pages.length}`);
 if (tree.tasks.length !== 10) fail(`expected 10 tasks, got ${tree.tasks.length}`);
-const personas = tree.tasks.flatMap((task) => task.personas);
-if (personas.length !== 30) fail(`expected 30 persona runs, got ${personas.length}`);
-if (!personas.every((p) => isTerminalState(p.state))) fail("the scan completed with persona runs still going");
+if (!tree.tasks.every((task) => isTerminalState(task.state))) fail("the scan completed with runs still going");
+if (!tree.tasks.every((task) => task.status === "completed")) fail("the scan completed with runs still verifying");
 
 const report = await json<ScanReportResponse>(`${WORKER}/api/scans/${scanId}/report`);
 if (report.issues.length === 0) fail("the report has no issues");
 const widest = Math.max(...report.issues.map((issue) => issue.runsHit));
-if (widest < 10) fail(`expected some issue to hit at least 10/30 runs, widest was ${widest}`);
+// Every task replays the golden run, so some issue must be hit by every one of them.
+if (widest < 10) fail(`expected some issue to hit all 10 runs, widest was ${widest}`);
 console.log(`report: ${report.issues.length} issues, widest hit ${widest}/${report.issues[0]?.totalRuns ?? 0} runs, verdicts ${JSON.stringify(report.summary.verdicts)}`);
 console.log(`OK  open http://localhost:5173/?scan=${scanId}`);

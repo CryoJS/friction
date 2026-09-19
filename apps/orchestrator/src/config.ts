@@ -12,6 +12,7 @@
  * and no model name anywhere in this codebase.
  */
 import { existsSync } from "node:fs";
+import { DEFAULT_VERIFY_TOP_N } from "@friction/shared";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +39,14 @@ export const HARD_STEP_CAP = 15;
 
 export type BrowserEnv = "BROWSERBASE" | "LOCAL";
 
+export interface GitHubConfig {
+  token: string;
+  owner: string;
+  repo: string;
+  /** Null: use the repository's default branch. */
+  baseBranch: string | null;
+}
+
 export interface Config {
   port: number;
   workerUrl: string;
@@ -55,11 +64,31 @@ export interface Config {
   browserbaseRegion: string | null;
   localBrowserPath: string | null;
   maxSteps: number;
-  /** Browser sessions open at once, across every run and scan. Browserbase plans cap concurrency. */
+  /**
+   * Browser sessions open at once, across every run and scan: primary runs,
+   * fix verifications and scan crawls all take one. Browserbase plans cap concurrency.
+   */
   maxSessions: number;
-  personaTimeoutMs: number;
+  /** Wall-clock budget for one agent run (primary or verify). */
+  agentTimeoutMs: number;
+  /** How many of a run's findings get a fix proposed and verified (each costs a full browser run). */
+  verifyTopN: number;
+  /**
+   * The repository verified fixes are mapped to and PRs opened against, via a
+   * personal access token. Null unless GITHUB_TOKEN, GITHUB_OWNER and
+   * GITHUB_REPO are all set; fixes then stay verified-but-unmapped.
+   */
+  github: GitHubConfig | null;
   /** Mock mode plays the golden run this many times faster than it was recorded. */
   mockSpeed: number;
+}
+
+function githubConfig(): GitHubConfig | null {
+  const token = text("GITHUB_TOKEN");
+  const owner = text("GITHUB_OWNER");
+  const repo = text("GITHUB_REPO");
+  if (!token || !owner || !repo) return null;
+  return { token, owner, repo, baseBranch: text("GITHUB_BASE_BRANCH") };
 }
 
 function load(): Config {
@@ -87,7 +116,9 @@ function load(): Config {
     maxSteps: int("MAX_STEPS", HARD_STEP_CAP, 1, HARD_STEP_CAP),
     // PERSONA_CONCURRENCY is the old name, still honoured so existing .env files keep working.
     maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 3, 1, 100), 1, 100),
-    personaTimeoutMs: int("PERSONA_TIMEOUT_MS", 300_000, 30_000, 900_000),
+    agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
+    verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
+    github: githubConfig(),
     mockSpeed: int("MOCK_SPEED", 3, 1, 50),
   };
 }

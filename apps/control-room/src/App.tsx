@@ -1,22 +1,25 @@
-import { useCallback, useMemo, useState } from "react";
-import { GOLDEN_RUN_ID, PERSONA_IDS, type PersonaId, type StepPayload } from "@friction/shared";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { GOLDEN_RUN_ID, type StepPayload } from "@friction/shared";
 import { Landing } from "./components/Landing";
 import { Nav } from "./components/Nav";
-import { PersonaColumn } from "./components/PersonaColumn";
+import { LanePane } from "./components/LanePane";
 import { ReportView } from "./components/ReportView";
+import { RoomComparison } from "./components/RoomComparison";
 import { RunBar } from "./components/RunBar";
 import { Play, Plus, Sparkle } from "./components/icons";
 import { ScanPage } from "./components/scan/ScanPage";
 import { useReport } from "./hooks/useReport";
 import { useRunStream } from "./hooks/useRunStream";
+import { api } from "./lib/api";
 import { snapshotFromView, summarize } from "./lib/runState";
 import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
   const [query, setQuery] = useQuery();
   const [overHero, setOverHero] = useState(true);
+  const landingScroller = useRef<HTMLElement>(null);
 
-  // The single-run view only: a scan page streams its selected persona node itself.
+  // The single-run view only: a scan page streams its selected task's run itself.
   const runId = query.scan ? null : query.run;
   const stream = useRunStream(runId, { replay: query.replay });
   const { view } = stream;
@@ -30,22 +33,34 @@ export default function App() {
   });
 
   const findStep = useCallback(
-    (personaId: PersonaId, seq: number): StepPayload | undefined => {
-      const live = view.personas[personaId].steps.find((step) => step.seq === seq);
+    (seq: number): StepPayload | undefined => {
+      const live = view.primary.steps.find((step) => step.seq === seq);
       if (live) return live.payload;
-      const recorded = stream.snapshot?.events.find((e) => e.type === "step" && e.personaId === personaId && e.seq === seq);
+      const recorded = stream.snapshot?.events.find((e) => e.type === "step" && e.lane === "primary" && e.seq === seq);
       return recorded?.type === "step" ? recorded.payload : undefined;
     },
     [view, stream.snapshot],
   );
 
-  const goHome = useCallback(() => setQuery({ run: null, scan: null, node: null, replay: false, tab: "room" }), [setQuery]);
+  const goHome = useCallback(() => {
+    landingScroller.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setQuery({ run: null, scan: null, node: null, replay: false, tab: "room" });
+  }, [setQuery]);
   const openScan = useCallback((scanId: string) => setQuery({ scan: scanId, node: null, run: null, replay: false, tab: "room" }), [setQuery]);
   const openRun = useCallback(
     (id: string, replay = false) => setQuery({ run: id, scan: null, node: null, replay, tab: "room" }),
     [setQuery],
   );
   const selectNode = useCallback((node: string) => setQuery({ node }), [setQuery]);
+
+  const isLive = stream.origin === "live";
+  const verifying = Object.keys(view.fixes).length > 0;
+
+  // A pull request is only ever opened by this click, and only for a live run.
+  const openPullRequest = useCallback(async (findingId: string): Promise<string> => (await api.openPullRequest(view.runId, findingId)).prUrl, [view.runId]);
+  const pullRequests = isLive
+    ? { enabled: true, reason: null }
+    : { enabled: false, reason: "This is a replay or fixture. Pull requests are opened from a live run with a connected repository." };
 
   // Every view but the landing carries the same white pill: scans start on the home page.
   const newScan = (
@@ -84,7 +99,7 @@ export default function App() {
             Recent scans
           </a>
         </Nav>
-        <Landing onOpenScan={openScan} onOpenRun={openRun} onOverHero={setOverHero} />
+        <Landing onOpenScan={openScan} onOpenRun={openRun} onOverHero={setOverHero} scrollerRef={landingScroller} />
       </div>
     );
   }
@@ -128,12 +143,20 @@ export default function App() {
       )}
 
       {query.tab === "report" ? (
-        <ReportView report={report.report} loading={report.loading} local={report.local} findStep={findStep} />
+        <ReportView
+          report={report.report}
+          loading={report.loading}
+          local={report.local}
+          findStep={findStep}
+          view={view}
+          allowLiveView={isLive}
+          pullRequests={pullRequests}
+          onOpenPullRequest={openPullRequest}
+        />
       ) : (
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 lg:grid-cols-3 lg:overflow-hidden">
-          {PERSONA_IDS.map((id) => (
-            <PersonaColumn key={id} persona={view.personas[id]} allowLiveView={stream.origin === "live"} startTs={view.firstTs} />
-          ))}
+        <main className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 ${verifying ? "" : "lg:overflow-hidden"}`}>
+          {/* One agent, one pane for the whole run. The second pane appears only once a fix is being verified. */}
+          {verifying ? <RoomComparison view={view} allowLiveView={isLive} /> : <LanePane lane={view.primary} title="The agent" allowLiveView={isLive} startTs={view.firstTs} />}
         </main>
       )}
     </div>

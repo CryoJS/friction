@@ -91,7 +91,7 @@ export const Plus = (p: IconProps) => (
   </Icon>
 );
 
-/** A persona that failed or timed out, on a task node's mark strip. */
+/** A task whose run failed or timed out, on its node. */
 export const Cross = (p: IconProps) => (
   <Icon {...p}>
     <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />
@@ -103,29 +103,3 @@ export const Minus = (p: IconProps) => (
     <path d="M4 10h12" />
   </Icon>
 );
-
-/** Impatient: straight for the loudest button. */
-export const Bolt = (p: IconProps) => (
-  <Icon {...p}>
-    <path d="M11 2.5 4.5 11H10l-1 6.5L15.5 9H10l1-6.5Z" fill="currentColor" stroke="none" />
-  </Icon>
-);
-
-/** Cautious: reads every label. */
-export const Eye = (p: IconProps) => (
-  <Icon {...p}>
-    <path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10Z" />
-    <circle cx="10" cy="10" r="2.3" fill="currentColor" stroke="none" />
-  </Icon>
-);
-
-/** Keyboard-only: Tab, Enter, arrows. */
-export const Keys = (p: IconProps) => (
-  <Icon {...p}>
-    <rect x="2.5" y="5" width="15" height="10" rx="2" />
-    <path d="M5.5 8h1M9.5 8h1M13.5 8h1M6.5 12h7" />
-  </Icon>
-);
-
-/** Each persona's glyph, in the control room and on the landing page. */
-export const PERSONA_GLYPHS = { impatient: Bolt, cautious: Eye, keyboard: Keys } as const;

@@ -1,21 +1,14 @@
 /**
  * Scans: one URL -> a crawl -> up to ten generated tasks -> one ordinary run
- * per task, each run the usual three personas. The contracts the orchestrator,
+ * per task (the one agent, then its fix verifications). The contracts the orchestrator,
  * the Worker and the control room share, and the pure helpers they agree on.
  *
  * Imports from ./api are type-only: api.ts imports ScanTaskLinkSchema from
  * here at runtime, and a runtime import back would be a cycle.
  */
 import { z } from "zod";
-import type { ReportEvidence } from "./api";
-import {
-  PERSONA_IDS,
-  isTerminalState,
-  type FrictionCategory,
-  type PersonaId,
-  type PersonaState,
-  type Severity,
-} from "./events";
+import type { ReportEvidence, RunStatus } from "./api";
+import type { AgentState, FrictionCategory, Severity } from "./events";
 
 /* ------------------------------------------------------------------ enums */
 
@@ -28,7 +21,7 @@ export const TASK_SOURCES = ["model", "fallback", "mock"] as const;
 export const TaskSourceSchema = z.enum(TASK_SOURCES);
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
-/** Most tasks one scan runs. Ten tasks x three personas = thirty runs. */
+/** Most tasks one scan runs, one run each. */
 export const MAX_SCAN_TASKS = 10;
 /** Navigation pages the crawl reads after the landing page. */
 export const MAX_CRAWL_LINKS = 5;
@@ -121,14 +114,6 @@ export function parseGeneratedTasks(input: unknown): GeneratedTask[] {
 
 /* -------------------------------------------------------------------- tree */
 
-export interface ScanTreePersona {
-  personaId: PersonaId;
-  state: PersonaState;
-  stepCount: number;
-  findingCount: number;
-  worstSeverity: Severity | null;
-}
-
 export interface ScanTreeTask {
   /** 0-based rank, 0 = most critical. */
   index: number;
@@ -136,8 +121,13 @@ export interface ScanTreeTask {
   title: string;
   whyCritical: string;
   successCheck: string;
-  /** Always PERSONAS order. */
-  personas: ScanTreePersona[];
+  /** The run's lifecycle: "verifying" once the agent is done and fixes are being checked. */
+  status: RunStatus;
+  /** The agent's state in the primary lane. */
+  state: AgentState;
+  stepCount: number;
+  findingCount: number;
+  worstSeverity: Severity | null;
 }
 
 /** GET /api/scans/:id: what the canvas polls. */
@@ -155,14 +145,12 @@ export interface ScanListResponse {
   scans: ScanListItem[];
 }
 
-export type TaskVerdict = "pass" | "partial" | "fail" | "pending";
+export type TaskVerdict = "pass" | "fail" | "pending";
 
-/** pass = every persona succeeded, fail = none did, pending = someone is still going. */
-export function taskVerdict(states: readonly PersonaState[]): TaskVerdict {
-  if (states.length === 0 || !states.every(isTerminalState)) return "pending";
-  const succeeded = states.filter((state) => state === "succeeded").length;
-  if (succeeded === states.length) return "pass";
-  return succeeded === 0 ? "fail" : "partial";
+/** pass = the agent completed the task, fail = it failed or ran out of time, pending = still going. */
+export function taskVerdict(state: AgentState): TaskVerdict {
+  if (state === "succeeded") return "pass";
+  return state === "failed" || state === "timeout" ? "fail" : "pending";
 }
 
 /* ------------------------------------------------------------------- crawl */
@@ -231,24 +219,23 @@ export function issueKey(category: FrictionCategory, url: string | null, label: 
 
 /* ------------------------------------------------------------------- nodes */
 
-/** A node on the scan canvas. Ids: "root", "t<index>", "t<index>.<personaId>". */
-export type ScanNode = { kind: "root" } | { kind: "task"; index: number } | { kind: "persona"; index: number; personaId: PersonaId };
+/** A node on the scan canvas. Ids: "root", "t<index>". */
+export type ScanNode = { kind: "root" } | { kind: "task"; index: number };
 
 const ROOT: ScanNode = { kind: "root" };
 
-/** Anything unrecognised is the root. Whether the index exists is the caller's business. */
+/**
+ * Anything unrecognised is the root. Whether the index exists is the caller's
+ * business. Links from when a task had persona children ("t2.cautious") open
+ * that task.
+ */
 export function parseScanNode(id: string | null | undefined): ScanNode {
-  const match = /^t(\d{1,2})(?:\.([a-z]+))?$/.exec(id ?? "");
-  if (!match) return ROOT;
-  const index = Number(match[1]);
-  if (match[2] === undefined) return { kind: "task", index };
-  const personaId = PERSONA_IDS.find((persona) => persona === match[2]);
-  return personaId ? { kind: "persona", index, personaId } : ROOT;
+  const match = /^t(\d{1,2})(?:\.[a-z]+)?$/.exec(id ?? "");
+  return match ? { kind: "task", index: Number(match[1]) } : ROOT;
 }
 
 export function scanNodeId(node: ScanNode): string {
-  if (node.kind === "root") return "root";
-  return node.kind === "task" ? `t${node.index}` : `t${node.index}.${node.personaId}`;
+  return node.kind === "root" ? "root" : `t${node.index}`;
 }
 
 /* ------------------------------------------------------------------ report */
@@ -256,9 +243,11 @@ export function scanNodeId(node: ScanNode): string {
 export interface ScanIssueOccurrence {
   runId: string;
   taskIndex: number;
-  personaId: PersonaId;
+  findingId: string;
   evidenceSeq: number;
   severity: Severity;
+  /** Times the agent hit it in that run. */
+  hitCount: number;
 }
 
 export interface ScanIssue {
@@ -276,21 +265,18 @@ export interface ScanIssue {
   /** Normalized path of the representative's evidence ("" when it never arrived). */
   page: string;
   targetLabel: string;
-  /** Distinct task x persona runs that hit this. */
+  /** Distinct runs (one per task) that hit this. */
   runsHit: number;
   totalRuns: number;
-  /** PERSONAS order. */
-  personas: PersonaId[];
   /** Ascending. */
   taskIndexes: number[];
-  /** Task, then persona order, then seq. */
+  /** Task, then seq. */
   occurrences: ScanIssueOccurrence[];
   evidence: ReportEvidence | null;
 }
 
 export interface ScanReportSummary {
   verdicts: Record<TaskVerdict, number>;
-  personas: Record<PersonaId, { succeeded: number; finished: number; total: number }>;
   issuesBySeverity: Record<Severity, number>;
 }
 

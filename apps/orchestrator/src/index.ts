@@ -1,8 +1,11 @@
 /**
  * Friction orchestrator.
- *   POST /scans          { url }       -> { scanId } at once; crawl, 10 tasks, 30 persona runs in the background
- *   POST /runs           { url, task } -> { runId } at once; three personas run in the background
+ *   POST /scans          { url }       -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background
+ *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
+ *   POST /runs/:runId/fixes/:findingId/pull-request
+ *                                      -> opens a DRAFT PR for a verified, mapped fix.
+ *                                         Only ever called by the user's click.
  *   GET  /health                       -> live or mock, and which env vars are missing
  */
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -15,9 +18,11 @@ import {
   normalizeTargetUrl,
   type CreateRunResponse,
   type CreateScanResponse,
+  type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
+import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
 import { ScanManager } from "./scanManager";
 import { suggestTasks } from "./suggest";
@@ -25,7 +30,7 @@ import { Semaphore, errorMessage, log } from "./util";
 import { WorkerClient } from "./workerClient";
 
 const worker = new WorkerClient(config.workerUrl);
-/** One pool for every browser this process opens: persona runs and scan crawls alike. */
+/** One pool for every browser this process opens: primary runs, fix verifications and scan crawls alike. */
 const sessions = new Semaphore(config.maxSessions);
 const runs = new RunManager(config, worker, sessions);
 const scans = new ScanManager(config, worker, runs, sessions);
@@ -102,11 +107,23 @@ app.post("/suggest-tasks", async (req, res) => {
   res.json(await suggestTasks(config, url));
 });
 
+app.post("/runs/:runId/fixes/:findingId/pull-request", async (req, res) => {
+  const { runId, findingId } = req.params;
+  try {
+    const prUrl = await openPullRequest({ runId, findingId, worker, github: config.github, workerUrl: config.workerUrl });
+    const body: OpenPullRequestResponse = { prUrl };
+    res.status(201).json(body);
+  } catch (err) {
+    log("pr", `could not open a pull request for ${runId}/${findingId}: ${errorMessage(err)}`);
+    res.status(err instanceof PullRequestError ? err.status : 502).json({ error: errorMessage(err) });
+  }
+});
+
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(400).json({ error: errorMessage(err) });
 });
 
-// A persona must never be able to take the process down with it.
+// A run must never be able to take the process down with it.
 process.on("unhandledRejection", (reason) => log("process", `unhandled rejection: ${errorMessage(reason)}`));
 process.on("uncaughtException", (err) => log("process", `uncaught exception: ${errorMessage(err)}`));
 

@@ -11,11 +11,11 @@
  * a different isolate than the viewer's stream; stream.ts also tails D1, so
  * delivery never depends on this fast path. No Durable Object needed.
  */
-import type { PersonaRecord, RunEvent } from "@friction/shared";
+import type { RunEvent, RunRecord } from "@friction/shared";
 
 export type HubMessage =
   | { kind: "event"; rowId: number; event: RunEvent }
-  | { kind: "persona"; persona: PersonaRecord };
+  | { kind: "run"; run: RunRecord };
 
 export interface HubClient {
   queue: HubMessage[];

@@ -3,10 +3,11 @@
  * issues. Pure, like report.ts: the Worker feeds it D1 rows.
  *
  * Two findings are one issue when category, page path and target label match
- * (issueKey). runsHit counts distinct task x persona runs, so one persona
- * tripping over the same thing twice in one run still counts once.
+ * (issueKey). runsHit counts distinct runs (one per task), so the agent
+ * tripping over the same thing twice in one run still counts once. Only the
+ * primary lane counts: verify-lane friction is compared, never reported.
  */
-import { PERSONA_IDS, isTerminalState, type PersonaId, type Severity, type StepEvent } from "./events";
+import type { Severity, StepEvent } from "./events";
 import { toReportEvidence, type FindingInput } from "./report";
 import {
   issueKey,
@@ -17,7 +18,6 @@ import {
   type ScanReportResponse,
   type ScanReportSummary,
   type ScanTreeResponse,
-  type TaskVerdict,
 } from "./scan";
 
 export interface ScanFindingInput extends FindingInput {
@@ -25,10 +25,10 @@ export interface ScanFindingInput extends FindingInput {
 }
 
 export interface AssembleScanReportArgs {
-  /** Supplies the scan, the tasks and every persona's state. */
+  /** Supplies the scan, the tasks and every run's state. */
   tree: ScanTreeResponse;
   findings: readonly ScanFindingInput[];
-  /** Evidence steps of those findings, in any order. Missing ones are tolerated. */
+  /** Primary-lane evidence steps of those findings, in any order. Missing ones are tolerated. */
   evidence: readonly StepEvent[];
   now?: number;
 }
@@ -38,8 +38,6 @@ interface Member {
   taskIndex: number;
   step: StepEvent | undefined;
 }
-
-const PERSONA_ORDER = new Map<PersonaId, number>(PERSONA_IDS.map((id, index) => [id, index]));
 
 /** Severity desc, then confidence desc. Array.sort is stable, so ties keep arrival order. */
 function byWeight(a: Member, b: Member): number {
@@ -61,16 +59,12 @@ function toIssue(key: string, members: readonly Member[], totalRuns: number): Sc
     .map((m) => ({
       runId: m.finding.runId,
       taskIndex: m.taskIndex,
-      personaId: m.finding.personaId,
+      findingId: m.finding.id,
       evidenceSeq: m.finding.evidenceSeq,
       severity: m.finding.severity,
+      hitCount: m.finding.hitCount,
     }))
-    .sort(
-      (a, b) =>
-        a.taskIndex - b.taskIndex ||
-        (PERSONA_ORDER.get(a.personaId) ?? 0) - (PERSONA_ORDER.get(b.personaId) ?? 0) ||
-        a.evidenceSeq - b.evidenceSeq,
-    );
+    .sort((a, b) => a.taskIndex - b.taskIndex || a.evidenceSeq - b.evidenceSeq);
   return {
     key,
     category: finding.category,
@@ -81,9 +75,8 @@ function toIssue(key: string, members: readonly Member[], totalRuns: number): Sc
     recommendation: finding.recommendation,
     page: issuePath(step?.payload.url ?? null),
     targetLabel: step?.payload.targetLabel ?? "",
-    runsHit: new Set(members.map((m) => `${m.finding.runId}:${m.finding.personaId}`)).size,
+    runsHit: new Set(members.map((m) => m.finding.runId)).size,
     totalRuns,
-    personas: PERSONA_IDS.filter((id) => members.some((m) => m.finding.personaId === id)),
     taskIndexes: [...new Set(members.map((m) => m.taskIndex))].sort((a, b) => a - b),
     occurrences,
     evidence: step ? toReportEvidence(step) : null,
@@ -93,14 +86,16 @@ function toIssue(key: string, members: readonly Member[], totalRuns: number): Sc
 export function assembleScanReport(args: AssembleScanReportArgs): ScanReportResponse {
   const { tree } = args;
   const taskByRun = new Map(tree.tasks.map((task) => [task.runId, task] as const));
-  const steps = new Map(args.evidence.map((step) => [`${step.runId}:${step.personaId}:${step.seq}`, step] as const));
-  const totalRuns = tree.tasks.length * PERSONA_IDS.length;
+  const steps = new Map(
+    args.evidence.filter((step) => step.lane === "primary").map((step) => [`${step.runId}:${step.seq}`, step] as const),
+  );
+  const totalRuns = tree.tasks.length;
 
   const groups = new Map<string, Member[]>();
   for (const finding of args.findings) {
     const task = taskByRun.get(finding.runId);
     if (!task) continue;
-    const step = steps.get(`${finding.runId}:${finding.personaId}:${finding.evidenceSeq}`);
+    const step = steps.get(`${finding.runId}:${finding.evidenceSeq}`);
     const key = issueKey(finding.category, step?.payload.url ?? null, step?.payload.targetLabel ?? "");
     const members = groups.get(key) ?? [];
     members.push({ finding, taskIndex: task.index, step });
@@ -108,17 +103,10 @@ export function assembleScanReport(args: AssembleScanReportArgs): ScanReportResp
   }
   const issues = [...groups].map(([key, members]) => toIssue(key, members, totalRuns)).sort(compareIssues);
 
-  const verdicts: Record<TaskVerdict, number> = { pass: 0, partial: 0, fail: 0, pending: 0 };
-  const personas = Object.fromEntries(
-    PERSONA_IDS.map((id) => [id, { succeeded: 0, finished: 0, total: tree.tasks.length }]),
-  ) as ScanReportSummary["personas"];
+  const verdicts: ScanReportSummary["verdicts"] = { pass: 0, fail: 0, pending: 0 };
   const tasks = tree.tasks.map((task) => {
-    const verdict = taskVerdict(task.personas.map((p) => p.state));
+    const verdict = taskVerdict(task.state);
     verdicts[verdict] += 1;
-    for (const p of task.personas) {
-      if (isTerminalState(p.state)) personas[p.personaId].finished += 1;
-      if (p.state === "succeeded") personas[p.personaId].succeeded += 1;
-    }
     return { index: task.index, runId: task.runId, title: task.title, verdict };
   });
 
@@ -128,7 +116,7 @@ export function assembleScanReport(args: AssembleScanReportArgs): ScanReportResp
   return {
     scan: tree.scan,
     generatedAt: args.now ?? Date.now(),
-    summary: { verdicts, personas, issuesBySeverity },
+    summary: { verdicts, issuesBySeverity },
     tasks,
     issues,
   };

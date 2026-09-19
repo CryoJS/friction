@@ -1,8 +1,20 @@
 /**
  * The orchestrator's only way to talk to the data plane. Everything is
- * best-effort with retries: a Worker hiccup must never crash a persona.
+ * best-effort with retries: a Worker hiccup must never crash a run.
  */
-import type { CreateRunResponse, CreateScanResponse, PersonaPatch, RunEvent, ScanPatch, ScanTaskLink } from "@friction/shared";
+import type {
+  CreateRunResponse,
+  CreateScanResponse,
+  FixListResponse,
+  FixRecord,
+  FixUpsert,
+  PostFixResponse,
+  RunEvent,
+  RunPatch,
+  RunSnapshot,
+  ScanPatch,
+  ScanTaskLink,
+} from "@friction/shared";
 import { errorMessage, log, retry } from "./util";
 
 export class WorkerClient {
@@ -43,15 +55,16 @@ export class WorkerClient {
     }
   }
 
-  async patchPersona(runId: string, patch: PersonaPatch): Promise<void> {
+  /** The primary session's URLs, or the run's lifecycle status. */
+  async patchRun(runId: string, patch: RunPatch): Promise<void> {
     try {
-      await retry(3, 300, () => this.request(`/api/runs/${runId}/personas`, this.json("PATCH", patch), 8000));
+      await retry(3, 300, () => this.request(`/api/runs/${runId}`, this.json("PATCH", patch), 8000));
     } catch (err) {
-      log("worker", `PATCH persona ${patch.personaId} failed: ${errorMessage(err)}`);
+      log("worker", `PATCH run ${runId} failed: ${errorMessage(err)}`);
     }
   }
 
-  /** Re-posting is safe: the Worker de-duplicates on (run, persona, seq). */
+  /** Re-posting is safe: the Worker de-duplicates on (run, lane, seq). */
   async postEvents(runId: string, events: RunEvent[]): Promise<boolean> {
     try {
       await retry(4, 250, () => this.request(`/api/runs/${runId}/events`, this.json("POST", events), 8000));
@@ -60,6 +73,32 @@ export class WorkerClient {
       log("worker", `POST ${events.length} event(s) failed, dropped: ${errorMessage(err)}`);
       return false;
     }
+  }
+
+  /**
+   * Upserts a fix and returns the stored fix event (its seq is the Worker's).
+   * Null if the Worker could not be reached: the pipeline carries on, the UI
+   * just misses that stage.
+   */
+  async postFix(runId: string, upsert: FixUpsert): Promise<PostFixResponse | null> {
+    try {
+      const response = await retry(3, 300, () => this.request(`/api/runs/${runId}/fixes`, this.json("POST", upsert), 10_000));
+      return (await response.json()) as PostFixResponse;
+    } catch (err) {
+      log("worker", `POST fix ${upsert.findingId} (${upsert.stage}) failed: ${errorMessage(err)}`);
+      return null;
+    }
+  }
+
+  /** The stored fix row, file content included. Throws when unreachable: callers must not guess. */
+  async getFix(runId: string, findingId: string): Promise<FixRecord | null> {
+    const response = await retry(2, 300, () => this.request(`/api/runs/${runId}/fixes`, {}, 8000));
+    return ((await response.json()) as FixListResponse).fixes.find((f) => f.findingId === findingId) ?? null;
+  }
+
+  async getSnapshot(runId: string): Promise<RunSnapshot> {
+    const response = await retry(2, 300, () => this.request(`/api/runs/${runId}`, {}, 10_000));
+    return (await response.json()) as RunSnapshot;
   }
 
   /** Returns false if the upload failed; the step is still reported, just without a screenshot. */

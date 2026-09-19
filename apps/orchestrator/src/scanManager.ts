@@ -2,9 +2,10 @@
  * A scan: one URL -> crawl -> up to ten generated tasks -> one run per task.
  *
  *   crawling   one browser session reads the landing page and up to five nav pages
- *   running    every task is a normal run (three personas); all of them queue
- *              for the shared session pool in task-rank order
- *   completed  every persona is done
+ *   running    every task is a normal run (the agent, then its fix
+ *              verifications); all of them queue for the shared session pool
+ *              in task-rank order
+ *   completed  every run is over
  *
  * The background work never throws: whatever goes wrong ends as a `failed`
  * scan with a message, which the root node shows.
@@ -75,15 +76,15 @@ export class ScanManager {
     await worker.patchScan(scanId, {
       status: "running",
       taskSource: plan.source,
-      message: plan.note ?? `Testing ${plan.tasks.length} tasks with three personas each.`,
+      message: plan.note ?? `Testing ${plan.tasks.length} tasks.`,
     });
 
     // execute() enters the session pool synchronously, so calling it in rank
     // order means the most critical tasks get browsers first.
-    const outcomes = (await Promise.all(prepared.map((run) => runs.execute(run)))).flat();
+    const outcomes = await Promise.all(prepared.map((run) => runs.execute(run)));
     const succeeded = outcomes.filter((outcome) => outcome === "success").length;
-    await worker.patchScan(scanId, { status: "completed", message: `${succeeded} of ${outcomes.length} persona runs completed their task.` });
-    log("scan", `${scanId} finished: ${succeeded}/${outcomes.length} persona runs succeeded`);
+    await worker.patchScan(scanId, { status: "completed", message: `The agent completed ${succeeded} of ${outcomes.length} tasks.` });
+    log("scan", `${scanId} finished: ${succeeded}/${outcomes.length} tasks succeeded`);
   }
 
   private async livePlan(scanId: string, url: string): Promise<PlannedTasks> {
