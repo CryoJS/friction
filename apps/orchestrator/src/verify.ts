@@ -44,6 +44,8 @@ export interface VerifyArgs {
   runId: string;
   url: string;
   task: string;
+  /** The primary run's success check, if it had one, so both runs are judged alike. */
+  successCheck?: string;
   config: Config;
   worker: WorkerClient;
   /** The fix, already reported as "proposed". */
@@ -94,6 +96,7 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
       runId,
       url: args.url,
       task: args.task,
+      successCheck: args.successCheck,
       config,
       worker,
       planner: args.planner,

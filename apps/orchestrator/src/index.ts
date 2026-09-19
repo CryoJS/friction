@@ -1,5 +1,6 @@
 /**
  * Friction orchestrator.
+ *   POST /scans          { url }       -> { scanId } at once; crawl, then up to 10 tasks, one run each, in the background
  *   POST /runs           { url, task } -> { runId } at once; one agent runs in the background
  *   POST /suggest-tasks  { url }       -> three candidate tasks (convenience only)
  *   POST /runs/:runId/fixes/:findingId/pull-request
@@ -10,23 +11,29 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
   CreateRunRequestSchema,
+  CreateScanRequestSchema,
   SuggestTasksRequestSchema,
   formatIssues,
   isAllowedOrigin,
   normalizeTargetUrl,
   type CreateRunResponse,
+  type CreateScanResponse,
   type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
 import { config } from "./config";
 import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
+import { ScanManager } from "./scanManager";
 import { suggestTasks } from "./suggest";
-import { errorMessage, log } from "./util";
+import { Semaphore, errorMessage, log } from "./util";
 import { WorkerClient } from "./workerClient";
 
 const worker = new WorkerClient(config.workerUrl);
-const runs = new RunManager(config, worker);
+/** One pool for every browser this process opens: primary runs, fix verifications and scan crawls alike. */
+const sessions = new Semaphore(config.maxSessions);
+const runs = new RunManager(config, worker, sessions);
+const scans = new ScanManager(config, worker, runs, sessions);
 const app = express();
 
 app.use(express.json({ limit: "64kb" }));
@@ -74,6 +81,22 @@ app.post("/runs", async (req, res) => {
   }
 });
 
+app.post("/scans", async (req, res) => {
+  const parsed = CreateScanRequestSchema.safeParse(req.body);
+  const url = parsed.success ? normalizeTargetUrl(parsed.data.url) : null;
+  if (!url) {
+    res.status(400).json({ error: "url: not a valid http(s) URL" });
+    return;
+  }
+  try {
+    const body: CreateScanResponse = { scanId: await scans.start(url) };
+    res.status(201).json(body);
+  } catch (err) {
+    log("http", `could not start a scan: ${errorMessage(err)}`);
+    res.status(502).json({ error: `Worker unreachable at ${config.workerUrl}: ${errorMessage(err)}` });
+  }
+});
+
 app.post("/suggest-tasks", async (req, res) => {
   const parsed = SuggestTasksRequestSchema.safeParse(req.body);
   const url = parsed.success ? normalizeTargetUrl(parsed.data.url) : null;
@@ -110,7 +133,7 @@ app.listen(config.port, () => {
     const why = config.missingEnv.length > 0 ? `missing ${config.missingEnv.join(", ")}` : "FRICTION_MOCK is set";
     log("http", `MOCK MODE (${why}): runs replay the golden fixture through the real pipeline.`);
   } else {
-    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL.`);
+    log("http", `LIVE MODE: ${config.browserEnv} browsers, model from OPENAI_MODEL, ${config.maxSessions} browser sessions at a time.`);
   }
   void worker.healthy().then((ok) => {
     if (!ok) log("http", `WARNING: the Worker at ${config.workerUrl} is not answering. Start it with: pnpm dev:worker`);

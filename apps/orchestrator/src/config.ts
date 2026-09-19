@@ -64,6 +64,11 @@ export interface Config {
   browserbaseRegion: string | null;
   localBrowserPath: string | null;
   maxSteps: number;
+  /**
+   * Browser sessions open at once, across every run and scan: primary runs,
+   * fix verifications and scan crawls all take one. Browserbase plans cap concurrency.
+   */
+  maxSessions: number;
   /** Wall-clock budget for one agent run (primary or verify). */
   agentTimeoutMs: number;
   /** How many of a run's findings get a fix proposed and verified (each costs a full browser run). */
@@ -109,6 +114,8 @@ function load(): Config {
     browserbaseRegion: text("BROWSERBASE_REGION"),
     localBrowserPath: text("LOCAL_BROWSER_PATH"),
     maxSteps: int("MAX_STEPS", HARD_STEP_CAP, 1, HARD_STEP_CAP),
+    // PERSONA_CONCURRENCY is the old name, still honoured so existing .env files keep working.
+    maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 3, 1, 100), 1, 100),
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     github: githubConfig(),

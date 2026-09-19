@@ -6,8 +6,13 @@
  *
  * and then it waits. A pull request is opened only when the user clicks "Open
  * pull request" in the control room (see pr.ts); never automatically.
+ *
+ * create() and execute() are separate so a scan can create all its runs (and
+ * post every primary lane's idle status) before any of them starts. Every live
+ * browser, primary or verify, waits for a slot in the process-wide session
+ * pool; mock runs hold no browser, so they skip it.
  */
-import { evidenceKey, selectTopFindings, type LaneResult, type StepEvent, type StructuredCaller } from "@friction/shared";
+import { evidenceKey, selectTopFindings, type LaneResult, type Outcome, type ScanTaskLink, type StepEvent, type StructuredCaller } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { runAgent, type AgentResult } from "./agentRunner";
 import type { Config } from "./config";
@@ -18,9 +23,19 @@ import { openAIJudge } from "./judge";
 import { goldenFixer, goldenJudge, runMockAgent } from "./mockRunner";
 import { OpenAIPlanner } from "./planner";
 import { findSourceFile, generateSourceFix, openAISourceFixer, type SourceFixer } from "./repo";
-import { errorMessage, log } from "./util";
+import { errorMessage, log, type Semaphore } from "./util";
 import { verifyFix } from "./verify";
 import type { WorkerClient } from "./workerClient";
+
+export interface PreparedRun {
+  runId: string;
+  url: string;
+  task: string;
+  /** From a scan's generated task: tells the planner what "done" looks like. */
+  successCheck?: string;
+  /** The primary lane's emitter; its idle status is already in the Worker. */
+  emitter: LaneEmitter;
+}
 
 export class RunManager {
   private readonly active = new Set<string>();
@@ -28,6 +43,7 @@ export class RunManager {
   constructor(
     private readonly config: Config,
     private readonly worker: WorkerClient,
+    private readonly sessions: Semaphore,
   ) {}
 
   get activeRuns(): number {
@@ -43,44 +59,76 @@ export class RunManager {
   }
 
   /**
-   * Creates the run and returns its id immediately; the agent runs in the
-   * background. Before returning, the primary lane's `idle` status is already
-   * in the Worker. That matters: the Worker's stream treats a run with no
-   * events as having no producer and falls back to the fixture, so the
-   * producer has to be visibly attached before the UI can possibly connect.
+   * Live browser work waits for a session slot; mock work holds no browser.
+   * The pool is entered synchronously, so callers queue in call order.
    */
-  async start(url: string, task: string): Promise<string> {
-    const runId = await this.worker.createRun(url, task);
-    const emitter = new LaneEmitter(this.worker, runId, "primary", task, this.judge());
-    emitter.status("idle", this.mock ? "Queued (mock mode)." : "Queued. Starting a Browserbase session.");
-    await emitter.flush();
-
-    this.active.add(runId);
-    void this.run(runId, url, task, emitter).finally(() => this.active.delete(runId));
-    return runId;
+  private withSession<T>(work: () => Promise<T>): Promise<T> {
+    return this.mock ? work() : this.sessions.run(work);
   }
 
-  private async run(runId: string, url: string, task: string, emitter: LaneEmitter): Promise<void> {
+  /** POST /runs: one task, started in the background. */
+  async start(url: string, task: string): Promise<string> {
+    const run = await this.create(url, task);
+    void this.execute(run);
+    return run.runId;
+  }
+
+  /**
+   * Creates the run and posts the primary lane's `idle` status before
+   * returning. That matters: the Worker's stream treats a run with no events
+   * as having no producer and falls back to the fixture, so the producer has
+   * to be visibly attached before the UI can possibly connect.
+   */
+  async create(url: string, task: string, options: { scan?: ScanTaskLink; successCheck?: string } = {}): Promise<PreparedRun> {
+    const runId = await this.worker.createRun(url, task, options.scan);
+    const emitter = new LaneEmitter(this.worker, runId, "primary", task, this.judge());
+    emitter.status("idle", this.mock ? "Queued (mock mode)." : "Queued. Waiting for a browser session.");
+    await emitter.flush();
+    return { runId, url, task, successCheck: options.successCheck, emitter };
+  }
+
+  /**
+   * Runs the agent, then verifies its top findings. Never rejects; resolves
+   * with the primary outcome once the whole pipeline is over. The primary
+   * lane enters the session pool synchronously, so calling execute() for
+   * several runs in order gives them browsers in that order.
+   */
+  async execute(run: PreparedRun): Promise<Outcome> {
+    this.active.add(run.runId);
+    try {
+      return await this.run(run);
+    } catch (err) {
+      log("run", `${run.runId} stopped: ${errorMessage(err)}`);
+      return "failure";
+    } finally {
+      this.active.delete(run.runId);
+    }
+  }
+
+  private async run(run: PreparedRun): Promise<Outcome> {
+    const { runId, emitter } = run;
     const willVerify = (): boolean => this.config.verifyTopN > 0 && emitter.findings.length > 0;
     // Mark the run as verifying BEFORE the primary done event, or the Worker would call it complete.
     const beforeDone = async (): Promise<void> => {
       if (willVerify()) await this.worker.patchRun(runId, { status: "verifying" });
     };
 
-    const primary = await this.runPrimary(runId, url, task, emitter, beforeDone);
-    if (!willVerify()) return;
+    const primary = await this.withSession(() => this.runPrimary(run, beforeDone));
+    if (!willVerify()) return primary.outcome;
     try {
-      await this.verifyTopFindings(runId, url, task, emitter, primary);
+      await this.verifyTopFindings(run, primary);
     } catch (err) {
       log("run", `${runId} verification stopped: ${errorMessage(err)}`);
     } finally {
       // Whatever happened, the run is over: the stream ends and the UI stops waiting.
       await this.worker.patchRun(runId, { status: "completed" });
     }
+    return primary.outcome;
   }
 
-  private async runPrimary(runId: string, url: string, task: string, emitter: LaneEmitter, beforeDone: () => Promise<void>): Promise<AgentResult> {
+  private async runPrimary(run: PreparedRun, beforeDone: () => Promise<void>): Promise<AgentResult> {
     const { config, worker } = this;
+    const { runId, url, task, emitter } = run;
     log("run", `${runId} started in ${config.mode} mode: ${task} @ ${url}`);
     try {
       const result = this.mock
@@ -97,6 +145,7 @@ export class RunManager {
             runId,
             url,
             task,
+            successCheck: run.successCheck,
             config,
             worker,
             planner: new OpenAIPlanner(config),
@@ -123,8 +172,9 @@ export class RunManager {
    * Every stage is reported as it happens; a failure on one finding never
    * stops the next.
    */
-  private async verifyTopFindings(runId: string, url: string, task: string, emitter: LaneEmitter, primary: AgentResult): Promise<void> {
+  private async verifyTopFindings(run: PreparedRun, primary: AgentResult): Promise<void> {
     const { config, worker } = this;
+    const { runId, url, task, emitter } = run;
     const steps = emitter.events.filter((e): e is StepEvent => e.type === "step");
     const candidates = emitter.findings.flatMap((f) => {
       const finding = f.payload ? findingForFix(f.payload, steps) : null;
@@ -149,19 +199,23 @@ export class RunManager {
         if (!report) continue;
         seqFloor = Math.max(seqFloor, report.lastSeq);
 
-        const outcome = await verifyFix({
-          runId,
-          url,
-          task,
-          config,
-          worker,
-          report,
-          finding,
-          before,
-          seqFloor,
-          planner: this.mock ? null : new OpenAIPlanner(config),
-          judge: this.judge(),
-        });
+        const floor = seqFloor;
+        const outcome = await this.withSession(() =>
+          verifyFix({
+            runId,
+            url,
+            task,
+            successCheck: run.successCheck,
+            config,
+            worker,
+            report,
+            finding,
+            before,
+            seqFloor: floor,
+            planner: this.mock ? null : new OpenAIPlanner(config),
+            judge: this.judge(),
+          }),
+        );
         seqFloor = outcome.lastSeq;
 
         if (outcome.verdict.stage === "verified") await this.mapToSource(finding, report, sourceFixer);

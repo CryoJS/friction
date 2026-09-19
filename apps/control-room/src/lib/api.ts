@@ -1,12 +1,12 @@
 import type {
-  CreateRunRequest,
-  CreateRunResponse,
+  CreateScanResponse,
   OpenPullRequestResponse,
   OrchestratorHealth,
   ReportResponse,
-  RunListResponse,
   RunSnapshot,
-  SuggestTasksResponse,
+  ScanListResponse,
+  ScanReportResponse,
+  ScanTreeResponse,
 } from "@friction/shared";
 import { ORCHESTRATOR_URL, WORKER_URL } from "./config";
 
@@ -53,15 +53,13 @@ const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+/**
+ * The UI starts scans only. The orchestrator's POST /runs and POST
+ * /suggest-tasks remain for scripts (smoke-local.ts); nothing here calls them.
+ */
 export const api = {
-  /** Normal path: the orchestrator creates the run and starts the agent. */
-  startRun: (body: CreateRunRequest) => request<CreateRunResponse>(`${ORCHESTRATOR_URL}/runs`, json(body), 12_000),
-
-  /** Orchestrator down: create the run on the Worker; its stream falls back to the golden run. */
-  createRunOnWorker: (body: CreateRunRequest) => request<CreateRunResponse>(`${WORKER_URL}/api/runs`, json(body), 6000),
-
-  /** Opens a real browser session, so give it time. Callers must tolerate failure. */
-  suggestTasks: (url: string) => request<SuggestTasksResponse>(`${ORCHESTRATOR_URL}/suggest-tasks`, json({ url }), 45_000),
+  /** Starts the crawl, task generation and every task's run in the background; answers with the scan id at once. */
+  startScan: (url: string) => request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url }), 12_000),
 
   /** The user's click, and the only way a pull request is ever opened. Opens it as a draft. */
   openPullRequest: (runId: string, findingId: string) =>
@@ -73,7 +71,11 @@ export const api = {
 
   orchestratorHealth: () => request<OrchestratorHealth>(`${ORCHESTRATOR_URL}/health`, undefined, 2500),
 
-  listRuns: () => request<RunListResponse>(`${WORKER_URL}/api/runs?limit=12`, undefined, 5000),
+  listScans: () => request<ScanListResponse>(`${WORKER_URL}/api/scans?limit=12`, undefined, 5000),
+  getScanTree: (scanId: string) => request<ScanTreeResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}`, undefined, 6000),
+  getScanReport: (scanId: string) =>
+    request<ScanReportResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}/report`, undefined, 8000),
+
   getSnapshot: (runId: string) => request<RunSnapshot>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}`, undefined, 6000),
   getReport: (runId: string) => request<ReportResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/report`, undefined, 6000),
 

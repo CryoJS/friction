@@ -17,5 +17,5 @@ coverage/
 .stagehand/
 inference_summary/
 
-# Claude Code worktrees (separate branches; never track here)
+<THEIRS>
 .claude/worktrees/

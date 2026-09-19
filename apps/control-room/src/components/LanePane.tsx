@@ -20,6 +20,8 @@ interface Props {
    * stacked  view, action, findings, timeline top to bottom; for panes that sit side by side
    */
   layout?: "wide" | "stacked";
+  /** Label for the idle state; a scan shows its queued runs as "Queued". */
+  idleLabel?: string;
 }
 
 const ACCENTS: Record<NonNullable<Props["accent"]>, string> = {
@@ -33,7 +35,7 @@ const ACCENTS: Record<NonNullable<Props["accent"]>, string> = {
  * its findings and timeline. The primary and verify lanes carry the same event
  * schema, so this one component renders either.
  */
-export function LanePane({ lane, title, subtitle, accent = "none", allowLiveView, startTs, layout = "wide" }: Props) {
+export function LanePane({ lane, title, subtitle, accent = "none", allowLiveView, startTs, layout = "wide", idleLabel }: Props) {
   const latest = lane.steps[lane.steps.length - 1] ?? null;
   const worst = lane.frictions.reduce<Map<number, FrictionEvent>>((map, friction) => {
     for (const seq of new Set([friction.payload.evidenceSeq, friction.payload.lastSeq ?? friction.payload.evidenceSeq])) {
@@ -88,7 +90,7 @@ export function LanePane({ lane, title, subtitle, accent = "none", allowLiveView
           <span className="text-caption tabular-nums text-smoke" title={`Steps taken of the ${MAX_STEPS}-step hard cap`}>
             {lane.steps.length}/{MAX_STEPS}
           </span>
-          <StateBadge state={lane.state} />
+          <StateBadge state={lane.state} idleLabel={idleLabel} />
         </div>
       </header>
 

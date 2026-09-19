@@ -91,9 +91,15 @@ export const Plus = (p: IconProps) => (
   </Icon>
 );
 
-export const Wand = (p: IconProps) => (
+/** A task whose run failed or timed out, on its node. */
+export const Cross = (p: IconProps) => (
   <Icon {...p}>
-    <path d="m3.5 16.5 9-9M11 6l3 3" />
-    <path d="M15 2.5v3M13.5 4h3M16.5 10v2M15.5 11h2" strokeWidth={1.3} />
+    <path d="m5.5 5.5 9 9M14.5 5.5l-9 9" />
+  </Icon>
+);
+
+export const Minus = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 10h12" />
   </Icon>
 );

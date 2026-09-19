@@ -6,3 +6,5 @@ export * from "./util";
 export * from "./mockScreenshot";
 export * from "./friction";
 export * from "./fixes";
+export * from "./scan";
+export * from "./scanReport";

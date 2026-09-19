@@ -1151,3 +1151,38 @@ a {
   background: var(--color-white);
   border: 0;
 }
+
+/* ----------------------------------------------------------- scan canvas */
+
+/*
+ * React Flow's stylesheet is unlayered, and an unlayered rule beats any rule
+ * inside a cascade layer (Tailwind's utilities included). So these overrides
+ * are unlayered too, and scoped one class deeper than React Flow's own.
+ */
+.scan-flow .react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: rgb(229 229 229 / 0.18);
+  --xy-edge-stroke-width: 1;
+  --xy-attribution-background-color: transparent;
+}
+
+/* An edge into a running persona: a moving dash in white, never violet paint. */
+.scan-flow .react-flow__edge.animated .react-flow__edge-path {
+  stroke: rgb(255 255 255 / 0.7);
+  stroke-width: 1.5;
+}
+
+/* Edges need handles to attach to; nobody needs to see them. */
+.scan-flow .react-flow__handle {
+  opacity: 0;
+}
+
+.scan-flow .react-flow__attribution a {
+  color: var(--color-smoke);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-flow .react-flow__edge.animated path {
+    animation: none;
+  }
+}

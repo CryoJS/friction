@@ -23,6 +23,8 @@ export interface AgentRun {
   runId: string;
   url: string;
   task: string;
+  /** From a scan's generated task: the planner judges taskComplete against it. */
+  successCheck?: string;
   config: Config;
   worker: WorkerClient;
   planner: Planner;
@@ -106,7 +108,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
       }
 
       const observation = await observe(session.page);
-      const plan = await run.planner.plan({ task: run.task, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history });
+      const plan = await run.planner.plan({ task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount + 1, maxSteps: config.maxSteps, observation, history });
       if (plan.taskComplete) {
         outcome = "success";
         summary = plan.rationale || "Task complete.";
@@ -124,7 +126,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
       } else {
         const observation = await observe(session.page);
         const verdict = await run.planner
-          .plan({ task: run.task, startUrl: run.url, step: emitter.stepCount, maxSteps: config.maxSteps, observation, history, finalCheck: true })
+          .plan({ task: run.task, successCheck: run.successCheck, startUrl: run.url, step: emitter.stepCount, maxSteps: config.maxSteps, observation, history, finalCheck: true })
           .catch(() => null);
         if (verdict?.taskComplete) {
           outcome = "success";

@@ -20,10 +20,12 @@ import {
   type RunRecord,
   type RunStatus,
   type Severity,
+  type ScanTaskLink,
 } from "@friction/shared";
 import initSql from "../migrations/0001_init.sql";
 import lanesSql from "../migrations/0002_lanes.sql";
 import fixesSql from "../migrations/0003_fixes.sql";
+import scansSql from "../migrations/0004_scans.sql";
 
 /* ------------------------------------------------------------------ schema */
 
@@ -42,8 +44,8 @@ const MIGRATIONS: Migration[] = [
   { name: "0001_init.sql", sql: initSql, applied: async (db) => (await tableSql(db, "findings")) !== null },
   { name: "0002_lanes.sql", sql: lanesSql, applied: async (db) => /\blane\b/.test((await tableSql(db, "events"))?.sql ?? "") },
   { name: "0003_fixes.sql", sql: fixesSql, applied: async (db) => (await tableSql(db, "fixes")) !== null },
+  { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
 ];
-
 function statementsOf(sql: string): string[] {
   return (
     sql
@@ -133,7 +135,7 @@ function toRun(row: RunRow): RunRecord {
 }
 
 /** Rows were validated on the way in, so reading them back is a plain cast. */
-function toEvent(row: Pick<EventRow, "run_id" | "lane" | "seq" | "ts" | "type" | "payload" | "fix_id">): RunEvent | null {
+export function toEvent(row: Pick<EventRow, "run_id" | "lane" | "seq" | "ts" | "type" | "payload" | "fix_id">): RunEvent | null {
   try {
     return {
       runId: row.run_id,
@@ -156,17 +158,18 @@ export interface StoredEvent {
 
 /* -------------------------------------------------------------------- runs */
 
-function newRunId(): string {
+/** "r_" + 10 random [a-z0-9]. Prefix: "r_" runs, "s_" scans. */
+export function newId(prefix: string): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   const bytes = crypto.getRandomValues(new Uint8Array(10));
-  let id = "r_";
+  let id = prefix;
   for (const byte of bytes) id += alphabet[byte % alphabet.length];
   return id;
 }
 
-export async function createRun(db: D1Database, input: { url: string; task: string }): Promise<RunRecord> {
+export async function createRun(db: D1Database, input: { url: string; task: string; scan?: ScanTaskLink }): Promise<RunRecord> {
   const run: RunRecord = {
-    id: newRunId(),
+    id: newId("r_"),
     url: input.url,
     task: input.task,
     status: "pending",
@@ -180,10 +183,20 @@ export async function createRun(db: D1Database, input: { url: string; task: stri
     sessionId: null,
     replayUrl: null,
   };
-  await db
-    .prepare("INSERT INTO runs (id, url, task, status, created_at, state) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(run.id, run.url, run.task, run.status, run.createdAt, run.state)
-    .run();
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare("INSERT INTO runs (id, url, task, status, created_at, state) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(run.id, run.url, run.task, run.status, run.createdAt, run.state),
+  ];
+  if (input.scan) {
+    // OR REPLACE: a retried POST re-points the task at the newest run instead of failing the batch.
+    statements.push(
+      db
+        .prepare("INSERT OR REPLACE INTO scan_tasks (scan_id, task_index, run_id, why_critical, success_check) VALUES (?, ?, ?, ?, ?)")
+        .bind(input.scan.scanId, input.scan.taskIndex, run.id, input.scan.whyCritical, input.scan.successCheck),
+    );
+  }
+  await db.batch(statements);
   return run;
 }
 

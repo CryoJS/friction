@@ -32,6 +32,8 @@ export interface HistoryEntry {
 
 export interface PlanRequest {
   task: string;
+  /** What the final page shows when the task is done. Set for scan tasks. */
+  successCheck?: string;
   startUrl: string;
   step: number;
   maxSteps: number;
@@ -86,6 +88,7 @@ function userText(request: PlanRequest): string {
   const { state, tree } = observation;
   const lines: string[] = [
     `Task: ${request.task}`,
+    ...(request.successCheck ? [`Success looks like: ${request.successCheck}`] : []),
     request.finalCheck
       ? "You have used every step you are allowed. Do not plan another action. Only judge from the screenshot whether the task is complete, and set taskComplete accordingly."
       : `This is step ${request.step} of at most ${request.maxSteps}.`,

@@ -33,17 +33,19 @@ export function stateTone(state: AgentState): Tone {
   return STATE_STYLES[state].tone;
 }
 
-export function StateBadge({ state, prefix }: { state: AgentState; prefix?: string }) {
+/** `idleLabel` renames the idle state where waiting means something else (a scan's queued runs). */
+export function StateBadge({ state, prefix, idleLabel }: { state: AgentState; prefix?: string; idleLabel?: string }) {
   const style = STATE_STYLES[state];
+  const label = state === "idle" && idleLabel ? idleLabel : style.label;
   return (
     <span className="inline-flex h-7 shrink-0 items-center gap-2 rounded-full border border-hairline/15 px-3 text-caption text-bone">
       <Dot tone={style.tone} />
       {prefix ? (
         <span>
-          {prefix} <span className="text-smoke">{style.label}</span>
+          {prefix} <span className="text-smoke">{label}</span>
         </span>
       ) : (
-        style.label
+        label
       )}
     </span>
   );

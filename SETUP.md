@@ -29,16 +29,18 @@ Open http://localhost:5173.
 | You want to... | Do this |
 | --- | --- |
 | See the UI with zero setup | Click **Replay the golden run**, or open `/?run=golden&replay=1` |
-| Exercise the whole pipeline with no keys | Start all three apps, enter any URL and task, **Start run** (mock mode) |
+| Exercise the whole pipeline with no keys | Start all three apps, enter any URL, **Scan & test** (mock mode: a scripted crawl, 10 canned tasks, 10 runs that replay the golden run, fix verification included, through the real pipeline), or run `pnpm --filter @friction/orchestrator smoke:scan` |
 | Test the real browser loop with no keys | `pnpm --filter @friction/orchestrator smoke` (Worker must be running; drives a local Chrome/Edge with a scripted planner against the built-in demo shop) |
-| Do a real run | Fill in `.env` (below), restart the orchestrator, **Start run** |
-| Replay a past run | Landing page > **Replay**, or `/?run=<id>&replay=1` |
+| Do a real scan | Fill in `.env` (below), restart the orchestrator, **Scan & test**. Read [Scans: time and cost](#scans-time-and-cost) first |
+| Reopen a scan | Landing page > **Recent scans**, or `/?scan=<id>` (add `&node=t2` to select a task) |
+| Watch one run of a scan in full | Select its task node, then **Open full control room**, or open `/?run=<id>` |
+| Replay a past run | `/?run=<id>&replay=1` |
 
 ### Checks
 
 ```bash
 pnpm typecheck           # all four packages, TypeScript strict
-pnpm test                # friction detector unit tests against the fixture
+pnpm test                # detector tests against the fixture, plus verification, scan contract and merged-report tests
 pnpm golden:generate     # regenerate fixtures/golden-run.json (deterministic)
 ```
 
@@ -58,6 +60,7 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `LOCAL_BROWSER_PATH` | | auto-detected | Chrome/Edge binary for `BROWSER_ENV=LOCAL` |
 | `FRICTION_MOCK` | | off | `1` forces mock mode even with keys set |
 | `MOCK_SPEED` | | `3` | Mock mode playback speed |
+| `MAX_SESSIONS` | | `3` | Browser sessions open at once across every run and scan (1-100): a scan's crawl, every primary run and every fix verification take one. Set it to your Browserbase plan's concurrency limit. `PERSONA_CONCURRENCY` is still read as a fallback |
 | `MAX_STEPS` | | `15` | Can lower the hard cap of 15, never raise it |
 | `AGENT_TIMEOUT_MS` | | `300000` | Wall-clock budget per agent run (primary or verify) |
 | `VERIFY_TOP_N` | | `2` | How many top findings (by severity) get a fix proposed and verified. Each is a full extra browser run. `0` turns verification off |
@@ -96,9 +99,13 @@ pnpm db:migrate:local    # wrangler d1 migrations apply friction --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply friction --remote
 ```
 
-Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`.
+Local dev does not strictly need the first one: if the Worker finds a database missing a migration it applies it itself, in order, and records it in `d1_migrations` (the table wrangler uses), so both paths are safe in either order. `0003_fixes.sql` adds the `fixes` table and `events.fix_id`; `0004_scans.sql` adds `scans` and `scan_tasks`.
 
 `0002_lanes.sql` replaces the three-persona schema with lanes. It is lossy for runs recorded before it: their "cautious" persona becomes the primary lane and the other two personas' events are dropped (R2 screenshots are untouched). Local D1 and R2 state lives in `apps/worker/.wrangler/state` and survives restarts; delete that folder to start clean.
+
+## Scans: time and cost
+
+A live scan is up to 10 runs (one per task) of up to 15 steps each, plus up to `VERIFY_TOP_N` verification runs per task, each a full re-run of the task. At the defaults that is up to 30 browser runs and roughly 450 planner calls with a screenshot each, plus a judge call per friction finding, a fixer call per verified finding, one task-generation call, and the crawl's one browser session. At `MAX_SESSIONS=3` expect roughly 20-50 minutes per scan; raise `MAX_SESSIONS` to your Browserbase plan's concurrency limit to go faster, or lower `VERIFY_TOP_N` to spend less. Point it at `/demo-shop` first. Mock mode (`FRICTION_MOCK=1`, or no keys) costs nothing and finishes in a few minutes.
 
 ## Deploy the Worker
 
@@ -139,11 +146,11 @@ The demo is **replay**. Live is the bonus.
 
 1. **The night before**, on the demo laptop, do a real run you are happy with. Its events are in local D1 and its screenshots in local R2, both on disk.
 2. At demo time open `/?run=<that id>&replay=1`. It needs the local Worker and nothing else: no orchestrator, no OpenAI, no Browserbase, **no wifi**.
-3. If you want to go live and the network cooperates, start a run. If it does not, `FRICTION_MOCK=1` gives a live-looking run through the real pipeline.
+3. If you want to go live and the network cooperates, start a scan. If it does not, `FRICTION_MOCK=1` gives a live-looking scan through the real pipeline.
 4. If even the Worker is dead, the control room notices and plays the golden run compiled into its own bundle.
 
 Things that bite:
 
-- **Browserbase concurrency.** A run holds one session at a time (verification runs open their own, one after another). "Suggest tasks" opens another; on a plan that caps concurrency, session creation returns 429 and the orchestrator waits and retries.
+- **Browserbase concurrency.** A scan opens one session to crawl, then one per run and one per fix verification, never more than `MAX_SESSIONS` at once; the rest wait as **Queued**, most critical task first. A single run's sessions (primary, then each verification in turn) share the same pool. On a plan that allows fewer sessions, session creation returns 429 and the orchestrator waits and retries, but set `MAX_SESSIONS` to your plan's limit. `POST /suggest-tasks` (API only now) opens a session outside the pool.
 - **Bot protection.** Big retail sites may CAPTCHA a cloud browser. Rehearse on your real target, and keep `/demo-shop` as the target that always works.
 - **`OPENAI_MODEL` unset** puts the orchestrator in mock mode. Check `/health`.
