@@ -3,6 +3,7 @@
  * that leaves this module is the camelCase contract from @friction/shared.
  */
 import {
+  normalizeHost,
   stateForOutcome,
   type AgentState,
   type FindingInput,
@@ -27,6 +28,7 @@ import lanesSql from "../migrations/0002_lanes.sql";
 import fixesSql from "../migrations/0003_fixes.sql";
 import scansSql from "../migrations/0004_scans.sql";
 import taskPullRequestsSql from "../migrations/0005_task_pull_requests.sql";
+import scanHostSql from "../migrations/0006_scan_host.sql";
 
 /* ------------------------------------------------------------------ schema */
 
@@ -47,6 +49,15 @@ const MIGRATIONS: Migration[] = [
   { name: "0003_fixes.sql", sql: fixesSql, applied: async (db) => (await tableSql(db, "fixes")) !== null },
   { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
   { name: "0005_task_pull_requests.sql", sql: taskPullRequestsSql, applied: async (db) => (await tableSql(db, "task_pull_requests")) !== null },
+  {
+    name: "0006_scan_host.sql",
+    sql: scanHostSql,
+    // ALTER TABLE is not idempotent, so ask the column list, not the table list.
+    applied: async (db) => {
+      const ddl = await tableSql(db, "scans");
+      return ddl !== null && /\bhost\b/.test(ddl.sql);
+    },
+  },
 ];
 function statementsOf(sql: string): string[] {
   return (
@@ -86,6 +97,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     ]);
     console.log(`[db] applied ${migration.name} (${statements.length} statements)`);
   }
+
+  // One-off: rows written before 0006 have a null host, and only JS can parse a URL.
+  const stale = await db.prepare("SELECT id, url FROM scans WHERE host IS NULL LIMIT 500").all<{ id: string; url: string }>();
+  if (stale.results.length > 0) {
+    await db.batch(stale.results.map((row) => db.prepare("UPDATE scans SET host = ? WHERE id = ?").bind(normalizeHost(row.url), row.id)));
+  }
+
   schemaChecked = true;
 }
 

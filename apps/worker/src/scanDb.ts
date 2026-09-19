@@ -3,6 +3,7 @@
  * this module is the camelCase contract from @friction/shared.
  */
 import {
+  normalizeHost,
   TaskPullRequestSchema,
   type AgentState,
   type CrawledPage,
@@ -121,8 +122,8 @@ export async function createScan(db: D1Database, url: string, options: { repo?: 
     autoPr: options.repo !== undefined && options.autoPr === true,
   };
   await db
-    .prepare("INSERT INTO scans (id, url, status, message, pages, created_at, repo, auto_pr) VALUES (?, ?, ?, ?, '[]', ?, ?, ?)")
-    .bind(scan.id, scan.url, scan.status, scan.message, scan.createdAt, scan.repo ?? null, scan.autoPr ? 1 : 0)
+    .prepare("INSERT INTO scans (id, url, status, message, pages, created_at, repo, auto_pr, host) VALUES (?, ?, ?, ?, '[]', ?, ?, ?, ?)")
+    .bind(scan.id, scan.url, scan.status, scan.message, scan.createdAt, scan.repo ?? null, scan.autoPr ? 1 : 0, normalizeHost(url))
     .run();
   return scan;
 }
@@ -327,4 +328,13 @@ export async function getScanFindingRows(db: D1Database, scanId: string): Promis
     }
   }
   return { findings, evidence };
+}
+
+/** The newest completed scan for a normalized host, or null. The annotations endpoint's only query. */
+export async function getLatestScanByHost(db: D1Database, host: string): Promise<ScanRecord | null> {
+  const row = await db
+    .prepare("SELECT id FROM scans WHERE host = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 1")
+    .bind(host)
+    .first<{ id: string }>();
+  return row ? getScan(db, row.id) : null;
 }
