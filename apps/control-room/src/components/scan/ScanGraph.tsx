@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 import { ISSUE_DIAMETER, TASK_SIZE, type ScanFlowNode } from "../../lib/scanLayout";
 import { clearAllNudge, reducedMotion, stepNudge, type NudgeTarget } from "../../lib/nudge";
 import { Minus, Plus } from "../icons";
+import { SnapshotPanel } from "../SnapshotPanel";
 import { IssueNode, OrbitRing, RootNode, TaskNode } from "./nodes";
 import { PathView } from "./PathView";
 
@@ -44,6 +45,9 @@ function unscroll(element: HTMLElement): void {
 }
 
 interface Props {
+  scanId: string;
+  refreshKey?: string;
+  view: ScanView;
   nodes: ScanFlowNode[];
   edges: Edge[];
   tree: ScanTreeResponse;
@@ -52,7 +56,7 @@ interface Props {
   onOpenIssue: (taskId: string, issueKey: string) => void;
 }
 
-type ScanView = "graph" | "path";
+export type ScanView = "graph" | "path" | "page";
 
 export function ScanGraph(props: Props) {
   return (
@@ -62,9 +66,8 @@ export function ScanGraph(props: Props) {
   );
 }
 
-function Canvas({ nodes, edges, tree, report, onSelectNode, onOpenIssue }: Props) {
+function Canvas({ scanId, refreshKey, nodes, edges, tree, report, onSelectNode, onOpenIssue, view }: Props) {
   const frame = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<ScanView>("graph");
   const { getZoom, screenToFlowPosition, setCenter } = useReactFlow<ScanFlowNode>();
 
   // Every poll rebuilds every node as a brand-new object (layoutScan is
@@ -152,7 +155,7 @@ function Canvas({ nodes, edges, tree, report, onSelectNode, onOpenIssue }: Props
 
   // Runs the spring every frame and writes the result into nudgeOffsets,
   // bumping nudgeTick to fold it into measuredNodes above. It is paused while
-  // the path directory is visible because React Flow is unmounted there.
+  // the graph is hidden because React Flow is unmounted then.
   useEffect(() => {
     nudgeOffsets.current.clear();
     clearAllNudge();
@@ -204,10 +207,8 @@ function Canvas({ nodes, edges, tree, report, onSelectNode, onOpenIssue }: Props
 
   return (
     <div ref={frame} onFocus={reveal} className="scan-flow absolute inset-0">
-      <ViewTabs view={view} onChange={setView} />
-
       {view === "graph" ? (
-        <div id="scan-graph-panel" role="tabpanel" aria-labelledby="scan-graph-tab" className="absolute inset-0">
+        <div id="scan-tasks-graph-panel" role="tabpanel" aria-labelledby="scan-tasks-graph-tab" className="absolute inset-0">
           <ReactFlow
             nodes={measuredNodes}
             edges={edges}
@@ -233,54 +234,78 @@ function Canvas({ nodes, edges, tree, report, onSelectNode, onOpenIssue }: Props
             <CanvasControls />
           </ReactFlow>
         </div>
-      ) : (
-        <div id="scan-path-panel" role="tabpanel" aria-labelledby="scan-path-tab" className="absolute inset-0">
+      ) : view === "path" ? (
+        <div id="scan-web-paths-panel" role="tabpanel" aria-labelledby="scan-web-paths-tab" className="absolute inset-0">
           <PathView tree={tree} report={report} onSelectNode={onSelectNode} onOpenIssue={onOpenIssue} />
+        </div>
+      ) : (
+        <div id="scan-annotations-panel" role="tabpanel" aria-labelledby="scan-annotations-tab" className="absolute inset-0">
+          <SnapshotPanel scanId={scanId} refreshKey={refreshKey} />
         </div>
       )}
     </div>
   );
 }
 
-function ViewTabs({ view, onChange }: { view: ScanView; onChange: (view: ScanView) => void }) {
+export function ScanViewTabs({ view, onChange }: { view: ScanView; onChange: (view: ScanView) => void }) {
+  const views: ScanView[] = ["graph", "path", "page"];
   const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, current: ScanView) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-    const next: ScanView = current === "graph" ? "path" : "graph";
+    const index = views.indexOf(current);
+    const offset = event.key === "ArrowRight" ? 1 : -1;
+    const next = views[(index + offset + views.length) % views.length] ?? "graph";
     onChange(next);
-    window.requestAnimationFrame(() => document.getElementById(`scan-${next}-tab`)?.focus());
+    window.requestAnimationFrame(() => document.getElementById(scanViewTabId(next))?.focus());
   };
 
   return (
-    <div role="tablist" aria-label="Scan view" className="scan-view-tabs absolute right-4 top-4 z-10 flex items-center gap-0.5 rounded-full border border-hairline/15 bg-graphite/90 p-1 backdrop-blur-xs">
+    <div role="tablist" aria-label="Scan view" className="scan-view-tabs flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-hairline/15 bg-white/4 p-1">
       <button
-        id="scan-graph-tab"
+        id="scan-tasks-graph-tab"
         type="button"
         role="tab"
         aria-selected={view === "graph"}
-        aria-controls="scan-graph-panel"
+        aria-controls="scan-tasks-graph-panel"
         tabIndex={view === "graph" ? 0 : -1}
         onClick={() => onChange("graph")}
         onKeyDown={(event) => moveTab(event, "graph")}
-        className="scan-view-tab pill-ghost h-8 border-transparent px-3 text-caption"
+        className="scan-view-tab pill-ghost h-8 shrink-0 border-transparent px-3 text-caption"
       >
-        Graph
+        Tasks
       </button>
       <button
-        id="scan-path-tab"
+        id="scan-web-paths-tab"
         type="button"
         role="tab"
         aria-selected={view === "path"}
-        aria-controls="scan-path-panel"
+        aria-controls="scan-web-paths-panel"
         tabIndex={view === "path" ? 0 : -1}
         onClick={() => onChange("path")}
         onKeyDown={(event) => moveTab(event, "path")}
-        className="scan-view-tab pill-ghost h-8 border-transparent px-3 text-caption"
+        className="scan-view-tab pill-ghost h-8 shrink-0 border-transparent px-3 text-caption"
       >
-        Path
+        Paths
+      </button>
+      <button
+        id="scan-annotations-tab"
+        type="button"
+        role="tab"
+        aria-selected={view === "page"}
+        aria-controls="scan-annotations-panel"
+        tabIndex={view === "page" ? 0 : -1}
+        onClick={() => onChange("page")}
+        onKeyDown={(event) => moveTab(event, "page")}
+        className="scan-view-tab pill-ghost h-8 shrink-0 border-transparent px-3 text-caption"
+      >
+        Annotations
       </button>
     </div>
   );
+}
+
+function scanViewTabId(view: ScanView): string {
+  return view === "graph" ? "scan-tasks-graph-tab" : view === "path" ? "scan-web-paths-tab" : "scan-annotations-tab";
 }
 
 /**

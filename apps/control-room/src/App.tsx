@@ -4,24 +4,34 @@ import { HomeScanNav, Nav } from "./components/Nav";
 import { Plus } from "./components/icons";
 import { NewScanDialog } from "./components/NewScanDialog";
 import { ScanPage } from "./components/scan/ScanPage";
+import { ScanViewTabs, type ScanView } from "./components/scan/ScanGraph";
 import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
   const [query, setQuery] = useQuery();
   const [overHero, setOverHero] = useState(true);
   const [newScanOpen, setNewScanOpen] = useState(false);
+  const [scanView, setScanView] = useState<ScanView>("graph");
   const landingScroller = useRef<HTMLElement>(null);
 
   const goHome = useCallback(() => {
     landingScroller.current?.scrollTo({ top: 0, behavior: "smooth" });
     setNewScanOpen(false);
+    setScanView("graph");
     setQuery({ scan: null, node: null, tab: "scan" });
   }, [setQuery]);
-  const openScan = useCallback((scanId: string) => setQuery({ scan: scanId, node: null, tab: "scan" }), [setQuery]);
+  const openScan = useCallback((scanId: string) => {
+    setScanView("graph");
+    setQuery({ scan: scanId, node: null, tab: "scan" });
+  }, [setQuery]);
   const startNewScan = useCallback((scanId: string) => {
     setNewScanOpen(false);
     openScan(scanId);
   }, [openScan]);
+  const selectScanView = useCallback((view: ScanView) => {
+    setScanView(view);
+    if (query.tab === "results") setQuery({ tab: "scan" });
+  }, [query.tab, setQuery]);
   const selectNode = useCallback((node: string) => setQuery({ node, tab: "scan" }), [setQuery]);
   const openNewScan = useCallback(() => setNewScanOpen(true), []);
   const closeNewScan = useCallback(() => setNewScanOpen(false), []);
@@ -38,9 +48,7 @@ export default function App() {
     return (
       <div className="flex h-full flex-col">
         <Nav onHome={goHome} action={newScan}>
-          <TabButton tab="scan" current={query.tab === "results" ? "results" : "scan"} onTab={(tab) => setQuery({ tab })}>
-            Scan
-          </TabButton>
+          <ScanViewTabs view={scanView} onChange={selectScanView} />
           <TabButton tab="results" current={query.tab === "results" ? "results" : "scan"} onTab={(tab) => setQuery({ tab })}>
             Results
           </TabButton>
@@ -50,6 +58,7 @@ export default function App() {
           scanId={query.scan}
           nodeId={query.node}
           view={query.tab === "results" ? "results" : "scan"}
+          scanView={scanView}
           onSelectNode={selectNode}
         />
         <NewScanDialog open={newScanOpen} onClose={closeNewScan} onStarted={startNewScan} />
