@@ -241,4 +241,4 @@ const FRICTION_START = "without shipping ".length;
 const FRICTION_END = FRICTION_START + "friction".length;
 const TYPEWRITER_START_DELAY_MS = 500;
 const TYPEWRITER_STEP_MS = 48;
-const TYPEWRITER_HOLD_MS = 4200;
+const TYPEWRITER_HOLD_MS = 8400;

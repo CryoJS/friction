@@ -1680,8 +1680,25 @@ a {
   opacity: 0;
 }
 
+.scan-flow .react-flow__attribution {
+  right: 8px;
+  bottom: 8px;
+  padding: 0;
+  background: transparent;
+  color: rgb(255 255 255 / 0.3);
+  font-size: 9px;
+  opacity: 0.72;
+  transform: scale(0.9);
+  transform-origin: bottom right;
+  transition: opacity 160ms ease-out;
+}
+
+.scan-flow .react-flow__attribution:hover {
+  opacity: 1;
+}
+
 .scan-flow .react-flow__attribution a {
-  color: var(--color-smoke);
+  color: inherit;
 }
 
 /*
