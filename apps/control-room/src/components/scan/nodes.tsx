@@ -14,7 +14,7 @@ import { MAX_STEPS } from "../../lib/config";
 import { SCAN_STATE_LABELS, SCAN_STATUS, VERDICT, VERDICT_ORDER } from "../../lib/scan";
 import type { IssueFlowNode, RingFlowNode, RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
 import { Chip, Dot, SEVERITY_STYLES, categoryLabel } from "../badges";
-import { Check, Cross } from "../icons";
+import { Check, Cross, riskIcon } from "../icons";
 import { HoverCard } from "./HoverCard";
 
 /**
@@ -268,6 +268,7 @@ function IssueTooltip({ data }: { data: IssueFlowNode["data"] }) {
  */
 export function IssueNode({ data }: NodeProps<IssueFlowNode>) {
   const style = SEVERITY_STYLES[data.severity];
+  const RiskIcon = riskIcon(data.severity);
   return (
     <>
       <CompassHandles type="target" />
@@ -277,9 +278,9 @@ export function IssueNode({ data }: NodeProps<IssueFlowNode>) {
           onClick={data.onOpen}
           aria-label={`Issue ${data.rank}: ${categoryLabel(data.category)}, severity ${data.severity} of 5`}
           style={{ backgroundColor: "var(--color-graphite)" }}
-          className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-110 ${style.ring} ${data.focused ? "ring-2 ring-white/70" : ""}`}
+          className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-110 ${style.ring} ${style.text} ${data.focused ? "ring-2 ring-white/70" : ""}`}
         >
-          <span className={`font-mono text-heading-sm font-semibold tabular-nums ${style.text}`}>S{data.severity}</span>
+          <RiskIcon size={26} />
         </button>
       </HoverCard>
     </>

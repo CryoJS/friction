@@ -14,7 +14,7 @@ import { pathOf, shortUrl } from "../../lib/format";
 import { categoryLabel } from "../badges";
 import { Chip, Dot, SEVERITY_STYLES, stateTone } from "../badges";
 import { EvidenceImage, type EvidenceSource } from "../EvidenceImage";
-import { AlertTriangle, ChevronDown, ChevronRight, Cross } from "../icons";
+import { ChevronDown, ChevronRight, Cross, riskIcon } from "../icons";
 
 interface Props {
   tree: ScanTreeResponse;
@@ -478,6 +478,7 @@ function AgentMarker({ task, onSelectNode }: { task: ScanTreeTask; onSelectNode:
 
 function IssueMarker({ issue, onOpenIssue }: { issue: ScanIssue; onOpenIssue: Props["onOpenIssue"] }) {
   const style = SEVERITY_STYLES[issue.severity];
+  const RiskIcon = riskIcon(issue.severity);
   const taskIndex = issue.taskIndexes[0];
   return (
     <button
@@ -487,7 +488,7 @@ function IssueMarker({ issue, onOpenIssue }: { issue: ScanIssue; onOpenIssue: Pr
       title={`Severity ${issue.severity}: ${categoryLabel(issue.category)}${issue.summary ? ` · ${issue.summary}` : ""}`}
       aria-label={`Severity ${issue.severity} ${categoryLabel(issue.category)} issue`}
     >
-      <AlertTriangle size={14} />
+      <RiskIcon size={14} />
     </button>
   );
 }
