@@ -137,6 +137,13 @@ export function mountOverlay(response: AnnotationsResponse, doc: Document): Over
   root.style.inset = "0";
   root.style.margin = "0";
   root.style.pointerEvents = "none";
+  // z-index only wins against a sibling that also participates in the same
+  // stacking context, and every marker/card/panel z-index in styles.ts is
+  // scoped inside the shadow root -- meaningless outside it. Without this,
+  // root itself is an ordinary z-index:auto positioned element, so any host
+  // element with its *own* explicit z-index (a sticky header, a modal) can
+  // still paint above the whole overlay regardless of DOM order.
+  root.style.zIndex = "2147483647";
   const shadow = root.attachShadow({ mode: "open" });
 
   const styleEl = doc.createElement("style");

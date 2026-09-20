@@ -14,6 +14,7 @@ function finding(overrides: Partial<AnnotationFinding> = {}): AnnotationFinding 
     anchor: null,
     evidenceUrl: null,
     patchJs: null,
+    snapshotUrl: null,
     hitCount: 1,
     ...overrides,
   };
