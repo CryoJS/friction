@@ -18,6 +18,7 @@
 import { chromium, type Page } from "@playwright/test";
 import { evidenceKey, type Anchor, type RunEvent } from "@friction/shared";
 import { locateScript } from "../src/pageScripts";
+import { CAPTURE_SNAPSHOT } from "../src/snapshot";
 
 const WORKER = (process.env.WORKER_URL ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
 const SHOP = `${WORKER}/demo-shop`;
@@ -71,6 +72,16 @@ async function putEvidence(page: Page, runId: string, seq: number): Promise<stri
   const shot = await page.screenshot({ type: "png" });
   const res = await fetch(`${WORKER}/api/evidence/${key}`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: new Uint8Array(shot) });
   if (!res.ok) throw new Error(`PUT evidence -> ${res.status}`);
+  return key;
+}
+
+/** The same HTML snapshot the agent captures mid-run, so the embedded viewer has a page to show. */
+async function putSnapshot(page: Page, runId: string, seq: number): Promise<string> {
+  const key = evidenceKey(runId, "primary", seq, "html");
+  const html = (await page.evaluate(CAPTURE_SNAPSHOT)) as string;
+  if (!html) return "";
+  const res = await fetch(`${WORKER}/api/evidence/${key}`, { method: "PUT", headers: { "Content-Type": "text/html" }, body: html });
+  if (!res.ok) throw new Error(`PUT snapshot -> ${res.status}`);
   return key;
 }
 
@@ -225,6 +236,7 @@ for (const [index, spec] of TASKS.entries()) {
     const anchor = finding.selector === null ? null : await capture(page, finding.selector, finding.nth ?? 0);
     const stepSeq = seq++;
     const screenshotKey = await putEvidence(page, runId, stepSeq);
+    const snapshotKey = await putSnapshot(page, runId, stepSeq);
     events.push({
       runId,
       lane: "primary",
@@ -242,6 +254,7 @@ for (const [index, spec] of TASKS.entries()) {
         durationMs: finding.category === "long_wait" ? 5600 : 400,
         domChanged: false,
         ...(anchor ? { anchor } : {}),
+        ...(snapshotKey ? { snapshotKey } : {}),
       },
     });
     events.push({

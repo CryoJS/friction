@@ -9,6 +9,7 @@ import { ScanBar } from "./ScanBar";
 import { ScanGraph } from "./ScanGraph";
 import { SidePanel } from "./SidePanel";
 import { RootPanel } from "./RootPanel";
+import { SnapshotPanel } from "../SnapshotPanel";
 
 interface Props {
   scanId: string;
@@ -30,6 +31,8 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
   // Which issue (if any) a satellite click on the orbit graph asked the sidebar to open. Ordinary
   // navigation (selecting a different node) clears it; only openIssue below sets it.
   const [focusedIssueKey, setFocusedIssueKey] = useState<string | null>(null);
+  // Which canvas the big pane shows: the scan tree, or the annotated pages themselves.
+  const [canvas, setCanvas] = useState<"graph" | "page">("graph");
   const selectNode = useCallback((id: string) => { setFocusedIssueKey(null); onSelectNode(id); }, [onSelectNode]);
   const openIssue = useCallback(
     (taskId: string, issueKey: string) => {
@@ -95,10 +98,35 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 lg:flex-row lg:overflow-hidden">
           <section
-            aria-label="Scan tree"
-            className="relative h-105 shrink-0 overflow-hidden rounded-card border border-hairline/10 lg:h-auto lg:min-w-0 lg:flex-1"
+            aria-label={canvas === "graph" ? "Scan tree" : "Annotated pages"}
+            className="relative flex h-105 shrink-0 flex-col overflow-hidden rounded-card border border-hairline/10 lg:h-auto lg:min-w-0 lg:flex-1"
           >
-            <ScanGraph nodes={graph.nodes} edges={graph.edges} />
+            <div className="absolute left-3 top-3 z-10 flex gap-1 rounded-nav border border-hairline/20 bg-void/80 p-1 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setCanvas("graph")}
+                aria-pressed={canvas === "graph"}
+                className={canvas === "graph" ? "pill-cta" : "pill-ghost"}
+              >
+                Graph
+              </button>
+              <button
+                type="button"
+                onClick={() => setCanvas("page")}
+                aria-pressed={canvas === "page"}
+                className={canvas === "page" ? "pill-cta" : "pill-ghost"}
+              >
+                The page
+              </button>
+            </div>
+
+            {canvas === "graph" ? (
+              <ScanGraph nodes={graph.nodes} edges={graph.edges} />
+            ) : (
+              <div className="min-h-0 flex-1 pt-14">
+                <SnapshotPanel scanId={scanId} refreshKey={refreshKey} />
+              </div>
+            )}
           </section>
           <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
             <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} focusedIssueKey={focusedIssueKey} />

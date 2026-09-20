@@ -340,7 +340,18 @@ const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   webp: "image/webp",
   svg: "image/svg+xml",
+  html: "text/html; charset=utf-8",
 };
+
+/**
+ * A snapshot is a copy of a THIRD-PARTY page served from Friction's own
+ * origin, so it must never be able to run anything. `script-src 'none'` is the
+ * boundary; the capture-time stripping in the orchestrator is only a first
+ * pass. Styles, images, fonts and media are allowed from anywhere because the
+ * snapshot's <base href> makes them load from the scanned site.
+ * The viewer additionally frames it with `sandbox` minus `allow-scripts`.
+ */
+const SNAPSHOT_CSP = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https: http:; img-src data: https: http:; font-src data: https: http:; media-src https: http:; frame-src 'none'; form-action 'none'";
 
 function validKey(key: string): boolean {
   return key.length > 0 && key.length <= 512 && /^[A-Za-z0-9._/-]+$/.test(key) && !key.includes("..") && !key.startsWith("/");
@@ -386,13 +397,14 @@ app.get("/api/evidence/:key{.+}", async (c) => {
     });
   }
 
+  const isSnapshot = key.endsWith(".html");
   return new Response(object.body, {
     headers: {
       "Content-Type": contentTypeFor(key, object.httpMetadata?.contentType),
       "Cache-Control": "public, max-age=31536000, immutable",
       ETag: object.httpEtag,
       // Evidence is only ever shown in <img>. Never let an uploaded SVG run script.
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+      "Content-Security-Policy": isSnapshot ? SNAPSHOT_CSP : "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
       "X-Content-Type-Options": "nosniff",
     },
   });

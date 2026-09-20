@@ -27,6 +27,8 @@ export interface AnnotationFinding {
   evidenceUrl: string | null;
   /** The proposed fix. Advisory only: nothing executes it. Null when none was produced. */
   patchJs: string | null;
+  /** Absolute URL of the HTML snapshot of this page, for the embedded viewer. Null when none was captured. */
+  snapshotUrl: string | null;
   hitCount: number;
 }
 
@@ -72,6 +74,7 @@ export function toAnnotationFinding(
 ): AnnotationFinding {
   const payload = step?.payload;
   const key = payload?.screenshotKey ?? "";
+  const snapKey = payload?.snapshotKey ?? "";
   return {
     findingId: finding.id,
     category: finding.category,
@@ -82,6 +85,7 @@ export function toAnnotationFinding(
     url: payload?.url ?? "",
     anchor: payload?.anchor ?? null,
     evidenceUrl: key ? `${evidenceBase.replace(/\/$/, "")}/${key}` : null,
+    snapshotUrl: snapKey ? `${evidenceBase.replace(/\/$/, "")}/${snapKey}` : null,
     patchJs,
     hitCount: finding.hitCount,
   };

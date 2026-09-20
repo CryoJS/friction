@@ -18,6 +18,7 @@ import { VIEWPORT } from "./config";
 import { captureEvidence, readState, readTree, type Observation } from "./observe";
 import { ARM_ACTION, FOCUS_PROBE, READ_MUTATIONS, elementHtmlScript, locateScript, type ElementHtml, type FocusProbe, type Located } from "./pageScripts";
 import type { PlannedAction } from "./planner";
+import { CAPTURE_SNAPSHOT, MAX_SNAPSHOT_BYTES } from "./snapshot";
 import { errorMessage, sleep, withTimeout } from "./util";
 import type { WorkerClient } from "./workerClient";
 
@@ -292,6 +293,19 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
     if (await ctx.worker.putEvidence(key, evidence, "image/jpeg")) screenshotKey = key;
   }
 
+  // An HTML copy of the page as it stands, for the control room's embedded viewer.
+  // Best effort in every direction: a failed capture, an oversized page or a
+  // refused upload all just leave snapshotKey empty, and the step is unaffected.
+  let snapshotKey = "";
+  if (screenshotKey) {
+    const html = await page.evaluate<string>(CAPTURE_SNAPSHOT).catch(() => "");
+    const bytes = html ? Buffer.from(html, "utf8") : null;
+    if (bytes && bytes.byteLength > 0 && bytes.byteLength <= MAX_SNAPSHOT_BYTES) {
+      const key = screenshotKey.replace(/\.[a-z]+$/i, ".html");
+      if (await ctx.worker.putEvidence(key, bytes, "text/html")) snapshotKey = key;
+    }
+  }
+
   const payload: StepPayload = {
     url: urlBefore,
     actionType: plan.actionType,
@@ -306,6 +320,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
     viewport: { w: VIEWPORT.w, h: VIEWPORT.h },
     signals,
     ...(anchor ? { anchor } : {}),
+    ...(snapshotKey ? { snapshotKey } : {}),
   };
 
   const deadClick = plan.actionType === "click" && !actionError && !domChanged;
