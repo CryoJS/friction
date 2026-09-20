@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @friction/overlay build",
     "dev": "vite --port 5173 --strictPort",
+    "prebuild": "pnpm --filter @friction/overlay build",
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "deploy": "vite build && wrangler pages deploy dist --project-name friction",
@@ -15,6 +17,7 @@
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
+    "@friction/overlay": "workspace:*",
     "@friction/shared": "workspace:*",
     "@xyflow/react": "^12.11.6",
     "lucide-react": "^1.47.0",

@@ -5,6 +5,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // The bookmarklet build (packages/overlay) emits dist/bookmarklet.txt, which
+  // BookmarkletCard imports with a `?raw` query so it embeds the file's text.
+  assetsInclude: ["**/*.txt"],
   server: {
     // @friction/shared/golden imports ../../fixtures/golden-run.json, which
     // lives above this app's root. Allow the whole monorepo.
