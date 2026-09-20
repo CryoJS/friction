@@ -17,7 +17,7 @@ function useNow(active: boolean): number {
   return now;
 }
 
-/** The scan's identity and clock, under the floating nav: the same anatomy as RunBar. */
+/** The scan's identity and clock, under the floating nav. */
 export function ScanBar({ tree }: { tree: ScanTreeResponse }) {
   const { scan } = tree;
   const finished = isScanFinished(scan.status);

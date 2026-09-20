@@ -16,10 +16,9 @@ interface Props {
   view: "scan" | "results";
   /** Must be stable (useCallback): it is baked into every node's data. */
   onSelectNode: (nodeId: string) => void;
-  onOpenRun: (runId: string) => void;
 }
 
-export function ScanPage({ scanId, nodeId, view, onSelectNode, onOpenRun }: Props) {
+export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
   const { tree, stale, missing } = useScan(scanId);
   // Refetch the report when findings arrive, a run finishes, the tasks appear, or the status changes.
   const refreshKey = tree ? `${totalFindings(tree)}:${runProgress(tree).done}:${tree.tasks.length}:${tree.scan.status}:${tree.pullRequests?.length ?? 0}` : "none";
@@ -102,7 +101,7 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode, onOpenRun }: Prop
             <ScanGraph nodes={graph.nodes} edges={graph.edges} />
           </section>
           <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
-            <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} onOpenRun={onOpenRun} focusedIssueKey={focusedIssueKey} />
+            <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} focusedIssueKey={focusedIssueKey} />
           </aside>
         </div>
       )}

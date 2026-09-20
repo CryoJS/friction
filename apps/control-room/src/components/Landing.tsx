@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GOLDEN_RUN_ID, type ScanListItem } from "@friction/shared";
+import type { ScanListItem } from "@friction/shared";
 import { api } from "../lib/api";
 import { shortUrl, timeAgo } from "../lib/format";
 import { SCAN_STATUS } from "../lib/scan";
@@ -11,7 +11,6 @@ import { ScanForm } from "./ScanForm";
 
 interface Props {
   onOpenScan: (scanId: string) => void;
-  onOpenRun: (runId: string, replay: boolean) => void;
   /** Whether the floating nav currently sits over the hero. */
   onOverHero?: (over: boolean) => void;
   scrollerRef: React.RefObject<HTMLElement | null>;
@@ -50,13 +49,13 @@ const HOW_IT_WORKS: { title: string; detail: string }[] = [
       "For each task's worst findings, Friction proposes a fix and re-runs the task in a fresh browser with it installed. A fix counts as verified only if the friction is gone; a pull request is opened only when you click.",
   },
   {
-    title: "Merge, rank and replay anywhere",
+    title: "Merge, rank and fix",
     detail:
-      "The same problem hit on several tasks becomes one issue: same kind of friction, same page, same element. Issues are ranked by severity, then by how many tasks hit them, each with its screenshot and what to fix. Any single run plays back client-side from one request, with no orchestrator, model or wifi.",
+      "The same problem hit on several tasks becomes one issue: same kind of friction, same page, same element. Issues are ranked by severity, then by how many tasks hit them, each with its screenshot and what to fix. Review the complete scan from the graph and Results page.",
   },
 ];
 
-export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Props) {
+export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
   const [scans, setScans] = useState<Probe<ScanListItem[]>>({ status: "loading" });
   const hero = useRef<HTMLElement>(null);
 
@@ -110,7 +109,7 @@ export function Landing({ onOpenScan, onOpenRun, onOverHero, scrollerRef }: Prop
           <div className="mt-10 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
             <div className="pb-10 lg:pb-14">
               <div className="dusk-pool">
-                <ScanForm onStarted={onOpenScan} onReplayGolden={() => onOpenRun(GOLDEN_RUN_ID, true)} />
+                <ScanForm onStarted={onOpenScan} />
               </div>
             </div>
 
