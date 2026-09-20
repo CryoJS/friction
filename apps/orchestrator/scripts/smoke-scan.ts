@@ -15,6 +15,7 @@
  */
 import {
   isCommittablePath,
+  isFrictionTestPath,
   isScanFinished,
   isTerminalState,
   type CreateScanResponse,
@@ -107,7 +108,11 @@ if (WITH_PRS) {
   if (previews.length !== 1 || previews[0]?.taskIndex !== 0) fail(`expected one preview, on task 1; got ${previews.map((pr) => pr.taskIndex + 1).join(", ") || "none"}`);
   if (!previews[0]?.preview?.body.includes("## Also unblocks")) fail("the preview does not list the tasks it also unblocks");
   if (!previews[0]?.preview?.body.includes("## Found, not fixed")) fail("the preview does not list what was found but not fixed");
-  if (!previews[0]?.preview?.files.every((file) => isCommittablePath(file.path))) fail("the preview touches a guarded path");
+  // A fix may only touch source the path guard allows. The one other file a PR may add is Friction's own regression test, and only as an addition.
+  const files = previews[0]?.preview?.files ?? [];
+  if (!files.every((file) => isCommittablePath(file.path) || (isFrictionTestPath(file.path) && file.removedLines === 0))) fail("the preview touches a guarded path");
+  if (files.filter((file) => isFrictionTestPath(file.path)).length !== 1) fail("the preview does not add exactly one regression test");
+  if (!previews[0]?.preview?.body.includes("## Regression test")) fail("the preview does not describe its regression test");
   const covered = pullRequests.filter((pr) => pr.status === "covered" && pr.coveredBy === 0);
   if (covered.length !== tree.tasks.length - 1) fail(`expected the other ${tree.tasks.length - 1} tasks to be covered by task 1, got ${covered.length}`);
   if (!report.summary.pullRequests || !tree.scan.message?.includes(report.summary.pullRequests.text)) fail(`the scan's final message lacks the pull request total: ${tree.scan.message}`);

@@ -26,6 +26,13 @@ export type TaskSource = (typeof TASK_SOURCES)[number];
  * tasks all get a browser at once instead of queueing behind each other.
  */
 export const MAX_SCAN_TASKS = 5;
+/**
+ * The highest task index any scan has ever stored (scans once ran ten tasks).
+ * Stored records are bounded by THIS, never by MAX_SCAN_TASKS: that one is a
+ * tuning constant for new scans, and a record must not stop parsing because
+ * it changed. Only ever raise it.
+ */
+export const MAX_STORED_TASK_INDEX = 9;
 /** Navigation pages the crawl reads after the landing page. */
 export const MAX_CRAWL_LINKS = 5;
 
@@ -55,7 +62,7 @@ export interface CreateScanResponse {
 /** Sent with POST /api/runs when the run is one task of a scan. */
 export const ScanTaskLinkSchema = z.object({
   scanId: z.string().min(1),
-  taskIndex: z.number().int().min(0).max(MAX_SCAN_TASKS - 1),
+  taskIndex: z.number().int().min(0).max(MAX_STORED_TASK_INDEX),
   whyCritical: z.string().max(500),
   successCheck: z.string().max(500),
 });
@@ -116,7 +123,7 @@ export const TaskPullRequestStatusSchema = z.enum(TASK_PR_STATUSES);
 export type TaskPullRequestStatus = (typeof TASK_PR_STATUSES)[number];
 
 /** A PR URL (an open Friction PR from an earlier scan) or the 0-based index of the task whose PR claims the file. */
-export const CoveredBySchema = z.union([z.string().min(1).max(500), z.number().int().min(0).max(MAX_SCAN_TASKS - 1)]);
+export const CoveredBySchema = z.union([z.string().min(1).max(500), z.number().int().min(0).max(MAX_STORED_TASK_INDEX)]);
 export type CoveredBy = z.infer<typeof CoveredBySchema>;
 
 export const TaskPullRequestPreviewSchema = z.object({
@@ -130,15 +137,21 @@ export type TaskPullRequestPreview = z.infer<typeof TaskPullRequestPreviewSchema
 export const TaskPullRequestSchema = z.object({
   scanId: z.string().min(1),
   runId: z.string().min(1),
-  taskIndex: z.number().int().min(0).max(MAX_SCAN_TASKS - 1),
+  taskIndex: z.number().int().min(0).max(MAX_STORED_TASK_INDEX),
   status: TaskPullRequestStatusSchema,
   prUrl: z.string().max(500).optional(),
   branch: z.string().max(300).optional(),
   coveredBy: CoveredBySchema.optional(),
   /** Findings whose fix was committed (or would be, in a dry run). */
   findingIds: z.array(z.string().min(1)).max(20),
-  /** The rest of the task's story: every fix that did not ship, and why. */
-  notFixed: z.array(z.object({ findingId: z.string().min(1), reason: z.string().max(500), coveredBy: CoveredBySchema.optional() })).max(20),
+  /**
+   * The rest of the task's story: every finding that did not ship, with the
+   * furthest stage it reached and why it stopped there. `summary` is the
+   * finding's one line; absent on records from before it was kept.
+   */
+  notFixed: z.array(z.object({ findingId: z.string().min(1), reason: z.string().max(500), coveredBy: CoveredBySchema.optional(), summary: z.string().max(300).optional() })).max(20),
+  /** Symptom findings credited to a committed fix (`by`): they no longer fired in its verify run. */
+  alsoResolved: z.array(z.object({ findingId: z.string().min(1), by: z.string().min(1), summary: z.string().max(300).optional() })).max(20).optional(),
   /** One human sentence: why it was skipped or failed. */
   reason: z.string().max(500).optional(),
   preview: TaskPullRequestPreviewSchema.optional(),

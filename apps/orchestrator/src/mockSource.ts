@@ -9,7 +9,18 @@
  * original and a recorded replacement. Nothing here is read from or written to
  * a repository, and mock mode only ever previews pull requests.
  */
-import type { FrictionCategory } from "@friction/shared";
+import type { FixTest, FrictionCategory } from "@friction/shared";
+
+/** The canned regression test for the golden run's dead "Add to cart": what prTest.ts would write and prove in live mode. */
+export function mockFixTest(category: FrictionCategory): FixTest | null {
+  if (category !== "dead_click") return null;
+  return {
+    title: "Add to cart says a size is needed",
+    startPath: "/products/alpine-down-parka",
+    steps: [{ action: "click", role: "button", name: "Add to cart" }],
+    expect: [{ kind: "text_visible", text: "Please select a size" }],
+  };
+}
 
 export interface MockSourceFix {
   path: string;

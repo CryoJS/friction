@@ -185,3 +185,30 @@ export const NAV_LINKS = `(() => {
   const scoped = Array.from(document.querySelectorAll("nav, header, [role=navigation]")).flatMap((el) => hrefs(el, false));
   return [...scoped, ...hrefs(document, true)];
 })()`;
+
+/** The real markup a fix is written against: the step's target, and any overlay covering the page. "" when there is none. */
+export interface ElementHtml {
+  target: string;
+  overlay: string;
+}
+
+/**
+ * An element as its opening-tag ancestors (up to four) and its own outerHTML,
+ * cut to a length a prompt can carry. The accessibility tree says what a
+ * visitor perceives; this says what a selector can hold on to.
+ */
+export function elementHtmlScript(xpath: string | null): string {
+  return `${HELPERS} (() => {
+    const st = window.__fr;
+    // No regular expressions and no "\\n" literals in here: this is a template literal, which would eat their backslashes.
+    const open = (el) => { const html = el.cloneNode(false).outerHTML; const close = html.lastIndexOf("</"); return close > 0 ? html.slice(0, close) : html; };
+    const show = (el, max) => {
+      if (!el || el.nodeType !== 1) return "";
+      const chain = [];
+      for (let p = el.parentElement; p && p !== document.documentElement && chain.length < 4; p = p.parentElement) chain.unshift(open(p));
+      const html = el.outerHTML.split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean).join(" ");
+      return chain.concat(html.length > max ? html.slice(0, max) + " ..." : html).join(String.fromCharCode(10));
+    };
+    return { target: show(${xpath ? `st.byXPath(${JSON.stringify(xpath)})` : "null"}, 1200), overlay: show(st.findOverlay(), 1800) };
+  })()`;
+}
