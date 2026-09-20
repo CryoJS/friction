@@ -4,7 +4,7 @@
  * selection, connecting and delete keys are all off. Each node is a <button>
  * (see nodes.tsx): Tab reaches it and Enter selects it.
  */
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -19,7 +19,8 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { ScanFlowNode } from "../../lib/scanLayout";
+import { ISSUE_DIAMETER, TASK_SIZE, type ScanFlowNode } from "../../lib/scanLayout";
+import { clearAllNudge, reducedMotion, stepNudge, type NudgeTarget } from "../../lib/nudge";
 import { Minus, Plus } from "../icons";
 import { IssueNode, OrbitRing, RootNode, TaskNode } from "./nodes";
 
@@ -55,7 +56,7 @@ export function ScanGraph(props: Props) {
 
 function Canvas({ nodes, edges }: Props) {
   const frame = useRef<HTMLDivElement>(null);
-  const { getZoom, screenToFlowPosition, setCenter } = useReactFlow();
+  const { getZoom, screenToFlowPosition, setCenter } = useReactFlow<ScanFlowNode>();
 
   // Every poll rebuilds every node as a brand-new object (layoutScan is
   // pure), so React Flow's adoptUserNodes never sees the same reference twice
@@ -76,9 +77,28 @@ function Canvas({ nodes, edges }: Props) {
     }
   }, []);
 
+  // The cursor-repel nudge's current offsets (see nudge.ts), in flow units,
+  // keyed by node id. `nodes` is a *controlled* prop -- React Flow re-syncs
+  // its own internal store from it, which would silently undo any position
+  // written through the imperative setNodes API -- so the only reliable way
+  // to move a node (and have its edges, which React Flow derives from
+  // position + handle offsets, follow) is to fold the offset into this same
+  // controlled array. `nudgeTick` exists only to make that recompute: it
+  // changes every frame something is actively displaced, and nothing else
+  // reads its value.
+  const nudgeOffsets = useRef(new Map<string, { dx: number; dy: number }>());
+  const [nudgeTick, setNudgeTick] = useState(0);
+
   const measuredNodes = useMemo<ScanFlowNode[]>(
-    () => nodes.map((node) => ({ ...node, measured: measuredSizes.current.get(node.id) ?? node.measured })),
-    [nodes],
+    () =>
+      nodes.map((node) => {
+        const measured = measuredSizes.current.get(node.id) ?? node.measured;
+        const offset = nudgeOffsets.current.get(node.id);
+        if (!offset) return { ...node, measured };
+        return { ...node, measured, position: { x: node.position.x + offset.dx, y: node.position.y + offset.dy }, style: { ...node.style, transition: "none" } };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nudgeTick is the trigger; nudgeOffsets.current is read fresh each call, never itself a dep.
+    [nodes, nudgeTick],
   );
 
   // Tabbing to a node outside the view makes the browser scroll React Flow's
@@ -93,6 +113,63 @@ function Canvas({ nodes, edges }: Props) {
     element.addEventListener("scroll", reset, true);
     return () => element.removeEventListener("scroll", reset, true);
   }, []);
+
+  // The latest layout, for the physics loop below to read without becoming
+  // a dependency that would restart the loop's effect on every poll.
+  const nodesRef = useRef(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  // Cursor position, in screen (client) coordinates, from pointer movement
+  // over the canvas pane; leaving the pane relaxes every node back to rest.
+  const cursor = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    const move = (event: PointerEvent) => {
+      cursor.current = { x: event.clientX, y: event.clientY };
+    };
+    const leave = () => {
+      cursor.current = null;
+    };
+    element.addEventListener("pointermove", move);
+    element.addEventListener("pointerleave", leave);
+    return () => {
+      element.removeEventListener("pointermove", move);
+      element.removeEventListener("pointerleave", leave);
+    };
+  }, []);
+
+  // Runs the spring every frame and writes the result into nudgeOffsets,
+  // bumping nudgeTick to fold it into measuredNodes above -- see that
+  // comment for why this can't just call the imperative setNodes instead.
+  // Off entirely under reduced motion, and only ever touches task and issue
+  // node types -- the root and its rings are never nudged.
+  useEffect(() => {
+    if (reducedMotion()) return;
+    let raf = 0;
+    const tick = () => {
+      const targets: NudgeTarget[] = [];
+      for (const node of nodesRef.current) {
+        if (node.type === "task") targets.push({ id: node.id, cx: node.position.x + TASK_SIZE.w / 2, cy: node.position.y + TASK_SIZE.h / 2 });
+        else if (node.type === "issue") targets.push({ id: node.id, cx: node.position.x + ISSUE_DIAMETER / 2, cy: node.position.y + ISSUE_DIAMETER / 2 });
+      }
+      const cursorFlow = cursor.current ? screenToFlowPosition(cursor.current) : null;
+      const results = stepNudge(targets, cursorFlow);
+      const next = new Map<string, { dx: number; dy: number }>();
+      for (const [id, result] of results) if (result.active) next.set(id, { dx: result.dx, dy: result.dy });
+      const changed = next.size > 0 || nudgeOffsets.current.size > 0;
+      nudgeOffsets.current = next;
+      if (changed) setNudgeTick((value) => value + 1);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearAllNudge();
+    };
+  }, [screenToFlowPosition]);
 
   /** Keyboard focus on a node outside the view pans that node into the middle. */
   const reveal = (event: React.FocusEvent<HTMLDivElement>): void => {

@@ -36,10 +36,9 @@ function CompassHandles({ type }: { type: "source" | "target" }) {
   );
 }
 
-/** A dashed orbit ring, purely decorative: no pointer events, sits behind every real node. */
+/** A dashed orbit oval, purely decorative: no pointer events, sits behind every real node. rounded-full on a non-square box still renders a true ellipse. */
 export function OrbitRing({ data }: NodeProps<RingFlowNode>) {
-  const diameter = data.radius * 2;
-  return <div style={{ width: diameter, height: diameter }} className="pointer-events-none rounded-full border border-dashed border-hairline/10" />;
+  return <div style={{ width: data.radiusX * 2, height: data.radiusY * 2 }} className="pointer-events-none rounded-full border border-dashed border-hairline/10" />;
 }
 
 /** Shared by every node: opaque graphite, text lifts to white on hover, and a solid (never see-through) lighter fill when selected. */
