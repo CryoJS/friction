@@ -1,4 +1,5 @@
 import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
+import { useRunFixes } from "../../hooks/useRunFixes";
 import { annotationFindingIdForIssue, VERDICT, rankedIssuesForTask } from "../../lib/scan";
 import { Chip } from "../badges";
 import { IssueCard } from "./IssueCard";
@@ -19,6 +20,7 @@ interface Props {
 export function TaskPanel({ task, tree, report, onSelect, onOpenAnnotation, focusedIssueKey = null }: Props) {
   const verdict = VERDICT[taskVerdict(task.state)];
   const ranked = rankedIssuesForTask(report, task.index);
+  const fixes = useRunFixes(task.runId, task.status === "verifying");
 
   return (
     <div className="space-y-5">
@@ -58,6 +60,7 @@ export function TaskPanel({ task, tree, report, onSelect, onOpenAnnotation, focu
               onSelect={onSelect}
               onOpenAnnotation={onOpenAnnotation}
               annotationFindingId={annotationFindingIdForIssue(issue, task.index)}
+              fix={fixes.get(annotationFindingIdForIssue(issue, task.index) ?? "") ?? null}
               forceOpen={issue.key === focusedIssueKey}
             />
           ))}

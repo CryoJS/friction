@@ -417,9 +417,9 @@ function parseResult(json: string | null): LaneResult | null {
 }
 
 /** The FixPayload extensions that share the details_json column. A row that no longer parses loses them, not the fix. */
-const FixDetailsSchema = FixPayloadSchema.pick({ alsoResolved: true, mappingNote: true, attempts: true, testSpec: true, testNote: true });
+const FixDetailsSchema = FixPayloadSchema.pick({ alsoResolved: true, mappingNote: true, attempts: true, testSpec: true, testNote: true, injection: true });
 
-function parseDetails(json: string | null | undefined): Pick<FixPayload, "alsoResolved" | "mappingNote" | "attempts" | "testSpec" | "testNote"> {
+function parseDetails(json: string | null | undefined): Pick<FixPayload, "alsoResolved" | "mappingNote" | "attempts" | "testSpec" | "testNote" | "injection"> {
   if (!json) return {};
   try {
     const parsed = FixDetailsSchema.safeParse(JSON.parse(json));
@@ -480,8 +480,11 @@ export async function upsertFix(db: D1Database, runId: string, upsert: FixUpsert
   const now = Date.now();
   const { newFileContent, sourceSha, ...payload } = upsert;
   const hasContent = newFileContent !== undefined ? 1 : 0;
-  const { alsoResolved, mappingNote, attempts, testSpec, testNote } = payload;
-  const details = alsoResolved || mappingNote || attempts || testSpec || testNote ? JSON.stringify({ alsoResolved, mappingNote, attempts, testSpec, testNote }) : null;
+  const { alsoResolved, mappingNote, attempts, testSpec, testNote, injection } = payload;
+  const details =
+    alsoResolved || mappingNote || attempts || testSpec || testNote || injection
+      ? JSON.stringify({ alsoResolved, mappingNote, attempts, testSpec, testNote, injection })
+      : null;
   const [, inserted] = await db.batch([
     db
       .prepare(

@@ -1,6 +1,7 @@
 import type {
   AnnotationsResponse,
   CreateScanResponse,
+  FixListResponse,
   GitHubConnectionStatus,
   OpenPullRequestResponse,
   LiveViewResponse,
@@ -120,6 +121,9 @@ export const api = {
   /** This scan's own findings, in the overlay's flattened shape -- what the offline bookmarklet can inline. `token` is the scan id, per GET /api/annotations's host-or-token contract. */
   getAnnotations: (scanId: string) =>
     request<AnnotationsResponse>(`${WORKER_URL}/api/annotations?token=${encodeURIComponent(scanId)}`, undefined, 8000),
+
+  /** Every fix of one run, newest state per finding: what the issue cards show as the proposed fix. */
+  getFixes: (runId: string) => request<FixListResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/fixes`, undefined, 6000),
 
   getSnapshot: (runId: string) => request<RunSnapshot>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}`, undefined, 6000),
   getReport: (runId: string) => request<ReportResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/report`, undefined, 6000),

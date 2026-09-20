@@ -1,4 +1,4 @@
-import { FRICTION_LABELS, SEVERITY_LABELS, type AgentState, type FixStage, type FrictionCategory, type Severity } from "@friction/shared";
+import { FRICTION_LABELS, SEVERITY_LABELS, type AgentState, type FixPayload, type FixStage, type FrictionCategory, type Severity } from "@friction/shared";
 import { CircleAlert, OctagonAlert, Sparkles, TriangleAlert, ShieldAlert, type LucideIcon } from "lucide-react";
 
 /** A status light. "glow" is the violet running glow; the rest are flat dots. */
@@ -66,6 +66,26 @@ export function StageBadge({ stage }: { stage: FixStage }) {
     <span className="inline-flex h-7 shrink-0 items-center gap-2 rounded-full border border-hairline/15 px-3 text-caption text-bone">
       <Dot tone={style.tone} />
       {style.label}
+    </span>
+  );
+}
+
+type Injection = NonNullable<FixPayload["injection"]>;
+
+/** How the patch reached the page in the verify run. Both routes prove the same thing; which one ran is a deployment detail worth seeing. */
+const INJECTION_STYLES: Record<Injection, { label: string; title: string }> = {
+  init_script: { label: "Init script", title: "The patch was installed with page.addInitScript(), before the verify session's first navigation." },
+  extension: {
+    label: "Browser extension",
+    title: "The patch was packaged as a Chrome extension and installed into the verify session when it was created (FRICTION_EXTENSION_INJECT=1).",
+  },
+};
+
+export function InjectionBadge({ injection }: { injection: Injection }) {
+  const style = INJECTION_STYLES[injection];
+  return (
+    <span className="inline-flex h-7 shrink-0 items-center rounded-full border border-hairline/15 px-3 text-caption text-smoke" title={style.title}>
+      Installed as: <span className="ml-1 text-bone">{style.label}</span>
     </span>
   );
 }

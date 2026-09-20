@@ -255,6 +255,14 @@ export const FixPayloadSchema = z.object({
   testSpec: z.string().max(20_000).optional(),
   /** extension: what became of the regression test: proven, or why there is none */
   testNote: z.string().max(500).optional(),
+  /**
+   * extension: how the patch reached the page in the verify run. "init_script" is
+   * page.addInitScript() before first navigation, the default and only route until
+   * FRICTION_EXTENSION_INJECT=1; "extension" is an uploaded Chrome MV3 extension
+   * installed into the session at create time. Absent on a fix whose verify run never
+   * installed a patch at all (mock mode reports the route the golden run was recorded with).
+   */
+  injection: z.enum(["init_script", "extension"]).optional(),
 });
 export type FixPayload = z.infer<typeof FixPayloadSchema>;
 

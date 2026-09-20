@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { FRICTION_LABELS, scanNodeId, type ScanIssue } from "@friction/shared";
+import { FRICTION_LABELS, scanNodeId, type FixRecord, type ScanIssue } from "@friction/shared";
 import { EvidenceImage } from "../EvidenceImage";
-import { SEVERITY_STYLES, SeverityBadge, categoryLabel } from "../badges";
+import { InjectionBadge, SEVERITY_STYLES, SeverityBadge, StageBadge, categoryLabel } from "../badges";
 import { ArrowUpRight, Plus } from "../icons";
 
 interface Props {
@@ -11,6 +11,13 @@ interface Props {
   onSelect: (nodeId: string) => void;
   onOpenAnnotation?: (findingId: string) => void;
   annotationFindingId?: string;
+  /**
+   * This issue's fix in the open task's run, once one has been proposed. What
+   * the card shows is the fix's own state, not the model's advice: the stage it
+   * reached, how the patch was installed for the verify run, and the session
+   * that proved (or failed to prove) it.
+   */
+  fix?: FixRecord | null;
   /** True when something outside this card (e.g. its satellite on the orbit graph) asked it to open and come into view. */
   forceOpen?: boolean;
 }
@@ -20,7 +27,15 @@ interface Props {
  * what it is, how widespread. Opening it shows the evidence, the three
  * one-line bullets (what, cost, fix) and every run that hit it.
  */
-export function IssueCard({ issue, rank, onSelect, onOpenAnnotation, annotationFindingId = issue.occurrences[0]?.findingId, forceOpen = false }: Props) {
+export function IssueCard({
+  issue,
+  rank,
+  onSelect,
+  onOpenAnnotation,
+  annotationFindingId = issue.occurrences[0]?.findingId,
+  fix = null,
+  forceOpen = false,
+}: Props) {
   const style = SEVERITY_STYLES[issue.severity];
   const ref = useRef<HTMLDetailsElement>(null);
   const bullets = [
@@ -101,6 +116,32 @@ export function IssueCard({ issue, rank, onSelect, onOpenAnnotation, annotationF
             </li>
           ))}
         </ul>
+
+        {fix && (
+          <section aria-label="Proposed fix" className="rounded-xl border border-hairline/10 bg-white/3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <StageBadge stage={fix.stage} />
+              {fix.injection && <InjectionBadge injection={fix.injection} />}
+            </div>
+            {fix.note && <p className="mt-2.5 text-ui leading-snug text-ash">{fix.note}</p>}
+            {(fix.liveViewUrl || fix.replayUrl) && (
+              <div className="mt-2.5 flex flex-wrap gap-3">
+                {fix.liveViewUrl && (
+                  <a href={fix.liveViewUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-caption text-smoke transition-colors hover:text-white">
+                    <ArrowUpRight size={13} />
+                    Watch the verify session
+                  </a>
+                )}
+                {fix.replayUrl && (
+                  <a href={fix.replayUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-caption text-smoke transition-colors hover:text-white">
+                    <ArrowUpRight size={13} />
+                    Replay
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tasks that hit this issue">
           {issue.taskIndexes.map((taskIndex) => (

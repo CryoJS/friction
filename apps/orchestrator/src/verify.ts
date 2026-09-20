@@ -123,16 +123,21 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
   emitter.status("idle", "Opening a fresh browser session with the fix installed.");
 
   let patchActive = false;
+  /** Which route put the patch on the page, for the fix event. */
+  let injection: "init_script" | "extension" | undefined;
   let session: { liveViewUrl: string | null; replayUrl: string | null } = { liveViewUrl: null, replayUrl: null };
   let result: AgentResult;
 
   if (!args.planner) {
     const script = recordedVerifyRun(finding.category);
     patchActive = script.length > 0;
+    // The golden run was recorded from a live run, back when addInitScript was the only route.
+    if (patchActive) injection = "init_script";
     result = await runMockAgent({ runId, script, config, worker, emitter, onSession: async () => undefined });
   } else {
     const injected = guardPatch(report.state.patchJs, finding.findingId);
     const extensionId = await patchExtensionId(config, injected, args.url);
+    injection = extensionId ? "extension" : "init_script";
     result = await runAgent({
       runId,
       url: args.url,
@@ -185,7 +190,7 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
     target: finding.targetLabel || undefined,
   });
 
-  await report.update({ stage: verdict.stage, before, after, note: verdict.note, liveViewUrl: session.liveViewUrl, replayUrl: session.replayUrl });
+  await report.update({ stage: verdict.stage, before, after, note: verdict.note, liveViewUrl: session.liveViewUrl, replayUrl: session.replayUrl, ...(injection ? { injection } : {}) });
   log("verify", `${finding.findingId} ${verdict.stage}: ${verdict.note}`);
   return { verdict, after, lastSeq: Math.max(report.lastSeq, emitter.lastSeq), firedCategories: new Set(emitter.findings.map((f) => f.first.category)), steps };
 }
