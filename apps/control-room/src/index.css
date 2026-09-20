@@ -1149,6 +1149,19 @@ a {
   letter-spacing: 0.01em;
 }
 
+.scan-form-caption strong {
+  color: var(--color-white);
+  font-weight: 700;
+}
+
+.scan-form-caption p {
+  margin: 0;
+}
+
+.scan-form-caption p + p {
+  margin-top: 10px;
+}
+
 .scan-form-options {
   display: flex;
   align-items: flex-start;
@@ -1191,17 +1204,321 @@ a {
 .scan-form-checkbox {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: rgb(229 229 229 / 0.62);
   font-size: 11px;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color 160ms ease-out;
 }
 
+/* Beside the Repository select: as tall as it, so the two share a centre line. */
+.scan-form-options > .scan-form-checkbox {
+  min-height: 34px;
+}
+
+.scan-form-checkbox:hover,
+.scan-form-checkbox:has(input:checked) {
+  color: rgb(229 229 229 / 0.92);
+}
+
+/* Drawn rather than native: the OS checkbox is a bright white slab on this dark card, and cannot animate. */
 .scan-form-checkbox input {
-  width: 14px;
-  height: 14px;
+  appearance: none;
+  display: grid;
+  flex: none;
+  place-content: center;
+  width: 16px;
+  height: 16px;
   margin: 0;
-  accent-color: var(--color-white);
+  border: 1px solid rgb(255 255 255 / 0.26);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.04);
+  cursor: pointer;
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out, transform 120ms ease-out;
+}
+
+/* The tick: two borders of a small box, turned. It scales in with a little overshoot. */
+.scan-form-checkbox input::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-bottom: 1.75px solid var(--color-void);
+  border-left: 1.75px solid var(--color-void);
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+
+.scan-form-checkbox:hover input {
+  border-color: rgb(255 255 255 / 0.5);
+}
+
+.scan-form-checkbox input:checked {
+  border-color: var(--color-white);
+  background: var(--color-white);
+}
+
+.scan-form-checkbox input:checked::after {
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+.scan-form-checkbox input:active {
+  transform: scale(0.92);
+}
+
+.scan-form-checkbox input:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.22);
+}
+
+.scan-form-checkbox input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* GitHub, connected with a button (components/scan/GitHubConnect.tsx). One quiet line; the repository list is behind "Manage". */
+.scan-form-github {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 4px 0;
+  color: rgb(229 229 229 / 0.78);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.scan-form-github strong {
+  color: var(--color-white);
+  font-weight: 500;
+}
+
+.scan-form-github-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 24px;
+}
+
+.scan-form-github-end {
+  margin-left: auto;
+}
+
+.scan-form-github-muted {
+  margin: 0;
+  color: rgb(229 229 229 / 0.42);
+}
+
+.scan-form-github-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(74 222 128);
+  box-shadow: 0 0 0 3px rgb(74 222 128 / 0.16);
+}
+
+/* The one thing to press in each state. */
+.scan-form-github-action {
+  padding: 3px 11px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(229 229 229 / 0.9);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.scan-form-github-action:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 0.4);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--color-white);
+}
+
+/* Everything else: Manage, Done, Cancel, Disconnect. */
+.scan-form-github-quiet {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgb(229 229 229 / 0.5);
+  font: inherit;
+  cursor: pointer;
+  transition: color 160ms ease-out;
+}
+
+.scan-form-github-quiet:hover:not(:disabled) {
+  color: var(--color-white);
+}
+
+.scan-form-github-action:disabled,
+.scan-form-github-quiet:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scan-form-github-action:focus-visible,
+.scan-form-github-quiet:focus-visible,
+.scan-form-github-code:focus-visible {
+  outline: 1px solid rgb(255 255 255 / 0.6);
+  outline-offset: 2px;
+}
+
+.scan-form-github-code {
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.08);
+  color: var(--color-white);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  cursor: copy;
+  user-select: all;
+}
+
+.scan-form-github-waiting::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  vertical-align: middle;
+  animation: scan-form-github-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes scan-form-github-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-form-github-waiting::before { animation: none; opacity: 0.7; }
+}
+
+/* Manage / Done: both words stacked in one cell and cross-faded, so the label never jumps and the button keeps its width. */
+.scan-form-github-toggle {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-items: end;
+  gap: 5px;
+}
+
+.scan-form-github-toggle-label {
+  grid-area: 1 / 1;
+  transition: opacity 180ms ease-out, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.scan-form-github-toggle-label[aria-hidden="true"] {
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+.scan-form-github-chevron {
+  grid-area: 1 / 2;
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.scan-form-github-toggle[aria-expanded="true"] .scan-form-github-chevron {
+  transform: rotate(180deg);
+}
+
+/*
+ * The panel is always in the page and opens by growing: a grid row from 0fr to
+ * 1fr animates to the content's own height, whatever it is, with no measuring.
+ * The negative margin takes back the column's gap while it is shut, so a closed
+ * panel leaves no trace. It is inert while closed (see the component).
+ */
+.scan-form-github-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -8px;
+  opacity: 0;
+  transition: grid-template-rows 280ms cubic-bezier(0.2, 0.8, 0.2, 1), margin-top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 180ms ease-out;
+}
+
+.scan-form-github-reveal[data-open="true"] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+  transition: grid-template-rows 320ms cubic-bezier(0.2, 0.8, 0.2, 1), margin-top 320ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 240ms ease-out 60ms;
+}
+
+.scan-form-github-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The contents settle into place a beat after the space opens. */
+.scan-form-github-reveal .scan-form-github-panel {
+  transform: translateY(-4px);
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.scan-form-github-reveal[data-open="true"] .scan-form-github-panel {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-form-github-reveal,
+  .scan-form-github-reveal[data-open="true"],
+  .scan-form-github-reveal .scan-form-github-panel,
+  .scan-form-github-toggle-label,
+  .scan-form-github-chevron,
+  .scan-form-checkbox input,
+  .scan-form-checkbox input::after {
+    transition: none;
+  }
+}
+
+.scan-form-github-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.025);
+}
+
+.scan-form-github-filter {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-bone);
+  font: inherit;
+  outline: 0;
+}
+
+.scan-form-github-filter:focus {
+  border-color: rgb(255 255 255 / 0.32);
+}
+
+.scan-form-github-repos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 116px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-family: var(--font-mono);
+}
+
+.scan-form-github-repos .scan-form-checkbox {
+  cursor: pointer;
+}
+
+.scan-form-github-error {
+  margin: 0;
+  color: rgb(252 165 165 / 0.9);
 }
 
 .scan-form-hint {
@@ -1250,6 +1567,165 @@ a {
     width: 100%;
     flex-basis: 100%;
   }
+}
+
+/* ---------------------------------------------------------- new scan dialog */
+
+.new-scan-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(10 10 10 / 0.74);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: new-scan-fade-in 160ms ease-out;
+}
+
+.new-scan-dialog {
+  position: relative;
+  width: min(100%, 500px);
+  padding: 26px;
+  border: 1px solid rgb(229 229 229 / 0.2);
+  border-radius: 24px;
+  background: var(--color-graphite);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.42), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  animation: new-scan-dialog-in 220ms var(--ease-out-expo);
+}
+
+.new-scan-dialog-header {
+  padding-right: 32px;
+}
+
+.new-scan-dialog-title {
+  margin: 0;
+  color: var(--color-white);
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.new-scan-dialog-description {
+  margin: 8px 0 0;
+  color: var(--color-smoke);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.new-scan-dialog-close {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(229 229 229 / 0.16);
+  border-radius: 9999px;
+  color: var(--color-ash);
+  transition: border-color 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.new-scan-dialog-close:hover {
+  border-color: rgb(229 229 229 / 0.5);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--color-white);
+}
+
+.new-scan-form {
+  margin-top: 24px;
+}
+
+.new-scan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-scan-field > span {
+  color: rgb(229 229 229 / 0.58);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.new-scan-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--color-void);
+  color: var(--color-white);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: normal;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.new-scan-input::placeholder {
+  color: rgb(229 229 229 / 0.42);
+}
+
+.new-scan-input:focus {
+  border-color: rgb(255 255 255 / 0.5);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.06);
+}
+
+.new-scan-input[aria-invalid="true"] {
+  border-color: var(--color-sev-5);
+}
+
+.new-scan-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.new-scan-cancel,
+.new-scan-submit {
+  height: 40px;
+  font-size: 14px;
+}
+
+.new-scan-cancel {
+  padding: 0 16px;
+}
+
+.new-scan-submit {
+  min-width: 126px;
+  padding: 0 16px;
+}
+
+.new-scan-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 126 102 / 0.28);
+  border-radius: 12px;
+  background: rgb(255 126 102 / 0.08);
+  color: var(--color-sev-5);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@keyframes new-scan-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes new-scan-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 /* The one violet: a narrow band, swept across while a persona thinks. */
@@ -1521,8 +1997,66 @@ a {
   opacity: 0;
 }
 
+.scan-flow .react-flow__attribution {
+  right: 8px;
+  bottom: 8px;
+  padding: 0;
+  background: transparent;
+  color: rgb(255 255 255 / 0.3);
+  font-size: 9px;
+  opacity: 0.72;
+  transform: scale(0.9);
+  transform-origin: bottom right;
+  transition: opacity 160ms ease-out;
+}
+
+.scan-flow .react-flow__attribution:hover {
+  opacity: 1;
+}
+
 .scan-flow .react-flow__attribution a {
+  color: inherit;
+}
+
+.issue-filter-card {
+  border-color: rgb(229 229 229 / 0.22);
+  background: rgb(10 10 10 / 0.78);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+.crawled-pages-card {
+  border-color: rgb(229 229 229 / 0.16);
+  border-style: dashed;
+  background: rgb(10 10 10 / 0.36);
+}
+
+.crawled-pages-summary {
   color: var(--color-smoke);
+}
+
+.crawled-pages-summary:hover {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--color-bone);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-5 {
+  color: var(--color-sev-5);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-4 {
+  color: var(--color-sev-4);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-3 {
+  color: var(--color-sev-3);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-2 {
+  color: var(--color-sev-2);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-1 {
+  color: var(--color-sev-1);
 }
 
 /*

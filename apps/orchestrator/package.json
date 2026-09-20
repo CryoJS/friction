@@ -11,6 +11,7 @@
     "smoke:scan": "tsx scripts/smoke-scan.ts",
     "smoke:scan-pr": "tsx scripts/smoke-scan-pr.ts",
     "smoke:github-fake": "tsx scripts/smoke-github-fake.ts",
+    "smoke:github-connect": "tsx scripts/smoke-github-connect.ts",
     "smoke:pr-test": "tsx scripts/smoke-pr-test.ts",
     "yield": "tsx scripts/yield-table.ts",
     "test": "node --test --import tsx \"src/**/*.test.ts\""

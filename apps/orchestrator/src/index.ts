@@ -22,6 +22,7 @@ import {
   formatIssues,
   isAllowedOrigin,
   matchAllowedRepo,
+  mayManageConnection,
   normalizeTargetUrl,
   type CreateRunResponse,
   type CreateScanResponse,
@@ -29,7 +30,7 @@ import {
   type OpenPullRequestResponse,
   type OrchestratorHealth,
 } from "@friction/shared";
-import { config } from "./config";
+import { config, githubConnection } from "./config";
 import { NO_LIVE_VIEW, mintLiveView } from "./liveView";
 import { PullRequestError, openPullRequest } from "./pr";
 import { RunManager } from "./runManager";
@@ -66,8 +67,49 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.get("/health", (_req, res) => {
   // Names only. The token never leaves this process.
-  const body: OrchestratorHealth = { ok: true, mode: config.mode, missingEnv: config.missingEnv, repos: config.allowedRepos, githubDryRun: config.githubDryRun };
+  const login = githubConnection.login;
+  const body: OrchestratorHealth = {
+    ok: true,
+    mode: config.mode,
+    missingEnv: config.missingEnv,
+    repos: config.allowedRepos,
+    githubDryRun: config.githubDryRun,
+    github: { source: githubConnection.source, ...(login ? { login } : {}) },
+  };
   res.json(body);
+});
+
+/* GitHub, connected with a button (githubConnection.ts). Reading the status is open, like /health, and carries names only. */
+app.get("/github", (_req, res) => {
+  res.json(githubConnection.status());
+});
+
+/**
+ * Managing the connection is for this machine only. This process has no login:
+ * without the guard, anyone who could reach it could tick every repository the
+ * token can write to, and the allow-list would mean nothing.
+ */
+function localOnly(req: Request, res: Response, next: NextFunction): void {
+  if (mayManageConnection({ remoteAddress: req.socket.remoteAddress, origin: req.headers.origin })) return next();
+  log("http", `refused ${req.method} ${req.path} from ${req.socket.remoteAddress ?? "?"} (origin ${req.headers.origin ?? "none"})`);
+  res.status(403).json({ error: "The GitHub connection can only be managed from the machine the orchestrator runs on." });
+}
+
+app.post("/github/connect", localOnly, async (_req, res) => {
+  res.json(await githubConnection.start());
+});
+
+app.post("/github/allowed", localOnly, async (req, res) => {
+  const repos: unknown = (req.body as { repos?: unknown } | undefined)?.repos;
+  if (!Array.isArray(repos) || repos.length > 100 || !repos.every((slug) => typeof slug === "string" && slug.length <= 200)) {
+    res.status(400).json({ error: "repos: expected up to 100 owner/name strings" });
+    return;
+  }
+  res.json(await githubConnection.setAllowed(repos as string[]));
+});
+
+app.post("/github/disconnect", localOnly, (_req, res) => {
+  res.json(githubConnection.disconnect());
 });
 
 /**
@@ -168,6 +210,11 @@ process.on("uncaughtException", (err) => log("process", `uncaught exception: ${e
 
 app.listen(config.port, () => {
   log("http", `orchestrator on http://localhost:${config.port}  ->  Worker ${config.workerUrl}`);
+  // Names only, as everywhere: whose connection it is and what it may touch, never the token.
+  const { source, login } = githubConnection;
+  log("http", `GitHub: ${source === "connection" ? `connected as ${login}` : source === "env" ? "GITHUB_TOKEN from the environment" : "not connected"}; scans may target ${config.allowedRepos.join(", ") || "no repository"}`);
+  // A stored connection may have been revoked since the last run. Never throws.
+  void githubConnection.revalidate();
   if (config.mode === "mock") {
     const why = config.missingEnv.length > 0 ? `missing ${config.missingEnv.join(", ")}` : "FRICTION_MOCK is set";
     log("http", `MOCK MODE (${why}): runs replay the golden fixture through the real pipeline.`);

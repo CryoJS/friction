@@ -38,6 +38,8 @@ Open http://localhost:5173.
 
 ### Checks
 
+`pnpm --filter @friction/orchestrator smoke:github-connect` needs no keys and no running services: it starts the real orchestrator on a spare port against a local fake of GitHub's device flow, connects, ticks a repository, and checks the guard, the restart and that the token appears in no response or log line. It keeps its token in a temporary file and never touches a real connection.
+
 `pnpm --filter @friction/orchestrator smoke:pr-test` needs no keys and no running services: it serves the demo shop itself, runs a rendered regression test under the real Playwright runner (`@playwright/test`, using the installed Edge, so nothing is downloaded), and proves the same test with Friction's own runner.
 
 
@@ -69,7 +71,8 @@ Only the orchestrator needs secrets. Copy `.env.example` to `.env` at the repo r
 | `VERIFY_TOP_N` | | `3` | How many findings get a fix proposed and verified: fixable findings first (an element misbehaves), symptoms (`loop`, `step_budget`, `long_wait`) only in slots left over, one per element. Each is a full extra browser run. `0` turns verification off; at most `5` |
 | `PR_TESTS` | | on | Write and prove a Playwright regression test for every mapped fix, and add it to the pull request under `tests/friction/`. One model call and two short browser sessions per mapped fix. `0` turns it off |
 | `VERIFY_MAX_RUNS` | | `4` | Cap on one run's verifications, first attempts and retries together (1 to 10). With the defaults: three first attempts and one retry. Set it to `VERIFY_TOP_N` to turn retries off |
-| `GITHUB_TOKEN` | PRs | | Personal access token. Use a **fine-grained** one scoped to exactly the repositories below, with Contents and Pull requests set to read and write and nothing else. It never leaves the orchestrator. No GitHub App, no OAuth |
+| `GITHUB_CLIENT_ID` | PRs, the easy way | | The public client ID of a GitHub OAuth App with **Device Flow enabled**. With it set, the scan form shows **Connect GitHub**: no token to make, no repositories to list here. Not a secret. See "Connect GitHub with a button" below |
+| `GITHUB_TOKEN` | PRs, by hand | | Personal access token. Use a **fine-grained** one scoped to exactly the repositories below, with Contents and Pull requests set to read and write and nothing else. It never leaves the orchestrator. No GitHub App, no OAuth |
 | `GITHUB_OWNER` | PRs | | Owner (user or org) of the repository verified fixes are mapped to |
 | `GITHUB_REPO` | PRs | | Repository name |
 | `GITHUB_BASE_BRANCH` | | repo default | Branch that fix branches start from and draft PRs target |
@@ -90,6 +93,19 @@ After the run, `VERIFY_TOP_N` findings each get a proposed fix: a small JavaScri
 With `GITHUB_*` set, a verified fix is mapped to a source file (never from the browser's DOM), and a model writes the complete new file (never a diff). The file is looked for with GitHub code search from the element's selector and label, then from the selectors the verified patch itself used, then from the parts of the target's visible text, and last by matching the page's route against file paths under `src/pages`, `app` or `routes` (one `git.getTree` call). The first source that yields a committable file wins; the fix row records which, or everything that was searched for. Nothing is committed until someone clicks **Open pull request** in the report: that creates `friction/fix-<findingId>`, commits the one file (refusing if the file changed since), and opens a **draft** PR. Friction never merges or force-pushes. Without `GITHUB_*` set, verified fixes simply stay unmapped.
 
 **Scan pull requests.** With a repository connected, the scan form shows a **Repository** select (with "None") and, once one is chosen, "Open draft pull requests automatically", ticked by default. Such a scan maps its fixes to that repository and, when every run is over, opens one draft PR per task that has a verified, mapped fix: `friction/scan-<scanId>-task-<n>`, one commit per file, serially, in task order. Unticked, it behaves as above: a click per fix. A file already rewritten by an earlier task's PR, or by an open `friction/` PR from an earlier scan, is recorded as covered and not committed again. Each task's outcome is stored in the Worker (`task_pull_requests`), so the canvas shows it with the orchestrator down.
+
+**Connect GitHub with a button.** The alternative to a hand-made token and four variables:
+
+1. On GitHub: Settings -> Developer settings -> OAuth Apps -> **New OAuth App**. Any name; homepage and callback URL can both be `http://localhost:5173` (the callback is never used). After creating it, tick **Enable Device Flow** and save.
+2. Put its **Client ID** in `.env` as `GITHUB_CLIENT_ID` and restart the orchestrator. There is no client secret to copy: device flow does not use one.
+3. In the scan form, click **Connect GitHub**, type the code it shows at `github.com/login/device`, and approve. The form then lists every repository that account can push to; **tick the ones Friction may open pull requests against** and save. Nothing is allowed until you tick it, and only ticked repositories appear in the Repository select. Changes take effect at once, with no restart.
+
+What to know about it:
+
+- The token never leaves the orchestrator: `GET /github` and `GET /health` carry a login and repository names, nothing else. It is kept in `apps/orchestrator/.friction/github.json` (git-ignored) so a restart does not mean reconnecting. That is a token in plaintext on this disk, the same exposure as `GITHUB_TOKEN` in `.env`. **Disconnect** deletes the file; to revoke the token itself, use GitHub -> Settings -> Applications -> Authorized OAuth Apps.
+- An OAuth App's `repo` scope is **account-wide on GitHub's side**: the token can write to everything you can. The tick-list is Friction's limit, not GitHub's. For a limit GitHub itself enforces, use a fine-grained `GITHUB_TOKEN` instead (below), or register a GitHub App with device flow and install it on chosen repositories.
+- While connected, the tick-list **replaces** `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_ALLOWED_REPOS`; it never adds to them. With nothing connected, those variables and `GITHUB_TOKEN` work exactly as before. Mock mode connects to nothing.
+- **Connecting, ticking and disconnecting only work from the machine the orchestrator runs on** (a loopback socket, and a `localhost` page when a browser sends an Origin). This is deliberately narrower than the CORS policy, which also admits `*.pages.dev` for reads: otherwise any page able to reach the orchestrator could tick every repository the token can write to. A control room deployed to Pages can still start scans against ticked repositories; it cannot change which are ticked.
 
 **The orchestrator has no auth.** Anyone who can reach it can start scans, and with a write token configured, make it open draft PRs against any repository on the allow-list. That is why a scan picks from an allow-list instead of typing `owner/repo`, why the token should be fine-grained and scoped to exactly those repositories, and why **the orchestrator must not be exposed publicly while `GITHUB_TOKEN` can write**. Run it on localhost or a private network, or set `GITHUB_DRY_RUN=1`.
 

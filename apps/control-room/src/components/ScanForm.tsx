@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeTargetUrl, type OrchestratorHealth } from "@friction/shared";
 import { api } from "../lib/api";
 import { ArrowRight } from "./icons";
+import { GitHubConnect } from "./scan/GitHubConnect";
 
 interface Props {
   onStarted: (scanId: string) => void;
@@ -56,6 +57,13 @@ export function ScanForm({ onStarted }: Props) {
     return () => {
       live = false;
     };
+  }, []);
+  // After GitHub is connected, or its repositories re-ticked: the Repository select follows without a reload.
+  const refreshHealth = useCallback(() => {
+    api
+      .orchestratorHealth()
+      .then(setHealth)
+      .catch(() => undefined);
   }, []);
 
   function chooseRepo(next: string): void {
@@ -123,7 +131,16 @@ export function ScanForm({ onStarted }: Props) {
         </button>
       </div>
 
-      <p className="scan-form-caption">Find, visualize, and solve issues before your users do.</p>
+      <div className="scan-form-caption">
+        <p>
+          Friction sends <strong>multiple AI personas</strong> through your live site to complete real user tasks, uncovering UX issues as they happen.
+        </p>
+        <p>
+          Get prioritized findings with <strong>in-context annotations</strong>, then generate fixes and <strong>open PRs automatically</strong>.
+        </p>
+      </div>
+
+      <GitHubConnect onChanged={refreshHealth} onOnlyRepo={chooseRepo} />
 
       {repos.length > 0 && (
         <div className="scan-form-options">
