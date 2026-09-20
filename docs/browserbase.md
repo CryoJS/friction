@@ -195,6 +195,22 @@ reaches the user's site, their server, their users or their repository. The
 session is deleted afterwards. A fix reaches a pull request only after it has
 been proven this way — there is no unverified mode.
 
+### Optional: the patch as an uploaded extension
+
+`FRICTION_EXTENSION_INJECT=1` swaps the injection route. The patch is zipped in
+memory as a Chrome MV3 extension (`manifest.json` + `patch.js`, a content script
+with `run_at: "document_start"` and `world: "MAIN"` — without `MAIN` the patch
+runs in an isolated world, cannot touch the page's own JS, and fails silently),
+uploaded to the Extensions API, and the returned id is passed as a **top-level**
+`extensionId` on `sessions.create`. Uploads are cached per patch + origin for
+the life of the process and deleted best-effort at the end of a scan.
+
+Nothing about the session changes otherwise, and the flag can only ever cost an
+upload: if it is off, the browser is local, or the upload fails or takes longer
+than 10s, verification logs a warning and takes the `addInitScript` path
+unchanged. Mock mode never touches the Extensions API, and `prTest.ts` stays on
+`addInitScript`.
+
 The same mechanism writes the regression test that ships in the pull request:
 two more fresh sessions run the candidate test, once against the site as it is
 (it must **fail**, proving it reproduces the problem) and once with the verified
@@ -227,6 +243,7 @@ cannot tell the two apart is thrown away.
 | `apps/orchestrator/src/crawl.ts` | the Fetch → Browsers ladder |
 | `apps/orchestrator/src/liveView.ts` | `sessions.debug()`, minted per request |
 | `apps/orchestrator/src/verify.ts` | fresh session + `addInitScript` fix proof |
+| `apps/orchestrator/src/extension.ts` | MV3 patch zip, Extensions API upload/delete (opt-in) |
 | `apps/orchestrator/src/prTest.ts` | two sessions per regression test |
 | `apps/orchestrator/src/util.ts` | `Semaphore`, `withTimeoutDisposing` |
 | `apps/orchestrator/src/scanManager.ts` | session budget across a scan |

@@ -24,6 +24,7 @@
     "@friction/shared": "workspace:*",
     "@octokit/rest": "^22.0.1",
     "express": "^5.2.1",
+    "fflate": "^0.8.3",
     "openai": "^6.49.0",
     "zod": "^4.6.5"
   },

@@ -18,6 +18,13 @@
  *
  * The injection is session-local and ephemeral: it changes the DOM inside
  * Friction's own disposable browser, never the user's site, server or repo.
+ *
+ * FRICTION_EXTENSION_INJECT=1 swaps step 3 for the other route: the patch is
+ * packaged as a Chrome MV3 extension (extension.ts) and installed into the
+ * session when it is created, which puts it in the page's MAIN world at
+ * document_start. Anything that goes wrong with that — the flag off, a local
+ * browser, a failed or slow upload — falls back to addInitScript, so this mode
+ * can never cost a verification run.
  */
 import {
   evidenceKey,
@@ -34,8 +41,10 @@ import {
 } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { runAgent, type AgentResult } from "./agentRunner";
+import { openBrowser } from "./browser";
 import type { Config } from "./config";
 import { LaneEmitter } from "./emitter";
+import { buildAndUploadPatchExtension } from "./extension";
 import type { FindingForFix } from "./fixer";
 import type { FixReport } from "./fixReport";
 import { runMockAgent } from "./mockRunner";
@@ -89,6 +98,23 @@ export function hasRecordedVerifyRun(category: string): boolean {
   return recordedVerifyRun(category).length > 0;
 }
 
+/**
+ * FRICTION_EXTENSION_INJECT=1 only: the patch packaged as an uploaded Chrome
+ * extension, to be installed at session-create time. Null for every reason
+ * there could be (flag off, local browser, upload failed, upload too slow) —
+ * the caller then takes the addInitScript path, unchanged. This must never
+ * break a verification run.
+ */
+async function patchExtensionId(config: Config, patchJs: string, url: string): Promise<string | null> {
+  if (!config.extensionInject || config.mode === "mock" || config.browserEnv === "LOCAL") return null;
+  try {
+    return await withTimeout(buildAndUploadPatchExtension(patchJs, new URL(url).origin), 10_000, "patch extension upload");
+  } catch (err) {
+    log("verify", `extension injection unavailable, falling back to addInitScript: ${errorMessage(err)}`);
+    return null;
+  }
+}
+
 export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
   const { runId, config, worker, report, finding, before } = args;
 
@@ -106,6 +132,7 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
     result = await runMockAgent({ runId, script, config, worker, emitter, onSession: async () => undefined });
   } else {
     const injected = guardPatch(report.state.patchJs, finding.findingId);
+    const extensionId = await patchExtensionId(config, injected, args.url);
     result = await runAgent({
       runId,
       url: args.url,
@@ -119,10 +146,14 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
       onSession: async (browser) => {
         session = { liveViewUrl: browser.liveViewUrl, replayUrl: browser.replayUrl };
       },
+      // Extension mode: the session itself carries the patch, so there is nothing to inject.
+      ...(extensionId ? { openBrowser: () => openBrowser(config, "verify", { extensionId }) } : {}),
       // The fix goes in before the page exists: from first paint, on every document this session loads.
-      beforeFirstNavigation: async (page) => {
-        await withTimeout(page.addInitScript(injected), 15_000, "addInitScript");
-      },
+      beforeFirstNavigation: extensionId
+        ? undefined
+        : async (page) => {
+            await withTimeout(page.addInitScript(injected), 15_000, "addInitScript");
+          },
       // Read-only proof that the init script ran on the start page.
       afterFirstNavigation: async (page) => {
         try {

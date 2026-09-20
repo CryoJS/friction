@@ -24,6 +24,7 @@ import { summarizeTaskPullRequests } from "@friction/shared";
 import type { PreparedRun, RunManager } from "./runManager";
 import { openScanPullRequests } from "./scanPullRequests";
 import { fallbackScanTasks, generateTasks, type PlannedTasks } from "./taskGen";
+import { cleanupPatchExtensions } from "./extension";
 import { errorMessage, log, sleep, truncate, type Semaphore } from "./util";
 import type { WorkerClient } from "./workerClient";
 
@@ -140,6 +141,8 @@ export class ScanManager {
     if (this.isStopped(scanId)) return;
     const succeeded = outcomes.filter((outcome) => outcome === "success").length;
     const pullRequests = options.repo && options.autoPr ? await this.pullRequests(scanId, options.repo, prepared) : "";
+    // Anything uploaded for an extension-injected verification is this scan's to clean up.
+    await cleanupPatchExtensions();
     await worker.patchScan(scanId, { status: "completed", message: truncate(`The agent completed ${succeeded} of ${outcomes.length} tasks.${pullRequests}`, MESSAGE_MAX) });
     log("scan", `${scanId} finished: ${succeeded}/${outcomes.length} tasks succeeded`);
   }

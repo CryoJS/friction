@@ -87,6 +87,13 @@ export interface Config {
   verifyTopN: number;
   /** Cap on one run's verifications, first attempts and retries together (each is a full browser run). */
   verifyMaxRuns: number;
+  /**
+   * FRICTION_EXTENSION_INJECT=1: a verification installs its patch as an
+   * uploaded Chrome extension at session-create time instead of
+   * page.addInitScript(). Falls back to addInitScript whenever the upload
+   * fails, and is never used in mock mode.
+   */
+  extensionInject: boolean;
   /** Write and prove a Playwright regression test for every mapped fix (one model call and two short browser sessions each). PR_TESTS=0 turns it off. */
   prTests: boolean;
   /**
@@ -179,6 +186,7 @@ function load(): Config {
     crawlSessionMax: int("CRAWL_SESSION_MAX", 3, 0, 6),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     verifyMaxRuns: int("VERIFY_MAX_RUNS", DEFAULT_VERIFY_MAX_RUNS, 1, 10),
+    extensionInject: flag("FRICTION_EXTENSION_INJECT"),
     prTests: !["0", "false", "no"].includes((text("PR_TESTS") ?? "").toLowerCase()),
     github: githubConfig(),
     githubToken: text("GITHUB_TOKEN"),

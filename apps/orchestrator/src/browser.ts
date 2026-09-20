@@ -18,6 +18,15 @@ import { errorMessage, log, sleep, withTimeout } from "./util";
 
 export type StagehandPage = ReturnType<Stagehand["context"]["pages"]>[number];
 
+export interface OpenBrowserOptions {
+  /**
+   * A Chrome MV3 extension (extension.ts) installed into the session when it is
+   * created: the other way a verification's patch can reach the page. Ignored
+   * by LOCAL browsers, which have no Browserbase session to install it into.
+   */
+  extensionId?: string | null;
+}
+
 export interface BrowserHandle {
   stagehand: Stagehand;
   page: StagehandPage;
@@ -85,7 +94,7 @@ async function openLocal(config: Config): Promise<BrowserHandle> {
   };
 }
 
-async function openBrowserbase(config: Config, label: string): Promise<BrowserHandle> {
+async function openBrowserbase(config: Config, label: string, options: OpenBrowserOptions): Promise<BrowserHandle> {
   const apiKey = config.browserbaseApiKey;
   const projectId = config.browserbaseProjectId;
   if (!apiKey || !projectId) throw new Error("BROWSERBASE_API_KEY / BROWSERBASE_PROJECT_ID are not set");
@@ -101,6 +110,8 @@ async function openBrowserbase(config: Config, label: string): Promise<BrowserHa
       session = await bb.sessions.create({
         projectId,
         keepAlive: false,
+        // Top-level, NOT inside browserSettings: that is where the API takes it.
+        ...(options.extensionId ? { extensionId: options.extensionId } : {}),
         api_timeout: Math.ceil(config.agentTimeoutMs / 1000) + 120,
         ...(config.browserbaseRegion ? { region: config.browserbaseRegion as "us-west-2" } : {}),
         browserSettings: {
@@ -162,6 +173,6 @@ async function openBrowserbase(config: Config, label: string): Promise<BrowserHa
   }
 }
 
-export function openBrowser(config: Config, label: string): Promise<BrowserHandle> {
-  return config.browserEnv === "LOCAL" ? openLocal(config) : openBrowserbase(config, label);
+export function openBrowser(config: Config, label: string, options: OpenBrowserOptions = {}): Promise<BrowserHandle> {
+  return config.browserEnv === "LOCAL" ? openLocal(config) : openBrowserbase(config, label, options);
 }

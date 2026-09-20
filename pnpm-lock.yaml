@@ -87,6 +87,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       openai:
         specifier: ^6.49.0
         version: 6.49.0(ws@8.21.0(bufferutil@4.1.0))(zod@4.6.5)
@@ -1954,6 +1957,9 @@ packages:
 
   fetch-cookie@3.2.0:
     resolution: {integrity: sha512-n61pQIxP25C6DRhcJxn7BDzgHP/+S56Urowb5WFxtcRMpU6drqXD90xjyAsVQYsNSNNVbaCcYY1DuHsdkZLuiA==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   finalhandler@2.1.1:
     resolution: {integrity: sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==}
@@ -4418,6 +4424,8 @@ snapshots:
     dependencies:
       set-cookie-parser: 2.7.2
       tough-cookie: 6.0.2
+
+  fflate@0.8.3: {}
 
   finalhandler@2.1.1:
     dependencies:
