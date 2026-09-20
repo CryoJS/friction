@@ -59,6 +59,24 @@ import { handleStream } from "./stream";
 
 const app = new Hono<AppEnv>();
 
+/**
+ * The annotation overlay's only endpoint, called by a bookmarklet running on
+ * the user's OWN site, so it is the one route with an open CORS policy. The
+ * global policy in isAllowedOrigin() below stays restricted: widening it
+ * would open every mutating route on this Worker.
+ *
+ * This MUST be registered before the global cors() middleware. Hono's
+ * cors() answers an OPTIONS preflight itself and never calls next(), so
+ * whichever cors() middleware is outermost (registered first) is the one
+ * that resolves the preflight — the global one would otherwise shadow this
+ * one for every OPTIONS request, including OPTIONS /api/annotations, and
+ * the bookmarklet's declared allowHeaders would never take effect for any
+ * fetch that triggers a preflight. Being outermost also means, for a plain
+ * GET, this middleware's header write on the way back out happens last and
+ * so still wins over the global middleware's.
+ */
+app.use("/api/annotations", cors({ origin: "*", allowMethods: ["GET", "OPTIONS"], allowHeaders: ["Content-Type"], maxAge: 3600 }));
+
 /* CORS: open to localhost (any port) and *.pages.dev. */
 app.use(
   "*",
@@ -290,14 +308,7 @@ app.get("/api/scans/:id/report", async (c) => {
   return c.json(assembleScanReport({ tree, findings: rows.findings, evidence: rows.evidence }));
 });
 
-/**
- * The annotation overlay's only endpoint, called by a bookmarklet running on
- * the user's OWN site, so it is the one route with an open CORS policy. The
- * global policy in isAllowedOrigin() stays restricted: widening it would open
- * every mutating route on this Worker.
- */
-app.use("/api/annotations", cors({ origin: "*", allowMethods: ["GET", "OPTIONS"], allowHeaders: ["Content-Type"], maxAge: 3600 }));
-
+/** See the app.use("/api/annotations", cors(...)) registration near the top of the file for why this route's CORS is open and why ordering matters. */
 app.get("/api/annotations", async (c) => {
   const query = parseAnnotationsQuery({ host: c.req.query("host"), token: c.req.query("token") });
   if (!query.ok) return c.json({ error: query.error }, 400);
