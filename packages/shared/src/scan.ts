@@ -1,5 +1,5 @@
 /**
- * Scans: one URL -> a crawl -> up to ten generated tasks -> one ordinary run
+ * Scans: one URL -> a crawl -> up to MAX_SCAN_TASKS generated tasks -> one ordinary run
  * per task (the one agent, then its fix verifications). The contracts the orchestrator,
  * the Worker and the control room share, and the pure helpers they agree on.
  *
@@ -52,6 +52,8 @@ export const CreateScanRequestSchema = z.object({
   repo: RepoSlugSchema.optional(),
   /** Open one draft pull request per fixable task when the runs finish. Only meaningful with `repo`. */
   autoPr: z.boolean().optional(),
+  /** Number of task agents to run for this scan. Omitted: the maximum configured task count. */
+  taskCount: z.number().int().min(1).max(MAX_SCAN_TASKS).optional(),
 });
 export type CreateScanRequest = z.infer<typeof CreateScanRequestSchema>;
 
@@ -172,7 +174,8 @@ export type GeneratedTask = z.infer<typeof GeneratedTaskSchema>;
  * The model's `{ tasks: [...] }`, validated entry by entry: invalid entries and
  * duplicate titles are dropped rather than failing the whole answer.
  */
-export function parseGeneratedTasks(input: unknown): GeneratedTask[] {
+export function parseGeneratedTasks(input: unknown, maxTasks = MAX_SCAN_TASKS): GeneratedTask[] {
+  const limit = Math.max(1, Math.min(MAX_SCAN_TASKS, Math.trunc(maxTasks)));
   const list =
     input !== null && typeof input === "object" && !Array.isArray(input) && Array.isArray((input as { tasks?: unknown }).tasks)
       ? (input as { tasks: unknown[] }).tasks
@@ -186,7 +189,7 @@ export function parseGeneratedTasks(input: unknown): GeneratedTask[] {
     if (seen.has(key)) continue;
     seen.add(key);
     tasks.push(parsed.data);
-    if (tasks.length === MAX_SCAN_TASKS) break;
+    if (tasks.length === limit) break;
   }
   return tasks;
 }

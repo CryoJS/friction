@@ -30,6 +30,9 @@ import { PathView } from "./PathView";
 const NODE_TYPES: NodeTypes = { root: RootNode, task: TaskNode, ring: OrbitRing, issue: IssueNode };
 /** maxZoom 1 keeps a lone site node (while crawling) at its real size. */
 const FIT: FitViewOptions = { padding: 0.12, maxZoom: 1 };
+const ANNOTATION_SIDEBAR_MIN = 280;
+const ANNOTATION_SIDEBAR_MAX = 560;
+const ANNOTATION_SIDEBAR_DEFAULT = 384;
 
 /** An animation's length, or 0 when the viewer asked for reduced motion. */
 function motion(ms: number): number {
@@ -53,7 +56,11 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelectNode: (nodeId: string) => void;
-  onOpenIssue: (taskId: string, issueKey: string) => void;
+  focusedAnnotationId?: string | null;
+  annotationPath?: string | null;
+  onOpenIssue?: (taskId: string, issueKey: string) => void;
+  onOpenAnnotation: (findingId: string) => void;
+  onSelectAnnotationPath: (path: string) => void;
 }
 
 export type ScanView = "graph" | "path" | "page";
@@ -66,9 +73,30 @@ export function ScanGraph(props: Props) {
   );
 }
 
-function Canvas({ scanId, refreshKey, nodes, edges, tree, report, onSelectNode, onOpenIssue, view }: Props) {
+function Canvas({ scanId, refreshKey, nodes, edges, tree, report, onSelectNode, view, focusedAnnotationId, annotationPath, onOpenIssue, onOpenAnnotation, onSelectAnnotationPath }: Props) {
   const frame = useRef<HTMLDivElement>(null);
+  const [annotationSidebarWidth, setAnnotationSidebarWidth] = useState(ANNOTATION_SIDEBAR_DEFAULT);
+  const [resizingAnnotationSidebar, setResizingAnnotationSidebar] = useState(false);
   const { getZoom, screenToFlowPosition, setCenter } = useReactFlow<ScanFlowNode>();
+
+  useEffect(() => {
+    if (!resizingAnnotationSidebar) return;
+    const move = (event: PointerEvent): void => {
+      const bounds = frame.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const width = event.clientX - bounds.left;
+      setAnnotationSidebarWidth(Math.min(ANNOTATION_SIDEBAR_MAX, Math.max(ANNOTATION_SIDEBAR_MIN, width)));
+    };
+    const stop = (): void => setResizingAnnotationSidebar(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [resizingAnnotationSidebar]);
 
   // Every poll rebuilds every node as a brand-new object (layoutScan is
   // pure), so React Flow's adoptUserNodes never sees the same reference twice
@@ -240,14 +268,56 @@ function Canvas({ scanId, refreshKey, nodes, edges, tree, report, onSelectNode, 
         </div>
       ) : (
         <div id="scan-annotations-panel" role="tabpanel" aria-labelledby="scan-annotations-tab" className="absolute inset-0">
-          <SnapshotPanel scanId={scanId} refreshKey={refreshKey} />
+          <div className="absolute inset-0 flex min-h-0 flex-col lg:flex-row">
+            <div
+              className="annotation-sidebar-resizable relative h-64 w-full min-w-0 shrink-0 lg:h-auto"
+              style={{ "--annotation-sidebar-width": annotationSidebarWidth + "px" } as React.CSSProperties}
+            >
+              <aside aria-label="Web paths" className="relative h-full w-full border-b border-hairline/10 lg:border-b-0">
+                <PathView
+                  tree={tree}
+                  report={report}
+                  onSelectNode={onSelectNode}
+                  onOpenAnnotation={onOpenAnnotation}
+                  onSelectPath={onSelectAnnotationPath}
+                  sidebar
+                />
+              </aside>
+              <div
+                role="separator"
+                aria-label="Resize annotations paths panel"
+                aria-orientation="vertical"
+                aria-valuemin={ANNOTATION_SIDEBAR_MIN}
+                aria-valuemax={ANNOTATION_SIDEBAR_MAX}
+                aria-valuenow={Math.round(annotationSidebarWidth)}
+                tabIndex={0}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setResizingAnnotationSidebar(true);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  const delta = event.key === "ArrowRight" ? 24 : -24;
+                  setAnnotationSidebarWidth((current) => Math.min(ANNOTATION_SIDEBAR_MAX, Math.max(ANNOTATION_SIDEBAR_MIN, current + delta)));
+                }}
+                className="group absolute inset-y-0 right-0 z-20 hidden w-2 cursor-col-resize touch-none lg:block"
+              >
+                <span className="absolute inset-y-0 right-0 w-px bg-hairline/15 transition-colors group-hover:bg-white/60" />
+              </div>
+            </div>
+            <div className="min-h-0 min-w-0 flex-1">
+              <SnapshotPanel scanId={scanId} refreshKey={refreshKey} focusedFindingId={focusedAnnotationId} focusedPath={annotationPath} />
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-export function ScanViewTabs({ view, onChange }: { view: ScanView; onChange: (view: ScanView) => void }) {
+export function ScanViewTabs({ view, onChange }: { view: ScanView | null; onChange: (view: ScanView) => void }) {
   const views: ScanView[] = ["graph", "path", "page"];
   const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, current: ScanView) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -267,7 +337,7 @@ export function ScanViewTabs({ view, onChange }: { view: ScanView; onChange: (vi
         role="tab"
         aria-selected={view === "graph"}
         aria-controls="scan-tasks-graph-panel"
-        tabIndex={view === "graph" ? 0 : -1}
+        tabIndex={view === null ? 0 : view === "graph" ? 0 : -1}
         onClick={() => onChange("graph")}
         onKeyDown={(event) => moveTab(event, "graph")}
         className="scan-view-tab pill-ghost h-8 shrink-0 border-transparent px-3 text-caption"

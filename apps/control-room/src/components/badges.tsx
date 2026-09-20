@@ -69,7 +69,7 @@ export function StageBadge({ stage }: { stage: FixStage }) {
   );
 }
 
-/** Severity runs along the horizon: S5 hot coral down to S1 cool cobalt. */
+/** Severity runs from blocker red through orange and yellow to minor green and cosmetic blue. */
 export const SEVERITY_STYLES: Record<Severity, { text: string; dot: string; box: string; ring: string }> = {
   5: { text: "text-sev-5", dot: "bg-sev-5", box: "border-sev-5", ring: "border-sev-5/45" },
   4: { text: "text-sev-4", dot: "bg-sev-4", box: "border-sev-4", ring: "border-sev-4/45" },
@@ -78,15 +78,15 @@ export const SEVERITY_STYLES: Record<Severity, { text: string; dot: string; box:
   1: { text: "text-sev-1", dot: "bg-sev-1", box: "border-sev-1", ring: "border-sev-1/45" },
 };
 
-export function SeverityBadge({ severity, withLabel = false }: { severity: Severity; withLabel?: boolean }) {
+export function SeverityBadge({ severity }: { severity: Severity }) {
   const style = SEVERITY_STYLES[severity];
   return (
     <span
       className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-caption tabular-nums ${style.ring} ${style.text}`}
       title={`Severity ${severity} of 5: ${SEVERITY_LABELS[severity]}`}
     >
-      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />S{severity}
-      {withLabel && <span className="text-bone">{SEVERITY_LABELS[severity]}</span>}
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      {SEVERITY_LABELS[severity]}
     </span>
   );
 }

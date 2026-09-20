@@ -71,7 +71,7 @@ export const api = {
    * Starts the crawl, task generation and every task's run in the background; answers with the scan id at once.
    * `repo` is one of /health's repositories; with `autoPr` the scan opens one draft pull request per fixable task.
    */
-  startScan: (url: string, options: { repo?: string; autoPr?: boolean } = {}) =>
+  startScan: (url: string, options: { repo?: string; autoPr?: boolean; taskCount?: number } = {}) =>
     request<CreateScanResponse>(`${ORCHESTRATOR_URL}/scans`, json({ url, ...options }), 12_000),
 
   /** Cooperatively stops an active scan and leaves its partial results available. */
@@ -117,7 +117,7 @@ export const api = {
   getScanReport: (scanId: string) =>
     request<ScanReportResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}/report`, undefined, 8000),
 
-  /** This scan's own findings, in the overlay's flattened shape -- what the offline bookmarklet inlines (BookmarkletCard.tsx). `token` is the scan id, per GET /api/annotations's host-or-token contract. */
+  /** This scan's own findings, in the overlay's flattened shape -- what the offline bookmarklet can inline. `token` is the scan id, per GET /api/annotations's host-or-token contract. */
   getAnnotations: (scanId: string) =>
     request<AnnotationsResponse>(`${WORKER_URL}/api/annotations?token=${encodeURIComponent(scanId)}`, undefined, 8000),
 

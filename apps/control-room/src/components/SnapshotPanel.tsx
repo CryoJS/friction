@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AnnotationFinding } from "@friction/shared";
+import { issuePath, type AnnotationFinding } from "@friction/shared";
 import { api } from "../lib/api";
 import { SnapshotViewer } from "./SnapshotViewer";
 
@@ -9,16 +9,6 @@ interface PageGroup {
   /** The snapshot used as the canvas: the latest one captured of this page. */
   canvas: string;
   findings: AnnotationFinding[];
-}
-
-/** "/index.php?route=product/search" — enough to tell pages apart, short enough to read. */
-function pathOf(url: string): string {
-  try {
-    const { pathname, search } = new URL(url);
-    return pathname + search || "/";
-  } catch {
-    return url || "page";
-  }
 }
 
 /**
@@ -47,13 +37,23 @@ function seqOf(snapshotUrl: string): number {
  * overlay's own panel rather than pinning it somewhere wrong — which is exactly
  * what that ladder exists for.
  */
-export function SnapshotPanel({ scanId, refreshKey }: { scanId: string; refreshKey?: string }): React.ReactElement {
+export function SnapshotPanel({ scanId, refreshKey, focusedFindingId = null, focusedPath = null }: { scanId: string; refreshKey?: string; focusedFindingId?: string | null; focusedPath?: string | null }): React.ReactElement {
   const [groups, setGroups] = useState<PageGroup[] | null>(null);
   const [active, setActive] = useState(0);
 
   useEffect(() => {
     setActive(0);
   }, [scanId]);
+
+  useEffect(() => {
+    if (!groups) return;
+    const index = focusedFindingId
+      ? groups.findIndex((group) => group.findings.some((finding) => finding.findingId === focusedFindingId))
+      : focusedPath
+        ? groups.findIndex((group) => (issuePath(group.url) || "/") === annotationPathKey(focusedPath))
+        : -1;
+    if (index >= 0) setActive(index);
+  }, [focusedFindingId, focusedPath, groups]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,27 +101,13 @@ export function SnapshotPanel({ scanId, refreshKey }: { scanId: string; refreshK
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* One page, one tab. A single-page site needs no chooser at all. */}
-      {groups.length > 1 ? (
-        <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-hairline/10 px-3 py-2">
-          {groups.map((group, index) => (
-            <button
-              key={group.url}
-              type="button"
-              onClick={() => setActive(index)}
-              className={`${index === active ? "pill-cta" : "pill-ghost"} shrink-0 whitespace-nowrap`}
-              title={group.url}
-            >
-              <span className="font-mono tracking-normal">{pathOf(group.url)}</span>
-              <span className="ml-2 text-slate">{group.findings.length}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <div className="min-h-0 flex-1">
-        <SnapshotViewer key={current.canvas} snapshotUrl={current.canvas} findings={current.findings} scanId={scanId} />
+        <SnapshotViewer key={current.canvas} snapshotUrl={current.canvas} findings={current.findings} scanId={scanId} focusedFindingId={focusedFindingId} />
       </div>
     </div>
   );
+}
+
+function annotationPathKey(path: string): string {
+  return path.startsWith("panel:") ? path.slice("panel:".length).split(":")[0] || "/" : path;
 }

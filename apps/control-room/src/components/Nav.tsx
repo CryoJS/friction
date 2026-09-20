@@ -40,7 +40,7 @@ interface HomeScanNavProps {
   onOpenScan: (scanId: string) => void;
 }
 
-/** The landing nav is either a compact scan launcher or a link to the newest active scan. */
+/** The landing nav is either a compact scan launcher or a link to the newest scan. */
 export function HomeScanNav({ onOpenScan }: HomeScanNavProps) {
   const [scans, setScans] = useState<ScanListItem[]>([]);
   const [url, setUrl] = useState(() => loadSavedScanUrl());
@@ -63,9 +63,7 @@ export function HomeScanNav({ onOpenScan }: HomeScanNavProps) {
     };
   }, []);
 
-  const activeScan = scans
-    .filter((scan) => scan.status === "crawling" || scan.status === "running")
-    .sort((left, right) => right.createdAt - left.createdAt)[0];
+  const latestScan = [...scans].sort((left, right) => right.createdAt - left.createdAt)[0];
 
   async function start(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -92,24 +90,24 @@ export function HomeScanNav({ onOpenScan }: HomeScanNavProps) {
     }
   }
 
-  if (activeScan) {
-    const status = SCAN_STATUS[activeScan.status];
-    const progress = activeScan.tasksTotal > 0
-      ? `${activeScan.tasksPassed}/${activeScan.tasksTotal} tasks`
-      : activeScan.pages.length > 0
-        ? `${activeScan.pages.length} pages`
+  if (latestScan) {
+    const status = SCAN_STATUS[latestScan.status];
+    const progress = latestScan.tasksTotal > 0
+      ? `${latestScan.tasksPassed}/${latestScan.tasksTotal} tasks`
+      : latestScan.pages.length > 0
+        ? `${latestScan.pages.length} pages`
         : "Starting";
     return (
       <button
         type="button"
-        onClick={() => onOpenScan(activeScan.id)}
+        onClick={() => onOpenScan(latestScan.id)}
         className="home-nav-scan-preview"
-        title={`Open scan for ${activeScan.url}`}
-        aria-label={`Open ${status.label.toLowerCase()} scan for ${shortUrl(activeScan.url)}`}
+        title={`Open scan for ${latestScan.url}`}
+        aria-label={`Open ${status.label.toLowerCase()} scan for ${shortUrl(latestScan.url)}`}
       >
         <Dot tone={status.tone} size={7} />
         <span className="home-nav-scan-status">{status.label}</span>
-        <span className="home-nav-scan-url" title={activeScan.url}>{shortUrl(activeScan.url)}</span>
+        <span className="home-nav-scan-url" title={latestScan.url}>{shortUrl(latestScan.url)}</span>
         <span className="home-nav-scan-progress">{progress}</span>
         <ArrowRight size={14} />
       </button>

@@ -2,13 +2,15 @@ import { useEffect, useRef } from "react";
 import { FRICTION_LABELS, scanNodeId, type ScanIssue } from "@friction/shared";
 import { EvidenceImage } from "../EvidenceImage";
 import { SEVERITY_STYLES, SeverityBadge, categoryLabel } from "../badges";
-import { Plus } from "../icons";
+import { ArrowUpRight, Plus } from "../icons";
 
 interface Props {
   issue: ScanIssue;
   /** 1-based position in the site report's ranking. */
   rank: number;
   onSelect: (nodeId: string) => void;
+  onOpenAnnotation?: (findingId: string) => void;
+  annotationFindingId?: string;
   /** True when something outside this card (e.g. its satellite on the orbit graph) asked it to open and come into view. */
   forceOpen?: boolean;
 }
@@ -18,7 +20,7 @@ interface Props {
  * what it is, how widespread. Opening it shows the evidence, the three
  * one-line bullets (what, cost, fix) and every run that hit it.
  */
-export function IssueCard({ issue, rank, onSelect, forceOpen = false }: Props) {
+export function IssueCard({ issue, rank, onSelect, onOpenAnnotation, annotationFindingId = issue.occurrences[0]?.findingId, forceOpen = false }: Props) {
   const style = SEVERITY_STYLES[issue.severity];
   const ref = useRef<HTMLDetailsElement>(null);
   const bullets = [
@@ -65,6 +67,17 @@ export function IssueCard({ issue, rank, onSelect, forceOpen = false }: Props) {
       </summary>
 
       <div className="space-y-4 border-t border-hairline/10 p-5">
+        {onOpenAnnotation && annotationFindingId && (
+          <button
+            type="button"
+            onClick={() => onOpenAnnotation(annotationFindingId)}
+            className="inline-flex items-center gap-1.5 text-caption text-smoke transition-colors hover:text-white"
+          >
+            <ArrowUpRight size={13} />
+            View in annotations
+          </button>
+        )}
+
         {issue.evidence ? (
           <div className="overflow-hidden rounded-xl">
             <EvidenceImage

@@ -19,7 +19,7 @@
  */
 
 const REPEL_RADIUS = 320;
-const MAX_OFFSET = 28;
+const MAX_OFFSET = 14;
 const SPRING = 0.22;
 /**
  * Issue satellites lean away less than tasks: both how close the cursor has

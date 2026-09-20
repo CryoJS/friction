@@ -15,11 +15,15 @@ interface Props {
   nodeId: string | null;
   view: "scan" | "results";
   scanView: ScanView;
+  focusedAnnotationId: string | null;
+  annotationPath: string | null;
+  onOpenAnnotation: (findingId: string) => void;
+  onSelectAnnotationPath: (path: string) => void;
   /** Must be stable (useCallback): it is baked into every node's data. */
   onSelectNode: (nodeId: string) => void;
 }
 
-export function ScanPage({ scanId, nodeId, view, scanView, onSelectNode }: Props) {
+export function ScanPage({ scanId, nodeId, view, scanView, focusedAnnotationId, annotationPath, onOpenAnnotation, onSelectAnnotationPath, onSelectNode }: Props) {
   const { tree, stale, missing } = useScan(scanId);
   // Refetch the report when findings arrive, a run finishes, the tasks appear, or the status changes.
   const refreshKey = tree ? `${totalFindings(tree)}:${runProgress(tree).done}:${tree.tasks.length}:${tree.scan.status}:${tree.pullRequests?.length ?? 0}` : "none";
@@ -90,8 +94,27 @@ export function ScanPage({ scanId, nodeId, view, scanView, onSelectNode }: Props
       {view === "results" ? (
         <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6 sm:pb-8">
           <div className="mx-auto w-full max-w-300">
-            <RootPanel tree={tree} report={report} onSelect={selectNode} />
+            <RootPanel tree={tree} report={report} onSelect={selectNode} onOpenAnnotation={onOpenAnnotation} />
           </div>
+        </main>
+      ) : scanView === "page" ? (
+        <main className="min-h-0 flex-1 overflow-hidden px-4 pb-4 pt-5 sm:px-6 sm:pb-6">
+          <section aria-label="Annotations" className="relative h-full min-h-0 overflow-hidden rounded-card border border-hairline/10">
+            <ScanGraph
+              scanId={scanId}
+              refreshKey={refreshKey}
+              view={scanView}
+              focusedAnnotationId={focusedAnnotationId}
+              annotationPath={annotationPath}
+              onOpenAnnotation={onOpenAnnotation}
+              onSelectAnnotationPath={onSelectAnnotationPath}
+              nodes={graph.nodes}
+              edges={graph.edges}
+              tree={tree}
+              report={report}
+              onSelectNode={selectNode}
+            />
+          </section>
         </main>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 pt-5 sm:px-6 sm:pb-6 lg:flex-row lg:overflow-hidden">
@@ -99,20 +122,22 @@ export function ScanPage({ scanId, nodeId, view, scanView, onSelectNode }: Props
             aria-label="Scan view"
             className="relative flex h-105 shrink-0 flex-col overflow-hidden rounded-card border border-hairline/10 lg:h-auto lg:min-w-0 lg:flex-1"
           >
-            <ScanGraph
-              scanId={scanId}
-              refreshKey={refreshKey}
+           <ScanGraph
+             scanId={scanId}
+             refreshKey={refreshKey}
               view={scanView}
               nodes={graph.nodes}
               edges={graph.edges}
               tree={tree}
               report={report}
-              onSelectNode={selectNode}
-              onOpenIssue={openIssue}
+             onOpenIssue={openIssue}
+              onOpenAnnotation={onOpenAnnotation}
+              onSelectAnnotationPath={onSelectAnnotationPath}
+             onSelectNode={selectNode}
             />
           </section>
           <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
-            <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} focusedIssueKey={focusedIssueKey} />
+            <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} onOpenAnnotation={onOpenAnnotation} focusedIssueKey={focusedIssueKey} />
           </aside>
         </div>
       )}

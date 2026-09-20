@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { normalizeTargetUrl, type OrchestratorHealth } from "@friction/shared";
+import { MAX_SCAN_TASKS, normalizeTargetUrl, type OrchestratorHealth } from "@friction/shared";
+import { Settings as SettingsIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { ArrowRight } from "./icons";
 import { GitHubConnect } from "./scan/GitHubConnect";
@@ -12,6 +13,8 @@ const STORAGE_KEY = "friction:last-scan-url";
 /** The URL + task form's key; its URL seeds the field once. */
 const LEGACY_KEY = "friction:last-run-form";
 const REPO_KEY = "friction:last-scan-repo";
+const TASK_COUNT_KEY = "friction:scan-task-count";
+const TASK_COUNTS = Array.from({ length: MAX_SCAN_TASKS }, (_, index) => index + 1);
 
 function loadRepo(): string {
   try {
@@ -32,9 +35,18 @@ function loadUrl(): string {
   }
 }
 
+function loadTaskCount(): number {
+  try {
+    const saved = Number.parseInt(window.localStorage.getItem(TASK_COUNT_KEY) ?? "", 10);
+    return TASK_COUNTS.includes(saved) ? saved : MAX_SCAN_TASKS;
+  } catch {
+    return MAX_SCAN_TASKS;
+  }
+}
+
 type Failure = { kind: "invalid" } | { kind: "unreachable"; detail: string };
 
-/** One field, one button: Friction picks the tasks. Lives in the landing hero. */
+/** URL form with an optional task count. Lives in the landing hero. */
 export function ScanForm({ onStarted }: Props) {
   const [url, setUrl] = useState(loadUrl);
   const [busy, setBusy] = useState(false);
@@ -44,6 +56,8 @@ export function ScanForm({ onStarted }: Props) {
   const [health, setHealth] = useState<OrchestratorHealth | null>(null);
   const [wantedRepo, setWantedRepo] = useState(loadRepo);
   const [autoPr, setAutoPr] = useState(true);
+  const [taskCount, setTaskCount] = useState(loadTaskCount);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const repos = health?.repos ?? [];
   // Only ever a repository the orchestrator offers: a remembered one that is gone reads as None.
   const repo = repos.includes(wantedRepo) ? wantedRepo : "";
@@ -75,6 +89,15 @@ export function ScanForm({ onStarted }: Props) {
     }
   }
 
+  function chooseTaskCount(next: number): void {
+    setTaskCount(next);
+    try {
+      window.localStorage.setItem(TASK_COUNT_KEY, String(next));
+    } catch {
+      /* private mode: not worth failing over */
+    }
+  }
+
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, url);
@@ -94,7 +117,7 @@ export function ScanForm({ onStarted }: Props) {
     setBusy(true);
     setFailure(null);
     try {
-      const { scanId } = await api.startScan(target, repo ? { repo, autoPr } : {});
+      const { scanId } = await api.startScan(target, { ...(repo ? { repo, autoPr } : {}), taskCount });
       onStarted(scanId);
     } catch (err) {
       setFailure({ kind: "unreachable", detail: err instanceof Error ? err.message : "unknown error" });
@@ -106,9 +129,10 @@ export function ScanForm({ onStarted }: Props) {
   return (
     <form onSubmit={(event) => void start(event)} className="scan-form" aria-label="Scan a site" noValidate>
       <div className="scan-form-entry">
-        <label className="scan-form-url">
-          <span className="scan-form-url-label">URL</span>
+        <div className="scan-form-url">
+          <label className="scan-form-url-label" htmlFor="scan-form-url-field">URL</label>
           <input
+            id="scan-form-url-field"
             ref={field}
             type="text"
             inputMode="url"
@@ -124,19 +148,51 @@ export function ScanForm({ onStarted }: Props) {
             autoComplete="url"
             spellCheck={false}
           />
-        </label>
+          <button
+            type="button"
+            className="scan-form-settings-toggle"
+            aria-label="Scan settings"
+            aria-expanded={settingsOpen}
+            aria-controls="scan-form-settings-panel"
+            title={"Run " + taskCount + " " + (taskCount === 1 ? "agent" : "agents")}
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            <SettingsIcon size={17} strokeWidth={1.7} />
+          </button>
+        </div>
         <button type="submit" disabled={busy} className="scan-form-submit">
           <span>{busy ? "Starting…" : "Scan"}</span>
           {!busy && <ArrowRight size={17} />}
         </button>
       </div>
 
+      {settingsOpen && (
+        <div id="scan-form-settings-panel" className="scan-form-settings-panel" role="dialog" aria-label="Scan settings">
+          <div className="scan-form-settings-heading">
+            <span>Agents per scan</span>
+            <span className="scan-form-settings-current">{taskCount}</span>
+          </div>
+          <div className="scan-form-settings-options" role="radiogroup" aria-label="Number of agents">
+            {TASK_COUNTS.map((count) => (
+              <button
+                key={count}
+                type="button"
+                role="radio"
+                aria-checked={taskCount === count}
+                className="scan-form-settings-option"
+                data-selected={taskCount === count}
+                onClick={() => chooseTaskCount(count)}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="scan-form-caption">
         <p>
-          Friction sends <strong>multiple AI personas</strong> through your live site to complete real user tasks, uncovering UX issues as they happen.
-        </p>
-        <p>
-          Get prioritized findings with <strong>in-context annotations</strong>, then generate fixes and <strong>open PRs automatically</strong>.
+          Friction sends <strong>multiple AI personas</strong> through your live site to complete real user tasks, <strong>uncover UX issues</strong>, and <strong>automatically generate fixes and open PRs</strong>.
         </p>
       </div>
 

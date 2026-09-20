@@ -43,6 +43,8 @@ export interface ScanOptions {
   repo?: string;
   /** Open one draft pull request per fixable task once the runs are over. */
   autoPr?: boolean;
+  /** Number of task agents to create for this scan. */
+  taskCount?: number;
 }
 
 export class ScanManager {
@@ -87,15 +89,16 @@ export class ScanManager {
 
   private async runPipeline(scanId: string, url: string, options: ScanOptions): Promise<void> {
     const { worker, runs } = this;
+    const taskCount = options.taskCount ?? MAX_SCAN_TASKS;
     log("scan", `${scanId} started in ${this.config.mode} mode: ${url}`);
 
     let plan: PlannedTasks;
     try {
-      plan = this.config.mode === "mock" ? await this.mockPlan(scanId, url) : await this.livePlan(scanId, url);
+      plan = this.config.mode === "mock" ? await this.mockPlan(scanId, url, taskCount) : await this.livePlan(scanId, url, taskCount);
     } catch (err) {
       if (this.isStopped(scanId)) return;
       // crawlSite and generateTasks both degrade on their own; this is the belt to their braces.
-      plan = { tasks: fallbackScanTasks(url), source: "fallback", note: `Couldn't read the site (${errorMessage(err)}), so these tasks are generic.` };
+      plan = { tasks: fallbackScanTasks(url, taskCount), source: "fallback", note: `Couldn't read the site (${errorMessage(err)}), so these tasks are generic.` };
     }
 
     if (this.isStopped(scanId)) return;
@@ -159,7 +162,7 @@ export class ScanManager {
     }
   }
 
-  private async livePlan(scanId: string, url: string): Promise<PlannedTasks> {
+  private async livePlan(scanId: string, url: string, taskCount: number): Promise<PlannedTasks> {
     // The crawl may queue behind other sessions; without this, the scan sits
     // at the creation-time "Opening the site." message for the whole wait.
     await this.worker.patchScan(scanId, { message: "Waiting for a browser session." });
@@ -168,12 +171,12 @@ export class ScanManager {
         await this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) });
       }),
     );
-    await this.worker.patchScan(scanId, { message: `Choosing the ${MAX_SCAN_TASKS} most critical tasks.` });
-    return generateTasks(this.config, url, crawl);
+    await this.worker.patchScan(scanId, { message: `Choosing the ${taskCount} most critical tasks.` });
+    return generateTasks(this.config, url, crawl, taskCount);
   }
 
   /** No browser, no model: a scripted crawl so the root node still shows progress. */
-  private async mockPlan(scanId: string, url: string): Promise<PlannedTasks> {
+  private async mockPlan(scanId: string, url: string, taskCount: number): Promise<PlannedTasks> {
     for (const [index, page] of MOCK_PAGES.entries()) {
       if (this.isStopped(scanId)) return { tasks: [], source: "mock", note: "Stopped by user." };
       await sleep(1500 / this.config.mockSpeed);
@@ -185,6 +188,6 @@ export class ScanManager {
         message: truncate(`Read ${label} (${index + 1}/${MOCK_PAGES.length})`, MESSAGE_MAX),
       });
     }
-    return { tasks: fallbackScanTasks(url), source: "mock", note: "Mock mode: canned tasks, and every run replays the golden run." };
+    return { tasks: fallbackScanTasks(url, taskCount), source: "mock", note: "Mock mode: canned tasks, and every run replays the golden run." };
   }
 }

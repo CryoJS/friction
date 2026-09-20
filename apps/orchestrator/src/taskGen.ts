@@ -12,6 +12,10 @@ import type { Config } from "./config";
 import type { CrawlResult } from "./crawl";
 import { errorMessage, log } from "./util";
 
+function taskLimit(requested: number): number {
+  return Math.max(1, Math.min(MAX_SCAN_TASKS, Math.trunc(requested)));
+}
+
 export interface PlannedTasks {
   tasks: GeneratedTask[];
   source: TaskSource;
@@ -19,14 +23,15 @@ export interface PlannedTasks {
   note: string | null;
 }
 
-const TASKS_JSON_SCHEMA = {
+function tasksJsonSchema(taskCount: number) {
+  return {
   type: "object",
   additionalProperties: false,
   required: ["tasks"],
   properties: {
     tasks: {
       type: "array",
-      description: `Exactly ${MAX_SCAN_TASKS} tasks, most critical first.`,
+      description: `Exactly ${taskCount} tasks, most critical first.`,
       items: {
         type: "object",
         additionalProperties: false,
@@ -39,15 +44,18 @@ const TASKS_JSON_SCHEMA = {
       },
     },
   },
-};
+  };
+}
 
-const INSTRUCTIONS = [
-  `You plan QA for a website. From what a crawler saw on its landing page and main navigation pages, choose the ${MAX_SCAN_TASKS} most critical tasks a real visitor must be able to complete, ranked most critical first.`,
+function instructionsFor(taskCount: number): string {
+  return [
+  `You plan QA for a website. From what a crawler saw on its landing page and main navigation pages, choose the ${taskCount} most critical tasks a real visitor must be able to complete, ranked most critical first.`,
   "Critical means the flows this site exists for: buying or converting, finding key information (products, pricing, policies, opening hours), and getting help.",
   "Each title is one imperative sentence of at most 14 words, specific to this site, achievable in about ten clicks from the landing page, and verifiable by looking at the final page.",
   "Cover different flows: never propose two variations of the same task.",
   "Never involve logging in, creating an account, entering personal data or paying. Adding to a cart is fine; checking out is not.",
 ].join("\n");
+}
 
 function hostOf(url: string): string {
   try {
@@ -61,7 +69,7 @@ function hostOf(url: string): string {
  * The MAX_SCAN_TASKS flows that make sense on most sites, most critical first.
  * Used when the site or the model lets us down, and in mock mode.
  */
-export function fallbackScanTasks(url: string): GeneratedTask[] {
+export function fallbackScanTasks(url: string, taskCount = MAX_SCAN_TASKS): GeneratedTask[] {
   const host = hostOf(url);
   return [
     { title: `Find the most popular product on ${host} and add it to the cart`, whyCritical: "Adding to the cart is the first step of every sale.", successCheck: "The cart shows at least one item." },
@@ -69,11 +77,12 @@ export function fallbackScanTasks(url: string): GeneratedTask[] {
     { title: `Find the price of the main product or plan on ${host}`, whyCritical: "Unclear pricing is a leading reason visitors leave.", successCheck: "A price is visible on the page." },
     { title: `Find how to contact support on ${host}`, whyCritical: "Stuck visitors who cannot reach help are lost.", successCheck: "A contact form, email address, phone number or chat is visible." },
     { title: `Find the return or refund policy on ${host}`, whyCritical: "Buyers check returns before committing to a purchase.", successCheck: "The return or refund policy text is visible." },
-  ];
+  ].slice(0, taskLimit(taskCount));
 }
 
-export async function generateTasks(config: Config, url: string, crawl: CrawlResult): Promise<PlannedTasks> {
-  const generic = (note: string): PlannedTasks => ({ tasks: fallbackScanTasks(url), source: "fallback", note });
+export async function generateTasks(config: Config, url: string, crawl: CrawlResult, taskCount = MAX_SCAN_TASKS): Promise<PlannedTasks> {
+  const count = taskLimit(taskCount);
+  const generic = (note: string): PlannedTasks => ({ tasks: fallbackScanTasks(url, count), source: "fallback", note });
   if (!crawl.landing) return generic("Couldn't read the site, so these tasks are generic.");
   if (!config.openaiModel) return generic("OPENAI_MODEL is not set, so these tasks are generic.");
 
@@ -90,14 +99,14 @@ export async function generateTasks(config: Config, url: string, crawl: CrawlRes
     const client = new OpenAI({ apiKey: config.openaiApiKey ?? undefined, maxRetries: 1, timeout: 90_000 });
     const response = await client.responses.create({
       model: config.openaiModel,
-      instructions: INSTRUCTIONS,
+      instructions: instructionsFor(count),
       input: [{ role: "user", content }],
       store: false,
       ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort as "low" } } : {}),
-      text: { format: { type: "json_schema", name: "qa_tasks", schema: TASKS_JSON_SCHEMA, strict: true } },
+      text: { format: { type: "json_schema", name: "qa_tasks", schema: tasksJsonSchema(count), strict: true } },
     });
 
-    const tasks = parseGeneratedTasks(JSON.parse(response.output_text));
+    const tasks = parseGeneratedTasks(JSON.parse(response.output_text), count);
     if (tasks.length === 0) return generic("The model returned no usable tasks, so these are generic.");
     return { tasks, source: "model", note: null };
   } catch (err) {

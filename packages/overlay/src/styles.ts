@@ -81,10 +81,10 @@ export const CSS = `
 }
 
 .sev-1 { background: #7894ff; }
-.sev-2 { background: #a29dff; }
+.sev-2 { background: #65d68a; }
 .sev-3 { background: #f5cf7a; }
-.sev-4 { background: #ff9e4f; }
-.sev-5 { background: #ff6b57; }
+.sev-4 { background: #ff9f43; }
+.sev-5 { background: #ff5f56; }
 
 .card {
   position: absolute;

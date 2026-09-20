@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   isScanFinished,
   issuePath,
+  SEVERITY_LABELS,
   type RunSnapshot,
   type ScanIssue,
   type ScanReportResponse,
@@ -11,6 +12,7 @@ import {
 } from "@friction/shared";
 import { api } from "../../lib/api";
 import { pathOf, shortUrl } from "../../lib/format";
+import { annotationFindingIdForIssue } from "../../lib/scan";
 import { categoryLabel } from "../badges";
 import { Chip, Dot, SEVERITY_STYLES, stateTone } from "../badges";
 import { EvidenceImage, type EvidenceSource } from "../EvidenceImage";
@@ -20,7 +22,10 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelectNode: (nodeId: string) => void;
-  onOpenIssue: (taskId: string, issueKey: string) => void;
+  onOpenIssue?: (taskId: string, issueKey: string) => void;
+  onOpenAnnotation?: (findingId: string) => void;
+  onSelectPath?: (path: string) => void;
+  sidebar?: boolean;
 }
 
 interface DirectoryPath {
@@ -151,7 +156,7 @@ function useRunSnapshots(tasks: readonly ScanTreeTask[], enabled: boolean, live:
   return snapshots;
 }
 
-export function PathView({ tree, report, onSelectNode, onOpenIssue }: Props) {
+export function PathView({ tree, report, onSelectNode, onOpenIssue, onOpenAnnotation, onSelectPath, sidebar = false }: Props) {
   const live = !isScanFinished(tree.scan.status);
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(new Set());
   const [expandedPreview, setExpandedPreview] = useState<ExpandedPreview | null>(null);
@@ -178,9 +183,9 @@ export function PathView({ tree, report, onSelectNode, onOpenIssue }: Props) {
   const activeAgents = tree.tasks.filter((task) => task.state === "running").length;
 
   return (
-    <div className="path-view absolute inset-0 overflow-y-auto px-4 pb-6 pt-18 sm:px-6">
-      <div className="mx-auto w-full max-w-5xl">
-        <header className="mb-4 flex items-end justify-between gap-4">
+    <div className={`path-view absolute inset-0 overflow-y-auto ${sidebar ? "px-2 pb-3 pt-2 sm:px-3" : "px-4 pb-6 pt-5 sm:px-6"}`}>
+      <div className={sidebar ? "w-full" : "mx-auto w-full max-w-5xl"}>
+        {!sidebar && <header className="mb-4 flex items-end justify-between gap-4">
           <div className="min-w-0">
             <p className="text-caption text-smoke">Web paths</p>
             <h2 className="mt-1 truncate font-heading text-heading-sm font-medium tracking-[-0.02em] text-white">Site directory</h2>
@@ -189,12 +194,12 @@ export function PathView({ tree, report, onSelectNode, onOpenIssue }: Props) {
             </p>
           </div>
           <Chip tone={live ? "glow" : "good"}>{live ? `${activeAgents} active` : "Snapshot"}</Chip>
-        </header>
+        </header>}
 
         <section aria-label="Web paths" className="path-directory overflow-hidden rounded-card border border-hairline/10 bg-white/4">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_64px] items-center gap-3 border-b border-hairline/10 px-4 py-2.5 text-caption text-smoke sm:grid-cols-[minmax(0,1fr)_auto_80px] sm:px-5">
+          <div className={`grid ${sidebar ? "grid-cols-[minmax(0,1fr)_56px]" : "grid-cols-[minmax(0,1fr)_auto_64px]"} items-center gap-2 border-b border-hairline/10 text-caption text-smoke ${sidebar ? "px-3 py-2 sm:grid-cols-[minmax(0,1fr)_64px] sm:px-3" : "px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto_80px] sm:px-5"}`}>
             <span>Path</span>
-            <span className="text-right">Issues</span>
+            {!sidebar && <span className="text-right">Issues</span>}
             <span className="text-right">Preview</span>
           </div>
 
@@ -206,6 +211,9 @@ export function PathView({ tree, report, onSelectNode, onOpenIssue }: Props) {
                 onToggle={togglePath}
                 onSelectNode={onSelectNode}
                 onOpenIssue={onOpenIssue}
+                onOpenAnnotation={onOpenAnnotation}
+                onSelectPath={onSelectPath}
+                sidebar={sidebar}
                 onOpenPreview={(source, label) => setExpandedPreview({ source, label })}
               />
             ))}
@@ -376,46 +384,55 @@ function flattenDirectory(paths: Map<string, DirectoryPath>, rootPath: string, c
   return ordered;
 }
 
-function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenPreview }: { row: DirectoryRow; onToggle: (key: string) => void; onSelectNode: (nodeId: string) => void; onOpenIssue: Props["onOpenIssue"]; onOpenPreview: (source: EvidenceSource, label: string) => void }) {
+function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenAnnotation, onSelectPath, sidebar, onOpenPreview }: { row: DirectoryRow; onToggle: (key: string) => void; onSelectNode: (nodeId: string) => void; onOpenIssue?: Props["onOpenIssue"]; onOpenAnnotation?: Props["onOpenAnnotation"]; onSelectPath?: Props["onSelectPath"]; sidebar: boolean; onOpenPreview: (source: EvidenceSource, label: string) => void }) {
   return (
     <div
       role="listitem"
-      style={{ paddingLeft: `${20 + row.depth * 24}px` }}
-      className="path-directory-row grid min-h-16 grid-cols-[minmax(0,1fr)_auto_64px] items-center gap-3 border-b border-hairline/10 py-3 pr-4 transition-colors last:border-b-0 hover:bg-white/4 sm:grid-cols-[minmax(0,1fr)_auto_80px] sm:pr-5"
+      style={{ paddingLeft: `${sidebar ? 12 + row.depth * 16 : 20 + row.depth * 24}px` }}
+      className={`path-directory-row grid ${sidebar ? "min-h-0 grid-cols-[minmax(0,1fr)_56px] gap-2 py-2 pr-3" : "min-h-16 grid-cols-[minmax(0,1fr)_auto_64px] gap-3 py-3 pr-4"} items-center border-b border-hairline/10 transition-colors last:border-b-0 hover:bg-white/4 ${sidebar ? "sm:grid-cols-[minmax(0,1fr)_64px] sm:pr-3" : "sm:grid-cols-[minmax(0,1fr)_auto_80px] sm:pr-5"}`}
     >
-      <div className="flex min-w-0 items-center gap-3">
+      <div className={`flex min-w-0 ${sidebar ? "flex-col items-start gap-1" : "items-center gap-3"}`}>
         <button
           type="button"
-          disabled={!row.hasChildren}
+          disabled={!row.hasChildren && !onSelectPath}
           aria-expanded={row.hasChildren ? !row.collapsed : undefined}
-          aria-label={row.hasChildren ? `${row.collapsed ? "Expand" : "Collapse"} ${row.label}` : row.label}
-          onClick={() => row.hasChildren && onToggle(row.key)}
-          className="flex min-w-0 items-center gap-2 text-left text-smoke transition-colors hover:text-white disabled:cursor-default disabled:hover:text-smoke"
+          aria-label={row.hasChildren ? `${row.collapsed ? "Expand" : "Collapse"} ${row.label}` : onSelectPath ? `Open ${row.label}` : row.label}
+          onClick={() => {
+            if (row.hasChildren) onToggle(row.key);
+            onSelectPath?.(row.key);
+          }}
+          className={`flex min-w-0 items-center gap-2 text-left text-smoke transition-colors hover:text-white disabled:cursor-default disabled:hover:text-smoke ${sidebar ? "w-full" : ""}`}
         >
           {row.hasChildren ? row.collapsed ? <ChevronRight size={15} className="shrink-0" /> : <ChevronDown size={15} className="shrink-0" /> : <span aria-hidden="true" className="h-4 w-4 shrink-0" />}
-          <span className="min-w-0">
+          <span className="min-w-0 max-w-full">
             <span className={`block truncate font-mono text-ui tracking-normal ${row.root ? "text-white" : "text-bone"}`} title={row.title}>
               {row.label}
             </span>
-            {row.root ? <span className="mt-0.5 block text-caption text-smoke">Starting path</span> : row.kind === "panel" ? <span className="mt-0.5 block text-caption text-smoke">Panel</span> : null}
+            {!sidebar && (row.root ? <span className="mt-0.5 block text-caption text-smoke">Starting path</span> : row.kind === "panel" ? <span className="mt-0.5 block text-caption text-smoke">Panel</span> : null)}
           </span>
         </button>
 
-        <div className="flex shrink-0 flex-wrap justify-start gap-1.5" aria-label={`${row.agents.length} agents on this path`}>
+        {!sidebar && <div className="flex shrink-0 flex-wrap justify-start gap-1.5" aria-label={`${row.agents.length} agents on this path`}>
           {row.agents.map((task) => <AgentMarker key={task.runId} task={task} onSelectNode={onSelectNode} />)}
-        </div>
+        </div>}
+
+        {sidebar && row.issues.length > 0 && (
+          <div className="ml-6 flex flex-wrap items-center gap-1" aria-label={`${row.issues.length} issues on this path`}>
+            {row.issues.map((issue) => <IssueMarker key={issue.key} issue={issue} compact onOpenIssue={onOpenIssue} onOpenAnnotation={onOpenAnnotation} />)}
+          </div>
+        )}
       </div>
 
-      <div className="flex min-w-7 justify-end gap-1.5" aria-label={`${row.issues.length} issues on this path`}>
-        {row.issues.map((issue) => <IssueMarker key={issue.key} issue={issue} onOpenIssue={onOpenIssue} />)}
-      </div>
+      {!sidebar && <div className="flex min-w-7 justify-end gap-1.5" aria-label={`${row.issues.length} issues on this path`}>
+        {row.issues.map((issue) => <IssueMarker key={issue.key} issue={issue} onOpenIssue={onOpenIssue} onOpenAnnotation={onOpenAnnotation} />)}
+      </div>}
 
       <div className="flex justify-end">
         {row.preview ? (
           <button
             type="button"
             onClick={() => onOpenPreview(row.preview!, row.label)}
-            className="path-preview-trigger h-10 w-16 shrink-0 rounded-ui border border-hairline/10 sm:h-12 sm:w-20"
+            className={`path-preview-trigger shrink-0 rounded-ui border border-hairline/10 ${sidebar ? "h-8 w-14 sm:h-9 sm:w-16" : "h-10 w-16 sm:h-12 sm:w-20"}`}
             aria-haspopup="dialog"
             aria-label={`Expand preview for ${row.label}`}
             title="Expand preview"
@@ -423,7 +440,7 @@ function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenPreview }: { 
             <EvidenceImage source={row.preview} label={row.label} className="h-full w-full rounded-ui" />
           </button>
         ) : (
-          <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-ui border border-dashed border-hairline/10 bg-graphite text-[10px] text-smoke sm:h-12 sm:w-20">
+          <div className={`flex shrink-0 items-center justify-center rounded-ui border border-dashed border-hairline/10 bg-graphite text-[10px] text-smoke ${sidebar ? "h-8 w-14 sm:h-9 sm:w-16" : "h-10 w-16 sm:h-12 sm:w-20"}`}>
             No preview
           </div>
         )}
@@ -476,18 +493,26 @@ function AgentMarker({ task, onSelectNode }: { task: ScanTreeTask; onSelectNode:
   );
 }
 
-function IssueMarker({ issue, onOpenIssue }: { issue: ScanIssue; onOpenIssue: Props["onOpenIssue"] }) {
+function IssueMarker({ issue, compact = false, onOpenIssue, onOpenAnnotation }: { issue: ScanIssue; compact?: boolean; onOpenIssue?: Props["onOpenIssue"]; onOpenAnnotation?: Props["onOpenAnnotation"] }) {
   const style = SEVERITY_STYLES[issue.severity];
   const taskIndex = issue.taskIndexes[0];
+  const findingId = annotationFindingIdForIssue(issue);
+  const open = () => {
+    if (onOpenIssue && taskIndex !== undefined) {
+      onOpenIssue(`t${taskIndex}`, issue.key);
+      return;
+    }
+    if (findingId && onOpenAnnotation) onOpenAnnotation(findingId);
+  };
   return (
     <button
       type="button"
-      onClick={() => taskIndex !== undefined && onOpenIssue(`t${taskIndex}`, issue.key)}
-      className={`path-issue-marker inline-flex h-7 w-7 items-center justify-center rounded-full border ${style.ring} ${style.text} transition-colors hover:bg-white/8`}
-      title={`Severity ${issue.severity}: ${categoryLabel(issue.category)}${issue.summary ? ` · ${issue.summary}` : ""}`}
-      aria-label={`Severity ${issue.severity} ${categoryLabel(issue.category)} issue`}
+      onClick={open}
+      className={`path-issue-marker inline-flex ${compact ? "h-5 w-5" : "h-7 w-7"} items-center justify-center rounded-full border ${style.ring} ${style.text} transition-colors hover:bg-white/8`}
+      title={`${onOpenIssue ? "Open issue details" : "Open in annotations"}: ${SEVERITY_LABELS[issue.severity]} · ${categoryLabel(issue.category)}${issue.summary ? ` · ${issue.summary}` : ""}`}
+      aria-label={`${onOpenIssue ? "Open" : "Open in annotations"} ${categoryLabel(issue.category)} issue`}
     >
-      <AlertTriangle size={14} />
+      <AlertTriangle size={compact ? 11 : 14} />
     </button>
   );
 }

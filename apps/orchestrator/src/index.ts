@@ -1,6 +1,6 @@
 /**
  * Friction orchestrator.
- *   POST /scans          { url, repo?, autoPr? }
+ *   POST /scans          { url, repo?, autoPr?, taskCount? }
  *                                      -> { scanId } at once; crawl, then up to MAX_SCAN_TASKS tasks, one run each, in the background.
  *                                         `repo` must be on the allow-list; with `autoPr`, one draft PR per fixable task at the end
  *   POST /scans/:scanId/stop           -> stops an active scan
@@ -161,7 +161,13 @@ app.post("/scans", async (req, res) => {
     return;
   }
   try {
-    const body: CreateScanResponse = { scanId: await scans.start(url, { repo, autoPr: repo !== undefined && parsed.success && parsed.data.autoPr === true }) };
+    const body: CreateScanResponse = {
+      scanId: await scans.start(url, {
+        repo,
+        autoPr: repo !== undefined && parsed.success && parsed.data.autoPr === true,
+        taskCount: parsed.success ? parsed.data.taskCount : undefined,
+      }),
+    };
     res.status(201).json(body);
   } catch (err) {
     log("http", `could not start a scan: ${errorMessage(err)}`);

@@ -44,7 +44,7 @@ export class WorkerClient {
   }
 
   /** Fails loudly too: no scan, nothing to show. */
-  async createScan(url: string, options: { repo?: string; autoPr?: boolean } = {}): Promise<string> {
+  async createScan(url: string, options: { repo?: string; autoPr?: boolean; taskCount?: number } = {}): Promise<string> {
     const response = await retry(3, 300, () => this.request("/api/scans", this.json("POST", { url, ...options }), 8000));
     return ((await response.json()) as CreateScanResponse).scanId;
   }

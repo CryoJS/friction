@@ -60,37 +60,38 @@ export function SnapshotViewer({
   snapshotUrl,
   findings,
   scanId,
+  focusedFindingId,
 }: {
   snapshotUrl: string;
   findings: AnnotationFinding[];
   scanId: string;
+  focusedFindingId?: string | null;
 }): React.ReactElement {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const handleRef = useRef<OverlayHandle | null>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [located, setLocated] = useState<number | null>(null);
-  const [fit, setFit] = useState(true);
   const [scale, setScale] = useState(1);
   const [docHeight, setDocHeight] = useState(900);
+  const [ready, setReady] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   // Fit the captured 1280px-wide page into whatever width this pane has.
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const measure = (): void => setScale(fit ? Math.min(1, wrap.clientWidth / FRAME_WIDTH) : 1);
+    const measure = (): void => setScale(Math.min(1, wrap.clientWidth / FRAME_WIDTH));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [fit, html]);
+  }, [html]);
 
   useEffect(() => {
     let cancelled = false;
     setHtml(null);
     setError(null);
-    setLocated(null);
+    setReady(false);
     fetch(snapshotUrl)
       .then((response) => (response.ok ? response.text() : Promise.reject(new Error(`${response.status}`))))
       .then((text) => {
@@ -103,6 +104,7 @@ export function SnapshotViewer({
       cancelled = true;
       handleRef.current?.destroy();
       handleRef.current = null;
+      setReady(false);
     };
   }, [snapshotUrl]);
 
@@ -119,34 +121,24 @@ export function SnapshotViewer({
     };
     try {
       handleRef.current = mountOverlay(response, doc);
-      // Markers live inside the overlay's shadow root, not the light DOM.
-      const root = doc.getElementById("__friction-root");
-      setLocated(root?.shadowRoot?.querySelectorAll(".marker").length ?? 0);
       // Let the frame be as tall as the page so the whole thing is visible when scaled,
       // rather than scrolling a short window over a long document.
       setDocHeight(Math.max(600, Math.min(doc.documentElement.scrollHeight, 20000)));
+      setReady(true);
     } catch {
       setError("The overlay could not be drawn on this snapshot.");
     }
   };
 
+  useEffect(() => {
+    if (ready && focusedFindingId) handleRef.current?.focusFinding(focusedFindingId);
+  }, [focusedFindingId, ready]);
+
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-graphite">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline/10 px-4 py-1.5">
-        <span className="truncate text-caption text-smoke">
-          {findings.length} finding{findings.length === 1 ? "" : "s"}
-          {located !== null ? ` · ${located} placed` : ""}
-          {error ? ` · ${error}` : ""}
-        </span>
-        <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={() => setFit((v) => !v)} className="pill-ghost" aria-pressed={fit}>
-            {fit ? `Fit ${Math.round(scale * 100)}%` : "Actual size"}
-          </button>
-          <span className="font-mono text-caption tracking-normal text-slate">scripts disabled</span>
-        </div>
-      </div>
-
-      {html === null && !error ? (
+      {error ? (
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-ui text-smoke">{error}</div>
+      ) : html === null ? (
         <div className="flex flex-1 items-center justify-center text-ui text-smoke">Loading the page…</div>
       ) : (
         <div ref={wrapRef} className="min-h-0 flex-1 overflow-auto bg-white">

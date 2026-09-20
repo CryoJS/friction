@@ -183,7 +183,12 @@ export function GitHubConnect({ onChanged, onOnlyRepo }: Props) {
           <div className="scan-form-github-reveal" data-open={managing} inert={!managing}>
             <div className="scan-form-github-clip">
             <div id="scan-form-github-panel" className="scan-form-github-panel">
-              <p className="scan-form-github-muted">Friction opens pull requests only in the repositories you tick.</p>
+              <div className="scan-form-github-panel-heading">
+                <p className="scan-form-github-muted">Friction opens pull requests only in the repositories you tick.</p>
+                <button type="button" className="scan-form-github-quiet" disabled={busy} onClick={() => void run(api.githubDisconnect).then(() => onChanged())}>
+                  Disconnect
+                </button>
+              </div>
               {repos.length > FILTER_FROM && (
                 <input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter" aria-label="Filter repositories" className="scan-form-github-filter" />
               )}
@@ -198,14 +203,11 @@ export function GitHubConnect({ onChanged, onOnlyRepo }: Props) {
                 ))}
                 {shown.length === 0 && <li className="scan-form-github-muted">{repos.length > 0 ? "No repository matches." : "This account can push to no repositories."}</li>}
               </ul>
-              <div className="scan-form-github-line">
+              {(ticked !== null || busy || saved) && (
                 <span className="scan-form-github-muted" role="status">
-                  {ticked !== null || busy ? "Saving…" : saved ? "Saved" : ""}
+                  {ticked !== null || busy ? "Saving…" : "Saved"}
                 </span>
-                <button type="button" className="scan-form-github-quiet scan-form-github-end" disabled={busy} onClick={() => void run(api.githubDisconnect).then(() => onChanged())}>
-                  Disconnect
-                </button>
-              </div>
+              )}
             </div>
             </div>
           </div>

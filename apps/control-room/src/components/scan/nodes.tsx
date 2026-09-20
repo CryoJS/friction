@@ -189,7 +189,7 @@ function TaskTooltip({ data }: { data: TaskFlowNode["data"] }) {
         </li>
         <li>
           {data.findingCount} {data.findingCount === 1 ? "finding" : "findings"}
-          {data.worst !== null && ` · worst severity S${data.worst}`}
+          {data.worst !== null && ` · worst severity ${SEVERITY_LABELS[data.worst]}`}
         </li>
       </ul>
     </div>
@@ -277,7 +277,7 @@ export function IssueNode({ data }: NodeProps<IssueFlowNode>) {
           onClick={data.onOpen}
           aria-label={`Issue ${data.rank}: ${categoryLabel(data.category)}, severity ${data.severity} of 5`}
           style={{ backgroundColor: "var(--color-graphite)" }}
-          className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-110 ${style.ring} ${data.focused ? "ring-2 ring-white/70" : ""}`}
+          className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-105 ${style.ring} ${data.focused ? "ring-2 ring-white/70" : ""}`}
         >
           <span className={`font-mono text-heading-sm font-semibold tabular-nums ${style.text}`}>S{data.severity}</span>
         </button>

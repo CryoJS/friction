@@ -10,7 +10,6 @@ import {
 } from "@friction/shared";
 import { pathOf } from "../../lib/format";
 import { VERDICT, VERDICT_ORDER, hostOf, runProgress } from "../../lib/scan";
-import { BookmarkletCard } from "../BookmarkletCard";
 import { Dot, SEVERITY_STYLES } from "../badges";
 import { Cross, Filter, Plus, Sort } from "../icons";
 import { IssueCard } from "./IssueCard";
@@ -20,12 +19,13 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
+  onOpenAnnotation?: (findingId: string) => void;
 }
 
 const SEVERITIES: Severity[] = [5, 4, 3, 2, 1];
 
 /** The site node's panel: crawl progress while reading, then the merged site report. */
-export function RootPanel({ tree, report, onSelect }: Props) {
+export function RootPanel({ tree, report, onSelect, onOpenAnnotation }: Props) {
   const { scan } = tree;
   const hasTasks = tree.tasks.length > 0;
   const progress = runProgress(tree);
@@ -43,8 +43,6 @@ export function RootPanel({ tree, report, onSelect }: Props) {
         </h2>
         {showMessage && <p className="mt-1.5 text-ui text-ash">{scan.message}</p>}
       </header>
-
-      {scan.status === "completed" && <BookmarkletCard scanId={scan.id} scanUrl={scan.url} />}
 
       {scan.repo && (
         <section aria-label="Pull requests" className="rounded-card border border-hairline/10 bg-white/4 p-5">
@@ -81,7 +79,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
           reading={scan.status === "crawling"}
         />
       ) : report ? (
-        <ReportBody tree={tree} report={report} onSelect={onSelect} />
+        <ReportBody tree={tree} report={report} onSelect={onSelect} onOpenAnnotation={onOpenAnnotation} />
       ) : (
         <div className="flex flex-col items-center gap-4 py-10 text-body text-smoke" aria-busy="true">
           <div className="wash wash-sweep h-px w-56" aria-hidden="true" />
@@ -167,7 +165,7 @@ function bySeverity(a: { severity: Severity; detectedAt: number | null }, b: { s
 
 type IssueSort = "recent" | "severity";
 
-function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report: ScanReportResponse; onSelect: (nodeId: string) => void }) {
+function ReportBody({ tree, report, onSelect, onOpenAnnotation }: { tree: ScanTreeResponse; report: ScanReportResponse; onSelect: (nodeId: string) => void; onOpenAnnotation?: (findingId: string) => void }) {
   const { summary } = report;
 
   const [taskFilter, setTaskFilter] = useState<FacetState<number>>(new Set());
@@ -269,7 +267,7 @@ function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report
             <p className="rounded-card border border-dashed border-hairline/20 px-6 py-10 text-center text-body text-smoke">No issue matches these filters.</p>
           )}
           {visible.map((issue) => (
-            <IssueCard key={issue.key} issue={issue} rank={rankByKey.get(issue.key) ?? 0} onSelect={onSelect} />
+            <IssueCard key={issue.key} issue={issue} rank={rankByKey.get(issue.key) ?? 0} onSelect={onSelect} onOpenAnnotation={onOpenAnnotation} />
           ))}
         </div>
       </section>
@@ -323,7 +321,7 @@ function IssueFilters({ taskOptions, taskFilter, severityFilter, onToggleTask, o
       <FacetRow label="Severity">
         {SEVERITIES.map((severity) => (
           <FilterPill key={severity} pressed={severityFilter.has(severity)} onClick={() => onToggleSeverity(severity)} tone={SEVERITY_STYLES[severity].text}>
-            S{severity}
+            {SEVERITY_LABELS[severity]}
           </FilterPill>
         ))}
       </FacetRow>

@@ -12,16 +12,22 @@ export default function App() {
   const [overHero, setOverHero] = useState(true);
   const [newScanOpen, setNewScanOpen] = useState(false);
   const [scanView, setScanView] = useState<ScanView>("graph");
+  const [annotationFindingId, setAnnotationFindingId] = useState<string | null>(null);
+  const [annotationPath, setAnnotationPath] = useState<string | null>(null);
   const landingScroller = useRef<HTMLElement>(null);
 
   const goHome = useCallback(() => {
     landingScroller.current?.scrollTo({ top: 0, behavior: "smooth" });
     setNewScanOpen(false);
     setScanView("graph");
+    setAnnotationFindingId(null);
+    setAnnotationPath(null);
     setQuery({ scan: null, node: null, tab: "scan" });
   }, [setQuery]);
   const openScan = useCallback((scanId: string) => {
     setScanView("graph");
+    setAnnotationFindingId(null);
+    setAnnotationPath(null);
     setQuery({ scan: scanId, node: null, tab: "scan" });
   }, [setQuery]);
   const startNewScan = useCallback((scanId: string) => {
@@ -30,8 +36,22 @@ export default function App() {
   }, [openScan]);
   const selectScanView = useCallback((view: ScanView) => {
     setScanView(view);
+    if (view !== "page") {
+      setAnnotationFindingId(null);
+      setAnnotationPath(null);
+    }
     if (query.tab === "results") setQuery({ tab: "scan" });
   }, [query.tab, setQuery]);
+  const openAnnotation = useCallback((findingId: string) => {
+    setAnnotationFindingId(findingId);
+    setAnnotationPath(null);
+    selectScanView("page");
+  }, [selectScanView]);
+  const selectAnnotationPath = useCallback((path: string) => {
+    setAnnotationPath(path);
+    setAnnotationFindingId(null);
+    selectScanView("page");
+  }, [selectScanView]);
   const selectNode = useCallback((node: string) => setQuery({ node, tab: "scan" }), [setQuery]);
   const openNewScan = useCallback(() => setNewScanOpen(true), []);
   const closeNewScan = useCallback(() => setNewScanOpen(false), []);
@@ -48,7 +68,7 @@ export default function App() {
     return (
       <div className="flex h-full flex-col">
         <Nav onHome={goHome} action={newScan}>
-          <ScanViewTabs view={scanView} onChange={selectScanView} />
+          <ScanViewTabs view={query.tab === "results" ? null : scanView} onChange={selectScanView} />
           <TabButton tab="results" current={query.tab === "results" ? "results" : "scan"} onTab={(tab) => setQuery({ tab })}>
             Results
           </TabButton>
@@ -59,6 +79,10 @@ export default function App() {
           nodeId={query.node}
           view={query.tab === "results" ? "results" : "scan"}
           scanView={scanView}
+          focusedAnnotationId={annotationFindingId}
+          annotationPath={annotationPath}
+          onOpenAnnotation={openAnnotation}
+          onSelectAnnotationPath={selectAnnotationPath}
           onSelectNode={selectNode}
         />
         <NewScanDialog open={newScanOpen} onClose={closeNewScan} onStarted={startNewScan} />

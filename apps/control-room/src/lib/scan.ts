@@ -91,3 +91,8 @@ export function rankedIssuesForTask(report: ScanReportResponse | null, taskIndex
   if (!report) return [];
   return report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(taskIndex));
 }
+
+/** The annotation finding that best represents an issue, preferring the occurrence from a task when one is known. */
+export function annotationFindingIdForIssue(issue: ScanIssue, taskIndex?: number): string | undefined {
+  return issue.occurrences.find((occurrence) => taskIndex === undefined || occurrence.taskIndex === taskIndex)?.findingId ?? issue.occurrences[0]?.findingId;
+}
