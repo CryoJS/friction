@@ -1149,6 +1149,19 @@ a {
   letter-spacing: 0.01em;
 }
 
+.scan-form-caption strong {
+  color: var(--color-white);
+  font-weight: 700;
+}
+
+.scan-form-caption p {
+  margin: 0;
+}
+
+.scan-form-caption p + p {
+  margin-top: 10px;
+}
+
 .scan-form-options {
   display: flex;
   align-items: flex-start;
@@ -1699,6 +1712,47 @@ a {
 
 .scan-flow .react-flow__attribution a {
   color: inherit;
+}
+
+.issue-filter-card {
+  border-color: rgb(229 229 229 / 0.22);
+  background: rgb(10 10 10 / 0.78);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+.crawled-pages-card {
+  border-color: rgb(229 229 229 / 0.16);
+  border-style: dashed;
+  background: rgb(10 10 10 / 0.36);
+}
+
+.crawled-pages-summary {
+  color: var(--color-smoke);
+}
+
+.crawled-pages-summary:hover {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--color-bone);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-5 {
+  color: var(--color-sev-5);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-4 {
+  color: var(--color-sev-4);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-3 {
+  color: var(--color-sev-3);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-2 {
+  color: var(--color-sev-2);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-1 {
+  color: var(--color-sev-1);
 }
 
 /*

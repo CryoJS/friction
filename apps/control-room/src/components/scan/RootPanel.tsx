@@ -11,7 +11,7 @@ import {
 import { pathOf } from "../../lib/format";
 import { VERDICT, VERDICT_ORDER, hostOf, runProgress } from "../../lib/scan";
 import { Dot, SEVERITY_STYLES } from "../badges";
-import { Cross, Plus } from "../icons";
+import { Cross, Filter, Plus, Sort } from "../icons";
 import { IssueCard } from "./IssueCard";
 import { Notice } from "./Notice";
 
@@ -87,8 +87,8 @@ export function RootPanel({ tree, report, onSelect }: Props) {
       )}
 
       {hasTasks && scan.pages.length > 0 && (
-        <details className="group rounded-card border border-hairline/10 bg-white/4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-card px-5 py-4 text-ui text-bone transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
+        <details className="crawled-pages-card group rounded-ui border">
+          <summary className="crawled-pages-summary flex cursor-pointer list-none items-center justify-between gap-4 rounded-ui px-4 py-3 text-ui transition-colors [&::-webkit-details-marker]:hidden">
             <span>
               Crawled pages <span className="tabular-nums text-smoke">{scan.pages.length}</span>
             </span>
@@ -157,11 +157,19 @@ function byRecency(a: { detectedAt: number | null }, b: { detectedAt: number | n
   return b.detectedAt - a.detectedAt;
 }
 
+function bySeverity(a: { severity: Severity; detectedAt: number | null }, b: { severity: Severity; detectedAt: number | null }): number {
+  if (a.severity !== b.severity) return b.severity - a.severity;
+  return byRecency(a, b);
+}
+
+type IssueSort = "recent" | "severity";
+
 function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report: ScanReportResponse; onSelect: (nodeId: string) => void }) {
   const { summary } = report;
 
   const [taskFilter, setTaskFilter] = useState<FacetState<number>>(new Set());
   const [severityFilter, setSeverityFilter] = useState<FacetState<Severity>>(new Set());
+  const [sortOrder, setSortOrder] = useState<IssueSort>("recent");
   const active = taskFilter.size + severityFilter.size > 0;
 
   // Every task in the scan, not just ones with an issue so far: the filter's own options never
@@ -177,9 +185,11 @@ function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report
           (issue) => matchesFacet(severityFilter, issue.severity) && (taskFilter.size === 0 || issue.taskIndexes.some((index) => taskFilter.has(index))),
         )
         .slice()
-        .sort(byRecency),
-    [report.issues, taskFilter, severityFilter],
+        .sort(sortOrder === "recent" ? byRecency : bySeverity),
+    [report.issues, taskFilter, severityFilter, sortOrder],
   );
+
+  const sortLabel = sortOrder === "recent" ? "Most recent first" : "Most severe first";
 
   return (
     <>
@@ -222,7 +232,16 @@ function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report
               {active ? `${visible.length}/${report.issues.length}` : report.issues.length}
             </span>
           </h3>
-          <p className="text-caption text-smoke">Most recent first</p>
+          <button
+            type="button"
+            onClick={() => setSortOrder((current) => current === "recent" ? "severity" : "recent")}
+            aria-pressed={sortOrder === "severity"}
+            className="issue-sort-toggle inline-flex items-center gap-1.5 text-caption text-smoke transition-colors hover:text-white"
+            title={`Sort issues: ${sortLabel}`}
+          >
+            <Sort size={13} />
+            {sortLabel}
+          </button>
         </div>
 
         {report.issues.length > 0 && (
@@ -274,9 +293,12 @@ interface IssueFiltersProps {
 function IssueFilters({ taskOptions, taskFilter, severityFilter, onToggleTask, onToggleSeverity, onClear }: IssueFiltersProps) {
   const active = taskFilter.size + severityFilter.size > 0;
   return (
-    <div className="mt-3 space-y-2.5 rounded-card border border-hairline/10 bg-white/4 p-4">
+    <div className="issue-filter-card mt-3 space-y-2.5 rounded-ui border p-4">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-caption text-ash">Filter</span>
+        <span className="flex items-center gap-2 text-ui text-bone">
+          <Filter size={15} />
+          Filter
+        </span>
         {active && (
           <button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-caption text-smoke transition-colors hover:text-white">
             <Cross size={11} />
@@ -317,7 +339,7 @@ function FacetRow({ label, children }: { label: string; children: React.ReactNod
 
 function FilterPill({ pressed, onClick, tone, children }: { pressed: boolean; onClick: () => void; tone?: string; children: React.ReactNode }) {
   return (
-    <button type="button" aria-pressed={pressed} onClick={onClick} className={`pill-ghost h-7 px-2.5 text-caption ${!pressed && tone ? tone : ""}`}>
+    <button type="button" aria-pressed={pressed} onClick={onClick} className={`filter-pill pill-ghost h-7 px-2.5 text-caption ${tone ?? ""}`}>
       {children}
     </button>
   );
