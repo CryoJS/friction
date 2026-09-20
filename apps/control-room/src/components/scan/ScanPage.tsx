@@ -98,7 +98,14 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
             aria-label="Scan tree"
             className="relative h-105 shrink-0 overflow-hidden rounded-card border border-hairline/10 lg:h-auto lg:min-w-0 lg:flex-1"
           >
-            <ScanGraph nodes={graph.nodes} edges={graph.edges} />
+            <ScanGraph
+              nodes={graph.nodes}
+              edges={graph.edges}
+              tree={tree}
+              report={report}
+              onSelectNode={selectNode}
+              onOpenIssue={openIssue}
+            />
           </section>
           <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
             <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} focusedIssueKey={focusedIssueKey} />

@@ -1974,6 +1974,115 @@ a {
 
 /* ----------------------------------------------------------- scan canvas */
 
+.path-preview-trigger {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-graphite);
+  cursor: zoom-in;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out, transform 160ms var(--ease-out-expo);
+}
+
+.path-preview-trigger:hover {
+  border-color: rgb(229 229 229 / 0.5);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 0.22);
+  transform: scale(1.03);
+}
+
+.path-preview-backdrop {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(10 10 10 / 0.78);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+  animation: new-scan-fade-in 160ms ease-out;
+}
+
+.path-preview-dialog {
+  position: relative;
+  display: flex;
+  width: min(100%, 1100px);
+  max-height: 100%;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid rgb(229 229 229 / 0.2);
+  border-radius: 20px;
+  background: var(--color-graphite);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.48), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  animation: new-scan-dialog-in 220ms var(--ease-out-expo);
+}
+
+.path-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.path-preview-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(229 229 229 / 0.16);
+  border-radius: 9999px;
+  color: var(--color-ash);
+  transition: border-color 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.path-preview-close:hover {
+  border-color: rgb(229 229 229 / 0.5);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--color-white);
+}
+
+.path-preview-image {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid rgb(229 229 229 / 0.12);
+  border-radius: 12px;
+  background: var(--color-void);
+}
+
+.path-preview-image > div {
+  min-width: 100%;
+}
+
+@media (max-width: 560px) {
+  .path-preview-backdrop {
+    padding: 12px;
+  }
+
+  .path-preview-dialog {
+    padding: 12px;
+    border-radius: 16px;
+  }
+}
+
+.scan-view-tabs .scan-view-tab[aria-selected="true"] {
+  border-color: var(--color-hairline);
+  background: rgb(255 255 255 / 0.08);
+  color: var(--color-white);
+}
+
+.scan-view-tabs .scan-view-tab[aria-selected="false"] {
+  border-color: transparent;
+  color: var(--color-smoke);
+}
+
+.scan-view-tabs .scan-view-tab[aria-selected="false"]:hover {
+  border-color: rgb(229 229 229 / 0.28);
+  color: var(--color-white);
+}
+
 /*
  * React Flow's stylesheet is unlayered, and an unlayered rule beats any rule
  * inside a cascade layer (Tailwind's utilities included). So these overrides

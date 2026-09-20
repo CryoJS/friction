@@ -92,6 +92,25 @@ export const Filter = (p: IconProps) => (
   </Icon>
 );
 
+export const ChevronDown = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m5.5 7.5 4.5 5 4.5-5" />
+  </Icon>
+);
+
+export const ChevronRight = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m7.5 5.5 5 4.5-5 4.5" />
+  </Icon>
+);
+
+export const AlertTriangle = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m10 3 7 13H3L10 3Z" />
+    <path d="M10 7.5v4M10 14.25v.1" />
+  </Icon>
+);
+
 export const Sort = (p: IconProps) => (
   <Icon {...p}>
     <path d="M5 3.5v13M2.5 14l2.5 2.5L7.5 14M15 16.5v-13M12.5 6l2.5-2.5L17.5 6" />

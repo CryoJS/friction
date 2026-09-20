@@ -4,7 +4,8 @@
  * selection, connecting and delete keys are all off. Each node is a <button>
  * (see nodes.tsx): Tab reaches it and Enter selects it.
  */
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ScanReportResponse, ScanTreeResponse } from "@friction/shared";
 import {
   Background,
   BackgroundVariant,
@@ -22,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 import type { ScanFlowNode } from "../../lib/scanLayout";
 import { Minus, Plus } from "../icons";
 import { IssueNode, OrbitRing, RootNode, TaskNode } from "./nodes";
+import { PathView } from "./PathView";
 
 const NODE_TYPES: NodeTypes = { root: RootNode, task: TaskNode, ring: OrbitRing, issue: IssueNode };
 /** maxZoom 1 keeps a lone site node (while crawling) at its real size. */
@@ -43,7 +45,13 @@ function unscroll(element: HTMLElement): void {
 interface Props {
   nodes: ScanFlowNode[];
   edges: Edge[];
+  tree: ScanTreeResponse;
+  report: ScanReportResponse | null;
+  onSelectNode: (nodeId: string) => void;
+  onOpenIssue: (taskId: string, issueKey: string) => void;
 }
+
+type ScanView = "graph" | "path";
 
 export function ScanGraph(props: Props) {
   return (
@@ -53,8 +61,9 @@ export function ScanGraph(props: Props) {
   );
 }
 
-function Canvas({ nodes, edges }: Props) {
+function Canvas({ nodes, edges, tree, report, onSelectNode, onOpenIssue }: Props) {
   const frame = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<ScanView>("graph");
   const { getZoom, screenToFlowPosition, setCenter } = useReactFlow();
 
   // Every poll rebuilds every node as a brand-new object (layoutScan is
@@ -83,12 +92,13 @@ function Canvas({ nodes, edges }: Props) {
 
   // Tabbing to a node outside the view makes the browser scroll React Flow's
   // overflow-hidden root, which React Flow never notices, so nodes and edges
-  // drift apart. Undo any such scroll; reveal() pans the viewport instead.
+  // drift apart. Undo that scroll; the path directory below owns its own
+  // scroll position.
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
     const reset = (event: Event): void => {
-      if (event.target instanceof HTMLElement) unscroll(event.target);
+      if (event.target instanceof HTMLElement && event.target.classList.contains("react-flow")) unscroll(event.target);
     };
     element.addEventListener("scroll", reset, true);
     return () => element.removeEventListener("scroll", reset, true);
@@ -116,30 +126,81 @@ function Canvas({ nodes, edges }: Props) {
 
   return (
     <div ref={frame} onFocus={reveal} className="scan-flow absolute inset-0">
-      <ReactFlow
-        nodes={measuredNodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        onNodesChange={handleNodesChange}
-        colorMode="dark"
-        nodesDraggable={false}
-        nodesConnectable={false}
-        nodesFocusable={false}
-        edgesFocusable={false}
-        elementsSelectable={false}
-        deleteKeyCode={null}
-        selectionKeyCode={null}
-        panActivationKeyCode={null}
-        zoomOnDoubleClick={false}
-        fitView
-        fitViewOptions={FIT}
-        minZoom={0.15}
-        maxZoom={1.5}
+      <ViewTabs view={view} onChange={setView} />
+
+      {view === "graph" ? (
+        <div id="scan-graph-panel" role="tabpanel" aria-labelledby="scan-graph-tab" className="absolute inset-0">
+          <ReactFlow
+            nodes={measuredNodes}
+            edges={edges}
+            nodeTypes={NODE_TYPES}
+            onNodesChange={handleNodesChange}
+            colorMode="dark"
+            nodesDraggable={false}
+            nodesConnectable={false}
+            nodesFocusable={false}
+            edgesFocusable={false}
+            elementsSelectable={false}
+            deleteKeyCode={null}
+            selectionKeyCode={null}
+            panActivationKeyCode={null}
+            zoomOnDoubleClick={false}
+            fitView
+            fitViewOptions={FIT}
+            minZoom={0.15}
+            maxZoom={1.5}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgb(229 229 229 / 0.12)" />
+            <FitOnGrow count={measuredNodes.length} />
+            <CanvasControls />
+          </ReactFlow>
+        </div>
+      ) : (
+        <div id="scan-path-panel" role="tabpanel" aria-labelledby="scan-path-tab" className="absolute inset-0">
+          <PathView tree={tree} report={report} onSelectNode={onSelectNode} onOpenIssue={onOpenIssue} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViewTabs({ view, onChange }: { view: ScanView; onChange: (view: ScanView) => void }) {
+  const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, current: ScanView) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next: ScanView = current === "graph" ? "path" : "graph";
+    onChange(next);
+    window.requestAnimationFrame(() => document.getElementById(`scan-${next}-tab`)?.focus());
+  };
+
+  return (
+    <div role="tablist" aria-label="Scan view" className="scan-view-tabs absolute right-4 top-4 z-10 flex items-center gap-0.5 rounded-full border border-hairline/15 bg-graphite/90 p-1 backdrop-blur-xs">
+      <button
+        id="scan-graph-tab"
+        type="button"
+        role="tab"
+        aria-selected={view === "graph"}
+        aria-controls="scan-graph-panel"
+        tabIndex={view === "graph" ? 0 : -1}
+        onClick={() => onChange("graph")}
+        onKeyDown={(event) => moveTab(event, "graph")}
+        className="scan-view-tab pill-ghost h-8 border-transparent px-3 text-caption"
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgb(229 229 229 / 0.12)" />
-        <FitOnGrow count={measuredNodes.length} />
-        <CanvasControls />
-      </ReactFlow>
+        Graph
+      </button>
+      <button
+        id="scan-path-tab"
+        type="button"
+        role="tab"
+        aria-selected={view === "path"}
+        aria-controls="scan-path-panel"
+        tabIndex={view === "path" ? 0 : -1}
+        onClick={() => onChange("path")}
+        onKeyDown={(event) => moveTab(event, "path")}
+        className="scan-view-tab pill-ghost h-8 border-transparent px-3 text-caption"
+      >
+        Path
+      </button>
     </div>
   );
 }
