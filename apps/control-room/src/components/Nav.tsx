@@ -1,4 +1,10 @@
-import { LogoMark } from "./icons";
+import { useEffect, useState, type FormEvent } from "react";
+import { normalizeTargetUrl, type ScanListItem } from "@friction/shared";
+import { api } from "../lib/api";
+import { shortUrl } from "../lib/format";
+import { SCAN_STATUS } from "../lib/scan";
+import { Dot } from "./badges";
+import { ArrowRight, LogoMark } from "./icons";
 
 interface Props {
   onHome: () => void;
@@ -28,4 +34,116 @@ export function Nav({ onHome, frosted = false, children, action }: Props) {
       </nav>
     </header>
   );
+}
+
+interface HomeScanNavProps {
+  onOpenScan: (scanId: string) => void;
+}
+
+/** The landing nav is either a compact scan launcher or a link to the newest active scan. */
+export function HomeScanNav({ onOpenScan }: HomeScanNavProps) {
+  const [scans, setScans] = useState<ScanListItem[]>([]);
+  const [url, setUrl] = useState(() => loadSavedScanUrl());
+  const [busy, setBusy] = useState(false);
+  const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    const refresh = (): void => {
+      api
+        .listScans()
+        .then((body) => live && setScans(body.scans))
+        .catch(() => live && setScans([]));
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const activeScan = scans
+    .filter((scan) => scan.status === "crawling" || scan.status === "running")
+    .sort((left, right) => right.createdAt - left.createdAt)[0];
+
+  async function start(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const target = normalizeTargetUrl(url);
+    if (!target) {
+      setInvalid(true);
+      return;
+    }
+
+    setBusy(true);
+    setInvalid(false);
+    try {
+      window.localStorage.setItem("friction:last-scan-url", target);
+    } catch {
+      /* Storage is a convenience only. */
+    }
+    try {
+      const { scanId } = await api.startScan(target);
+      onOpenScan(scanId);
+    } catch {
+      setInvalid(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (activeScan) {
+    const status = SCAN_STATUS[activeScan.status];
+    const progress = activeScan.tasksTotal > 0
+      ? `${activeScan.tasksPassed}/${activeScan.tasksTotal} tasks`
+      : activeScan.pages.length > 0
+        ? `${activeScan.pages.length} pages`
+        : "Starting";
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenScan(activeScan.id)}
+        className="home-nav-scan-preview"
+        title={`Open scan for ${activeScan.url}`}
+        aria-label={`Open ${status.label.toLowerCase()} scan for ${shortUrl(activeScan.url)}`}
+      >
+        <Dot tone={status.tone} size={7} />
+        <span className="home-nav-scan-status">{status.label}</span>
+        <span className="home-nav-scan-url" title={activeScan.url}>{shortUrl(activeScan.url)}</span>
+        <span className="home-nav-scan-progress">{progress}</span>
+        <ArrowRight size={14} />
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={(event) => void start(event)} className="home-nav-scan-form" aria-label="Start a scan">
+      <input
+        type="text"
+        inputMode="url"
+        value={url}
+        onChange={(event) => {
+          setUrl(event.target.value);
+          if (invalid) setInvalid(false);
+        }}
+        aria-invalid={invalid}
+        aria-label="Website URL"
+        placeholder="Scan a URL"
+        autoComplete="url"
+        spellCheck={false}
+        className="home-nav-scan-input"
+      />
+      <button type="submit" disabled={busy} className="pill-cta home-nav-scan-submit" aria-label="Scan" title="Scan">
+        <ArrowRight size={15} />
+      </button>
+    </form>
+  );
+}
+
+function loadSavedScanUrl(): string {
+  try {
+    return window.localStorage.getItem("friction:last-scan-url") ?? "";
+  } catch {
+    return "";
+  }
 }
