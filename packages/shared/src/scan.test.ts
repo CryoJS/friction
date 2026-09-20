@@ -8,7 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   CreateRunRequestSchema,
   MAX_SCAN_TASKS,
+  MAX_STORED_TASK_INDEX,
   ScanPatchSchema,
+  ScanTaskLinkSchema,
+  TaskPullRequestSchema,
   isScanFinished,
   issueKey,
   issuePath,
@@ -172,6 +175,17 @@ describe("scan contracts", () => {
     expect(CreateRunRequestSchema.safeParse(base).success).toBe(true);
     expect(CreateRunRequestSchema.safeParse({ ...base, scan: link }).success).toBe(true);
     expect(CreateRunRequestSchema.safeParse({ ...base, scan: { ...link, taskIndex: 10 } }).success).toBe(false);
+  });
+
+  it("a stored record of task 10 still parses while new scans run MAX_SCAN_TASKS tasks", () => {
+    // MAX_SCAN_TASKS went from 10 to 5, and every recorded pull request of tasks 6-10 vanished from the tree.
+    expect(MAX_SCAN_TASKS).toBe(5);
+    expect(MAX_STORED_TASK_INDEX).toBeGreaterThanOrEqual(9);
+    const stored = { scanId: "s_bho3s38tua", runId: "r_1", taskIndex: 9, status: "nothing_to_fix", findingIds: [], notFixed: [{ findingId: "f8", reason: "Covered by the PR for task 8.", coveredBy: 7 }] };
+    expect(TaskPullRequestSchema.safeParse(stored).success).toBe(true);
+    expect(TaskPullRequestSchema.safeParse({ ...stored, status: "covered", coveredBy: 9 }).success).toBe(true);
+    expect(ScanTaskLinkSchema.safeParse({ scanId: "s_1", taskIndex: 9, whyCritical: "a", successCheck: "b" }).success).toBe(true);
+    expect(parseScanNode("t9")).toEqual({ kind: "task", index: 9 });
   });
 
   it("accepts partial scan patches and rejects unknown statuses", () => {

@@ -60,13 +60,106 @@ export interface RankableFinding {
 }
 
 /** Default number of findings verified per run: verification costs a full browser run each. */
-export const DEFAULT_VERIFY_TOP_N = 2;
+export const DEFAULT_VERIFY_TOP_N = 3;
+/** Default cap on a run's verifications, first attempts and retries together. */
+export const DEFAULT_VERIFY_MAX_RUNS = 4;
 
 /** The findings worth verifying: highest severity first, then confidence, then how often it was hit. */
 export function selectTopFindings<T extends RankableFinding>(findings: readonly T[], n: number): T[] {
   return [...findings]
     .sort((a, b) => b.severity - a.severity || b.confidence - a.confidence || b.hitCount - a.hitCount || a.findingId.localeCompare(b.findingId))
     .slice(0, Math.max(0, n));
+}
+
+/**
+ * Symptoms say the run went badly (the agent wandered, the server was slow),
+ * not which element misbehaved, so a DOM patch has nothing to aim at. Every
+ * other category is fixable: one element is the cause.
+ */
+export const SYMPTOM_CATEGORIES: readonly FrictionCategory[] = ["loop", "step_budget", "long_wait"];
+
+export function isSymptomCategory(category: FrictionCategory): boolean {
+  return SYMPTOM_CATEGORIES.includes(category);
+}
+
+export interface SelectableFinding extends RankableFinding {
+  category: FrictionCategory;
+  /** "" when the finding has no element. */
+  selector: string;
+  /** Page the finding happened on: the same structural xpath on two pages is two elements. */
+  url: string;
+}
+
+/**
+ * symptom     a symptom finding, and the fixable ones took every slot
+ * below_cut   fixable, but ranked below the slots there were
+ * same_cause  another finding on the same element is the one to verify (sameCauseAs)
+ */
+export type NotSelectedWhy = "symptom" | "below_cut" | "same_cause";
+
+export interface VerificationPlan<T> {
+  /** In the order they are verified. */
+  selected: T[];
+  notSelected: Array<{ finding: T; why: NotSelectedWhy; sameCauseAs?: string }>;
+}
+
+function causeKey(finding: SelectableFinding): string | null {
+  const selector = finding.selector.trim();
+  if (!selector) return null;
+  let page = finding.url;
+  try {
+    page = new URL(finding.url).pathname.toLowerCase().replace(/\/+$/, "");
+  } catch {
+    // Not a URL: compare it as written.
+  }
+  return `${page}|${selector}`;
+}
+
+/**
+ * Which findings get a verification, and why the others do not. Fixable
+ * findings first, by selectTopFindings' ranking; a symptom only takes a slot
+ * the fixable ones left over. Two findings on one element are one cause: the
+ * first in that order stands for both. The report's ranking is not this one.
+ */
+export function planVerification<T extends SelectableFinding>(findings: readonly T[], n: number): VerificationPlan<T> {
+  const ranked = selectTopFindings(findings, findings.length);
+  const ordered = [...ranked.filter((f) => !isSymptomCategory(f.category)), ...ranked.filter((f) => isSymptomCategory(f.category))];
+  const plan: VerificationPlan<T> = { selected: [], notSelected: [] };
+  const causes = new Map<string, string>();
+  for (const finding of ordered) {
+    const key = causeKey(finding);
+    const sameCauseAs = key === null ? undefined : causes.get(key);
+    if (sameCauseAs !== undefined) plan.notSelected.push({ finding, why: "same_cause", sameCauseAs });
+    else if (plan.selected.length < n) plan.selected.push(finding);
+    else plan.notSelected.push({ finding, why: isSymptomCategory(finding.category) ? "symptom" : "below_cut" });
+    if (key !== null && sameCauseAs === undefined) causes.set(key, finding.findingId);
+  }
+  return plan;
+}
+
+/** One sentence for the pull request panel: why this finding never got a fix proposed. */
+export function describeNotSelected(entry: { why: NotSelectedWhy; sameCauseAs?: string }, category: FrictionCategory): string {
+  if (entry.why === "same_cause") return `Not verified separately: it is on the same element as ${entry.sameCauseAs}, so it is treated as the same cause.`;
+  if (entry.why === "symptom") return `Not selected for verification: ${category} is a symptom of the run going badly, not an element a fix can target, and the fixable findings took every verification slot.`;
+  return "Not selected for verification: it ranked below the cut (VERIFY_TOP_N).";
+}
+
+/**
+ * Which rejected fixes get their one retry, in the order given (rank order),
+ * while the run's verifications stay under the cap. Only a fixable finding
+ * whose patch ran, and whose problem still fired or whose patch broke the
+ * task: either way the rejection note says exactly what is still wrong, which
+ * is worth one more proposal.
+ */
+export function planRetries(
+  attempts: ReadonlyArray<{ findingId: string; category: FrictionCategory; verdict: Verdict; attempts: number }>,
+  budget: { used: number; maxRuns: number },
+): string[] {
+  const left = Math.max(0, budget.maxRuns - budget.used);
+  return attempts
+    .filter((a) => a.attempts === 1 && a.verdict.stage === "rejected" && (a.verdict.reason === "still_fires" || a.verdict.reason === "outcome_worse") && !isSymptomCategory(a.category))
+    .slice(0, left)
+    .map((a) => a.findingId);
 }
 
 /* ------------------------------------------------------------ repo mapping */
@@ -113,6 +206,95 @@ export function searchTermsFor(args: { selector: string; targetLabel: string; te
   for (const text of args.texts ?? []) if (text.length <= 80) add(text);
   // Drop generic HTML names that match half a codebase.
   return terms.filter((t) => !/^(id|class|name|type|role|value|href|button|div|span|input|form|label)$/i.test(t));
+}
+
+/**
+ * Search terms from the VERIFIED patch's own element lookups. The patch was
+ * proven to touch the right element, so the selectors it used are better clues
+ * than a structural xpath: the string arguments of querySelector(All),
+ * closest, matches and getElementById, read the way searchTermsFor reads a
+ * CSS selector. Only string literals; nothing is evaluated.
+ */
+export function patchSearchTerms(patchJs: string): string[] {
+  const terms: string[] = [];
+  const calls = /\b(querySelector(?:All)?|closest|matches|getElementById)\s*\(\s*(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\$]|\\.)*)`)/g;
+  for (const match of patchJs.matchAll(calls)) {
+    const literal = (match[2] ?? match[3] ?? match[4] ?? "").replace(/\\(["'`])/g, "$1");
+    const found =
+      match[1] === "getElementById"
+        ? searchTermsFor({ selector: `#${literal}`, targetLabel: "" })
+        : // Each quoted attribute value too: [aria-label="Add to cart"] names the element's visible text.
+          literal.split(",").flatMap((part) => searchTermsFor({ selector: part.trim(), targetLabel: "" }));
+    for (const term of found) if (!terms.some((t) => t.toLowerCase() === term.toLowerCase())) terms.push(term);
+  }
+  return terms;
+}
+
+/**
+ * The target's visible text, broken down. An accessible name is often
+ * assembled at render time ("Add Alpine Down Parka to wishlist"), so the whole
+ * of it is in no file, while a part of it is: the pieces around punctuation,
+ * then the leading words of each.
+ */
+export function visibleTextTerms(texts: readonly string[]): string[] {
+  const terms: string[] = [];
+  const add = (term: string): void => {
+    const clean = term.replace(/\s+/g, " ").trim();
+    if (clean.length >= 6 && clean.length <= 80 && /\s/.test(clean) && !terms.some((t) => t.toLowerCase() === clean.toLowerCase())) terms.push(clean);
+  };
+  for (const text of texts) {
+    const pieces = text.split(/[:;,|()[\]"“”·–—\n]+/).map((piece) => piece.trim()).filter(Boolean);
+    if (pieces.length > 1) pieces.forEach(add);
+    for (const piece of pieces) {
+      const words = piece.split(/\s+/);
+      if (words.length > 3) add(words.slice(0, 3).join(" "));
+      if (words.length > 2) add(words.slice(0, 2).join(" "));
+    }
+  }
+  return terms;
+}
+
+const ROUTE_DIRS = /(^|\/)(pages|app|routes)\//i;
+
+/**
+ * The static segments of the finding's page, most specific last:
+ * /products/alpine-parka -> ["products", "alpine-parka"]; "/" -> ["index"].
+ * Matched against file PATHS under a routes directory (routeHits), never
+ * against content.
+ */
+export function routeSearchTerms(url: string): string[] {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return [];
+  }
+  const segments = pathname
+    .split("/")
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment).toLowerCase().replace(/\.(html?|php|aspx?)$/, "");
+      } catch {
+        return "";
+      }
+    })
+    .filter((segment) => /^[a-z0-9][a-z0-9_-]{1,60}$/.test(segment));
+  return segments.length > 0 ? [...new Set(segments)] : ["index"];
+}
+
+/**
+ * Files under a routes directory (src/pages, app, routes) whose path names a
+ * segment of the route: /products/x finds src/pages/products/[slug].astro.
+ * The result still goes through rankSearchHits like any other search.
+ */
+export function routeHits(paths: readonly string[], terms: readonly string[]): SearchHit[] {
+  return paths.flatMap((path) => {
+    const match = ROUTE_DIRS.exec(path);
+    if (!match) return [];
+    const parts = path.slice(match.index + match[0].length).toLowerCase().split(/[/.]/);
+    const matched = terms.filter((term) => parts.includes(term.toLowerCase()));
+    return matched.length > 0 ? [{ path, terms: matched }] : [];
+  });
 }
 
 export interface SearchHit {
@@ -211,7 +393,13 @@ export interface PullRequestFacts {
     sourceFile: string;
     before: LaneResult;
     after: LaneResult;
+    /** The verdict's own sentence. Absent on fixes from before it was kept: the body then words it from the numbers. */
+    note?: string;
   };
+  /** Symptom findings of the same run that no longer fired in this fix's verify run. */
+  alsoResolved?: ReadonlyArray<{ findingId: string; category: FrictionCategory }>;
+  /** The Playwright regression test: the path this PR adds it at (null: none was added) and what is known about it. */
+  test?: { path: string | null; note: string };
   /** Absolute URL of the evidence screenshot (served from R2 by the Worker). */
   evidenceUrl: string | null;
   primaryReplayUrl: string | null;
@@ -257,9 +445,12 @@ function findingSections(facts: Omit<PullRequestFacts, "task" | "siteUrl">, head
   const { finding, fix } = facts;
   const recurrence = finding.hitCount > 1 ? `, and it recurred: the agent hit it ${finding.hitCount} times in one run` : "";
   const where = finding.stepNumber !== null ? `at step ${finding.stepNumber}` : "during the run";
-  const verified = fix.after.outcome === "success" && fix.before.outcome !== "success"
-    ? `Verified: the agent ${describeComparison(fix.before, fix.after)}, with the fix applied.`
-    : `Verified: ${finding.category} no longer fired with the fix applied; the agent ${describeComparison(fix.before, fix.after)}.`;
+  const verified = fix.note
+    ? `Verified: ${fix.note}`
+    : fix.after.outcome === "success" && fix.before.outcome !== "success"
+      ? `Verified: the agent ${describeComparison(fix.before, fix.after)}, with the fix applied.`
+      : `Verified: ${finding.category} no longer fired with the fix applied; the agent ${describeComparison(fix.before, fix.after)}.`;
+  const credited = [...new Set((facts.alsoResolved ?? []).map((item) => item.category))];
   const link = (label: string, url: string | null): string => (url ? `- ${label}: ${url}` : `- ${label}: not recorded (no Browserbase session)`);
 
   return [
@@ -273,6 +464,9 @@ function findingSections(facts: Omit<PullRequestFacts, "task" | "siteUrl">, head
     "",
     verified,
     "",
+    ...(credited.length > 0
+      ? [`Also resolved: ${credited.join(", ")}. ${credited.length === 1 ? "That finding" : "Those findings"} of the same run no longer fired in the verification run, so no separate fix was proposed.`, ""]
+      : []),
     `| | Outcome | Steps | Time |`,
     `| --- | --- | --- | --- |`,
     `| Before | ${fix.before.outcome} | ${fix.before.steps} | ${(fix.before.durationMs / 1000).toFixed(1)}s |`,
@@ -282,6 +476,16 @@ function findingSections(facts: Omit<PullRequestFacts, "task" | "siteUrl">, head
     "",
     `This PR implements that behaviour in \`${fix.sourceFile}\`. The source change was generated from the verified patch and **has not itself been run**: review it and run your tests before merging.`,
     "",
+    ...(facts.test
+      ? [
+          `${heading} Regression test`,
+          "",
+          facts.test.path
+            ? `This PR adds \`${facts.test.path}\`, a Playwright test of this fix. ${facts.test.note} It has **not** been run against this PR's source change. Run it against your build: \`BASE_URL=http://localhost:<port> npx playwright test tests/friction\` (needs \`@playwright/test\`). With \`FRICTION_RUNTIME_PATCH=1\` it installs the runtime patch instead, which shows it passing against the unfixed site.`
+            : facts.test.note,
+          "",
+        ]
+      : []),
     `${heading} Evidence`,
     "",
     facts.evidenceUrl ? `- Screenshot of the problem: ${facts.evidenceUrl}` : "- Screenshot of the problem: not captured",
@@ -373,6 +577,35 @@ export function taskBranchName(scanId: string, taskIndex: number, suffix?: strin
 
 /* ---------------------------------------------------------------- verdict */
 
+/** Categories where one finding is one element: its fix is judged by that element, not by its neighbours. */
+const ELEMENT_CATEGORIES: readonly FrictionCategory[] = ["dead_click", "retry", "ambiguous_label", "keyboard_trap"];
+
+export interface ElementHit {
+  category: FrictionCategory;
+  selector: string;
+  /** Accessible name of the element the evidencing step targeted. */
+  targetLabel: string;
+  hitCount: number;
+}
+
+const sameLabel = (a: string, b: string): boolean => a.trim() !== "" && a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * How often THIS finding's problem fired among a run's findings. A page with
+ * five dead buttons has five findings; a fix for one of them is not refuted by
+ * the other four still being dead. The same element is the same selector, or
+ * the same accessible name: a patch that removes a node shifts every
+ * structural xpath after it, so the selector alone is not enough. Categories
+ * with no element of their own (a loop, an overlay), and findings that
+ * recorded none, are counted across the category as before.
+ */
+export function hitsOfFinding(finding: Pick<ElementHit, "category" | "selector" | "targetLabel">, observed: readonly ElementHit[]): number {
+  const inCategory = observed.filter((hit) => hit.category === finding.category);
+  const scoped = ELEMENT_CATEGORIES.includes(finding.category) && (finding.selector.trim() !== "" || finding.targetLabel.trim() !== "");
+  const own = scoped ? inCategory.filter((hit) => (finding.selector.trim() !== "" && hit.selector === finding.selector) || sameLabel(finding.targetLabel, hit.targetLabel)) : inCategory;
+  return own.reduce((n, hit) => n + hit.hitCount, 0);
+}
+
 export interface VerifyObservation {
   result: LaneResult;
   /** The verify run did not run properly (no session, crashed): nothing can be concluded. */
@@ -385,11 +618,22 @@ export interface VerifyObservation {
   reachedFindingPage: boolean;
 }
 
+/**
+ * Which rule decided. Verified: outcome_improved, no_longer_fires,
+ * fewer_steps. Rejected: errored, patch_inactive, still_fires, outcome_worse, not_reached.
+ */
+export type VerdictReason = "errored" | "patch_inactive" | "outcome_improved" | "no_longer_fires" | "fewer_steps" | "still_fires" | "outcome_worse" | "not_reached";
+
 export interface Verdict {
   stage: "verified" | "rejected";
   /** One line, stated concretely, for the UI and the PR. */
   note: string;
+  reason: VerdictReason;
 }
+
+/** A shorter run only counts as evidence when it is shorter by this much: a step or so is the agent's own variance. */
+const FEWER_STEPS_MIN = 2;
+const FEWER_STEPS_RATIO = 0.3;
 
 const OUTCOME_WORDS: Readonly<Record<LaneResult["outcome"], string>> = { success: "completed the task", failure: "gave up", timeout: "timed out" };
 
@@ -406,19 +650,56 @@ export function describeComparison(before: LaneResult, after: LaneResult): strin
 }
 
 /**
- * Did the fix work? Verified when the outcome went from failure/timeout to
- * success, OR the finding's category no longer fires. The second half only
- * counts when the verify run could actually have hit it again: the run ran,
- * the patch was live, and the agent reached the page where the problem was.
- * Anything else is rejected, and says why. A rejection is a result, not an error.
+ * Did the fix work? Verified in one of three ways:
+ *
+ *   1. the outcome went from failure/timeout to success
+ *   2. the finding's category no longer fires, on a page the verify run
+ *      reached, and the task did not go from completed to not completed
+ *   3. the task was completed before and is completed now, in clearly fewer
+ *      steps (at least 2, and at least 30%), and the category fired less than it did, or
+ *      its page was never needed. A fix that removes the need to pass the
+ *      broken element never reaches it again, which is the fix working.
+ *
+ * 2 and 3 only count when the verify run could have told: it ran, and the
+ * patch was live. 3 needs a completed task on both sides: giving up sooner is
+ * not an improvement, and a worse outcome never verifies. Anything else is
+ * rejected, and says why. A rejection is a result, not an error.
  */
-export function judgeVerification(args: { category: FrictionCategory; before: LaneResult; after: VerifyObservation }): Verdict {
+export function judgeVerification(args: {
+  category: FrictionCategory;
+  before: LaneResult;
+  after: VerifyObservation;
+  /** Hits of the category in the primary run. Absent: the third way only accepts a page that was never needed. */
+  categoryHitsBefore?: number;
+  /** The element the hits were counted for (hitsOfFinding), named in the note. Absent: they are the whole category's. */
+  target?: string;
+}): Verdict {
   const { category, before, after } = args;
   const comparison = describeComparison(before, after.result);
-  if (after.errored) return { stage: "rejected", note: `The verification run did not complete, so nothing could be concluded (${OUTCOME_WORDS[after.result.outcome]} after ${after.result.steps} steps).` };
-  if (!after.patchActive) return { stage: "rejected", note: "The fix did not load in the verification session, so it was not tested." };
-  if (before.outcome !== "success" && after.result.outcome === "success") return { stage: "verified", note: `With the fix, the agent ${comparison}.` };
-  if (after.categoryHits === 0 && after.reachedFindingPage) return { stage: "verified", note: `${category} no longer fires; the agent ${comparison}.` };
-  if (after.categoryHits > 0) return { stage: "rejected", note: `${category} still fires (${after.categoryHits} time${after.categoryHits === 1 ? "" : "s"}); the agent ${comparison}.` };
-  return { stage: "rejected", note: `The agent never reached the page where ${category} happened, so the fix was not exercised; it ${comparison}.` };
+  const times = (n: number): string => `${n} time${n === 1 ? "" : "s"}`;
+  if (after.errored) return { stage: "rejected", reason: "errored", note: `The verification run did not complete, so nothing could be concluded (${OUTCOME_WORDS[after.result.outcome]} after ${after.result.steps} steps).` };
+  if (!after.patchActive) return { stage: "rejected", reason: "patch_inactive", note: "The fix did not load in the verification session, so it was not tested." };
+  if (before.outcome !== "success" && after.result.outcome === "success") return { stage: "verified", reason: "outcome_improved", note: `With the fix, the agent ${comparison}.` };
+  // A patch that silences the detector by breaking the task has fixed nothing. Running out of steps is only evidence
+  // of that when the primary run had steps to spare: one that finished on its last step or so, and a verify run that
+  // ran out at the same count, differ by the agent's variance at the cap, not by the fix.
+  const ranOutWhereItBarelyFinished = after.result.outcome === "timeout" && Math.abs(after.result.steps - before.steps) < FEWER_STEPS_MIN;
+  const notCompleted = before.outcome === "success" && after.result.outcome !== "success";
+  const worse = notCompleted && !ranOutWhereItBarelyFinished;
+  if (after.categoryHits === 0 && after.reachedFindingPage && !worse) {
+    const caveat = notCompleted ? ` The primary run only finished on its last steps (${before.steps}), so running out of steps is not held against the fix.` : "";
+    return { stage: "verified", reason: "no_longer_fires", note: `${category} no longer fires; the agent ${comparison}.${caveat}` };
+  }
+
+  const saved = before.steps - after.result.steps;
+  const fewerSteps = before.outcome === "success" && after.result.outcome === "success" && saved >= FEWER_STEPS_MIN && saved >= before.steps * FEWER_STEPS_RATIO;
+  if (fewerSteps && after.categoryHits === 0) return { stage: "verified", reason: "fewer_steps", note: `With the fix, the agent ${comparison}; ${category} no longer needed to be passed.` };
+  if (fewerSteps && args.categoryHitsBefore !== undefined && after.categoryHits < args.categoryHitsBefore) {
+    return { stage: "verified", reason: "fewer_steps", note: `With the fix, the agent ${comparison}; ${category} fired ${times(after.categoryHits)}, down from ${times(args.categoryHitsBefore)}.` };
+  }
+
+  const on = args.target ? ` on "${args.target}"` : "";
+  if (after.categoryHits > 0) return { stage: "rejected", reason: "still_fires", note: `${category} still fires${on} (${times(after.categoryHits)}); the agent ${comparison}.` };
+  if (worse && after.reachedFindingPage) return { stage: "rejected", reason: "outcome_worse", note: `${category} no longer fires, but with the fix the agent no longer completed the task: it ${comparison}.` };
+  return { stage: "rejected", reason: "not_reached", note: `The agent never reached the page where ${category} happened, so the fix was not exercised; it ${comparison}.` };
 }

@@ -16,6 +16,7 @@ import type { Config } from "./config";
 import type { LaneEmitter } from "./emitter";
 import { registerSession, releaseSession } from "./liveView";
 import { observe } from "./observe";
+import type { ElementHtml } from "./pageScripts";
 import type { HistoryEntry, PlannedAction, Planner } from "./planner";
 import { errorMessage, log, timed, withTimeoutDisposing } from "./util";
 import type { WorkerClient } from "./workerClient";
@@ -63,6 +64,8 @@ export interface AgentResult {
   summary: string;
   /** The pruned accessibility tree seen before each step, by the step event's seq. */
   trees: ReadonlyMap<number, readonly string[]>;
+  /** Per step seq: the markup of the step's target and of any overlay covering the page. */
+  html: ReadonlyMap<number, ElementHtml>;
   /** The run itself broke (no session, crash), as opposed to the agent failing the task. */
   errored: boolean;
 }
@@ -73,6 +76,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
   const startedAt = Date.now();
   const history: HistoryEntry[] = [];
   const trees = new Map<number, readonly string[]>();
+  const html = new Map<number, ElementHtml>();
   let browser: BrowserHandle | null = null;
   let outcome: Outcome = "failure";
   let summary = "";
@@ -99,6 +103,7 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
       );
       const event = emitter.step(result.payload);
       trees.set(event.seq, result.treeLines);
+      html.set(event.seq, result.html);
       history.push({ step: stepNumber, action: result.historyAction, outcome: result.historyOutcome });
       if (result.failedAttempt) failedAttempts += 1;
       log(lane, `step ${stepNumber}: ${result.historyAction} -> ${result.historyOutcome}`);
@@ -179,5 +184,5 @@ export async function runAgent(run: AgentRun): Promise<AgentResult> {
     await browser?.close().catch(() => undefined);
   }
   log(lane, `done: ${outcome} in ${emitter.stepCount} steps, ${emitter.frictionCount} findings. ${summary}`);
-  return { outcome, steps: emitter.stepCount, durationMs, summary, trees, errored };
+  return { outcome, steps: emitter.stepCount, durationMs, summary, trees, html, errored };
 }

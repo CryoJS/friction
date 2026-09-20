@@ -112,6 +112,10 @@ export interface PlannableFix {
   /** The verdict's note, quoted when a rejected fix is listed under "Found, not fixed". */
   note?: string;
   prUrl?: string | null;
+  /** How the source file was looked for, quoted when a verified fix stayed unmapped. */
+  mappingNote?: string;
+  /** Ids of the symptom findings that no longer fired in this fix's verify run. */
+  alsoResolved?: readonly string[];
 }
 
 export interface PlannableTask {
@@ -119,6 +123,12 @@ export interface PlannableTask {
   runId: string;
   /** In rank order: the order the run verified them, which is selectTopFindings' order. */
   fixes: readonly PlannableFix[];
+  /**
+   * The run's findings that never had a fix: not selected for verification
+   * (a symptom, below the cut, the same cause as another), or selected and
+   * never proposed. With the sentence that says which.
+   */
+  unfixed?: ReadonlyArray<{ findingId: string; reason: string }>;
 }
 
 export interface TaskPlan {
@@ -140,6 +150,8 @@ export interface TaskPlan {
   coveredBy?: CoveredBy;
   /** Later tasks with a fix this task's PR covers, ascending. */
   alsoUnblocks: number[];
+  /** Symptom findings credited to a fix this PR commits: they stopped firing in `by`'s verify run. Not in `notFixed`. */
+  alsoResolved: Array<{ findingId: string; by: string }>;
   reason?: string;
 }
 
@@ -151,7 +163,10 @@ function coveredReason(by: CoveredBy): string {
  * Every task's fixes, in rank order, to what each task's pull request does.
  *
  *   - only a verified fix with a mapped file and its new content ships;
- *     everything else is "not fixed", with the reason
+ *     everything else is "not fixed", with the reason: the furthest stage it
+ *     reached and why it stopped there, findings that never had a fix included
+ *   - a symptom finding that stopped firing in a committed fix's verify run is
+ *     "also resolved" by that fix, not "not fixed"
  *   - a path the guard refuses never ships, whoever chose it
  *   - within a task, the first (highest-ranked) fix to a file wins: each new
  *     content is a complete replacement of the same original, so a second
@@ -167,7 +182,7 @@ export function planTaskPullRequests(tasks: readonly PlannableTask[], claimedFil
   const plans: TaskPlan[] = [];
 
   for (const task of [...tasks].sort((a, b) => a.taskIndex - b.taskIndex)) {
-    const plan: TaskPlan = { taskIndex: task.taskIndex, runId: task.runId, action: "nothing_to_fix", commit: [], covered: [], notFixed: [], alsoUnblocks: [] };
+    const plan: TaskPlan = { taskIndex: task.taskIndex, runId: task.runId, action: "nothing_to_fix", commit: [], covered: [], notFixed: [], alsoUnblocks: [], alsoResolved: [] };
     let fixable = 0;
 
     for (const fix of task.fixes) {
@@ -179,7 +194,7 @@ export function planTaskPullRequests(tasks: readonly PlannableTask[], claimedFil
       } else if (fix.stage !== "verified") {
         skip("The fix was never verified: its verification did not finish.");
       } else if (!fix.sourceFile || !fix.hasContent) {
-        skip("The fix was verified in the browser, but could not be mapped to a source file.");
+        skip(`The fix was verified in the browser, but could not be mapped to a source file.${fix.mappingNote ? ` ${fix.mappingNote}` : ""}`);
       } else {
         fixable += 1;
         const path = fix.sourceFile;
@@ -196,6 +211,16 @@ export function planTaskPullRequests(tasks: readonly PlannableTask[], claimedFil
           }
         } else plan.commit.push({ findingId: fix.findingId, path });
       }
+    }
+
+    // A symptom is credited to the fix of its cause, but only when that fix ships: the PR must not claim what it does not contain.
+    const hasFix = new Set(task.fixes.map((fix) => fix.findingId));
+    for (const finding of task.unfixed ?? []) {
+      if (hasFix.has(finding.findingId)) continue;
+      const credit = task.fixes.find((fix) => (fix.stage === "verified" || fix.stage === "pr_opened") && fix.alsoResolved?.includes(finding.findingId));
+      if (credit && plan.commit.some((entry) => entry.findingId === credit.findingId)) plan.alsoResolved.push({ findingId: finding.findingId, by: credit.findingId });
+      else if (credit) plan.notFixed.push({ findingId: finding.findingId, reason: `It no longer fired once the fix for ${credit.findingId} was applied, but that fix is not in this pull request.` });
+      else plan.notFixed.push({ findingId: finding.findingId, reason: finding.reason });
     }
 
     if (plan.commit.length > 0) {

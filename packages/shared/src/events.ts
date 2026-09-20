@@ -240,6 +240,19 @@ export const FixPayloadSchema = z.object({
   /** extension: the verify session's Browserbase live view and replay */
   liveViewUrl: z.string().nullable().optional(),
   replayUrl: z.string().nullable().optional(),
+  /** extension: symptom findings of the same run that no longer fired in this fix's verify run; credited to it, never fixed separately */
+  alsoResolved: z.array(z.object({ findingId: z.string().min(1), category: FrictionCategorySchema })).max(20).optional(),
+  /** extension: how the source file was found, or what was searched for when none was */
+  mappingNote: z.string().max(500).optional(),
+  /** extension: verifications this fix has had; 2 = retried once with the rejection as feedback */
+  attempts: z.number().int().positive().optional(),
+  /**
+   * extension: the Playwright spec a pull request for this fix adds (prTest.ts). Only ever set once Friction has seen its
+   * steps fail against the site as it is and pass with this fix's patch installed.
+   */
+  testSpec: z.string().max(20_000).optional(),
+  /** extension: what became of the regression test: proven, or why there is none */
+  testNote: z.string().max(500).optional(),
 });
 export type FixPayload = z.infer<typeof FixPayloadSchema>;
 

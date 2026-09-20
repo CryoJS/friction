@@ -22,10 +22,13 @@
 import {
   evidenceKey,
   guardPatch,
+  hitsOfFinding,
   judgeVerification,
   normalizeUrlForVisit,
+  type FrictionCategory,
   type LaneResult,
   type RunEvent,
+  type StepEvent,
   type StructuredCaller,
   type Verdict,
 } from "@friction/shared";
@@ -53,6 +56,8 @@ export interface VerifyArgs {
   finding: FindingForFix;
   /** The primary run's result: the "before". */
   before: LaneResult;
+  /** Hits of this finding's problem in the primary run (hitsOfFinding), for "it fired less than it did". */
+  categoryHitsBefore?: number;
   /** Verify lane seqs must start above this (the lane may already hold another fix's run). */
   seqFloor: number;
   /** Live mode: the planner. Null in mock mode, which replays the fixture's verify runs. */
@@ -65,6 +70,10 @@ export interface VerifyOutcome {
   after: LaneResult;
   /** The last seq this verification used in the verify lane. */
   lastSeq: number;
+  /** Every category that fired in the verify run: a symptom absent from it can be credited to a verified fix. */
+  firedCategories: ReadonlySet<FrictionCategory>;
+  /** What the agent did with the fix installed: a retry's proposer is shown where it went wrong. */
+  steps: StepEvent[];
 }
 
 /** Mock mode: the fixture's recorded verify run for a fix of the same category. */
@@ -73,6 +82,11 @@ function recordedVerifyRun(category: string): RunEvent[] {
   const fix = events.find((e) => e.type === "fix" && e.payload.category === category);
   if (!fix?.fixId) return [];
   return events.filter((e) => e.lane === "verify" && e.fixId === fix.fixId && e.type !== "fix");
+}
+
+/** Mock mode can only verify what the fixture recorded a verify run for. */
+export function hasRecordedVerifyRun(category: string): boolean {
+  return recordedVerifyRun(category).length > 0;
 }
 
 export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
@@ -122,14 +136,25 @@ export async function verifyFix(args: VerifyArgs): Promise<VerifyOutcome> {
   }
 
   const after: LaneResult = { outcome: result.outcome, steps: result.steps, durationMs: result.durationMs };
-  const categoryHits = emitter.findings.filter((f) => f.first.category === finding.category).reduce((n, f) => n + f.hitCount, 0);
+  const steps = emitter.events.filter((e): e is StepEvent => e.type === "step");
+  // Only this finding's own element counts against its fix: the page's other dead buttons are other findings.
+  const categoryHits = hitsOfFinding(
+    finding,
+    emitter.findings.map((f) => ({ category: f.first.category, selector: f.first.selector, targetLabel: steps.find((s) => s.seq === f.first.evidenceSeq)?.payload.targetLabel ?? "", hitCount: f.hitCount })),
+  );
   const findingPage = normalizeUrlForVisit(finding.url);
   const reachedFindingPage = emitter.events.some(
     (e) => e.type === "step" && (normalizeUrlForVisit(e.payload.url) === findingPage || normalizeUrlForVisit(e.payload.signals?.urlAfter ?? "") === findingPage),
   );
-  const verdict = judgeVerification({ category: finding.category, before, after: { result: after, errored: result.errored, patchActive, categoryHits, reachedFindingPage } });
+  const verdict = judgeVerification({
+    category: finding.category,
+    before,
+    after: { result: after, errored: result.errored, patchActive, categoryHits, reachedFindingPage },
+    categoryHitsBefore: args.categoryHitsBefore,
+    target: finding.targetLabel || undefined,
+  });
 
   await report.update({ stage: verdict.stage, before, after, note: verdict.note, liveViewUrl: session.liveViewUrl, replayUrl: session.replayUrl });
   log("verify", `${finding.findingId} ${verdict.stage}: ${verdict.note}`);
-  return { verdict, after, lastSeq: Math.max(report.lastSeq, emitter.lastSeq) };
+  return { verdict, after, lastSeq: Math.max(report.lastSeq, emitter.lastSeq), firedCategories: new Set(emitter.findings.map((f) => f.first.category)), steps };
 }

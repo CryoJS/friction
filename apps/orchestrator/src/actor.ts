@@ -16,7 +16,7 @@ import { cleanLabel, idFromDescription, sameLabelCount } from "./a11y";
 import type { BrowserHandle, StagehandPage } from "./browser";
 import { VIEWPORT } from "./config";
 import { captureEvidence, readState, readTree, type Observation } from "./observe";
-import { ARM_ACTION, FOCUS_PROBE, READ_MUTATIONS, locateScript, type FocusProbe, type Located } from "./pageScripts";
+import { ARM_ACTION, FOCUS_PROBE, READ_MUTATIONS, elementHtmlScript, locateScript, type ElementHtml, type FocusProbe, type Located } from "./pageScripts";
 import type { PlannedAction } from "./planner";
 import { errorMessage, sleep, withTimeout } from "./util";
 import type { WorkerClient } from "./workerClient";
@@ -34,6 +34,8 @@ export interface StepOutcome {
   historyOutcome: string;
   /** The pruned accessibility tree the agent saw before acting. A fix is written against it. */
   treeLines: string[];
+  /** The target's markup before the action and any overlay's after it: what a fix's selectors can hold on to. */
+  html: ElementHtml;
 }
 
 export interface ActContext {
@@ -124,6 +126,7 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   let evidence = observation.evidence;
   let actionError: string | null = null;
   let opensPopup = false;
+  const html: ElementHtml = { target: "", overlay: "" };
   const signals: StepSignals = {};
 
   /* ---- resolve the target (pointer actions only) ---- */
@@ -149,6 +152,8 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
     if (selector) {
       const located = await page.evaluate<Located>(locateScript(selector.replace(/^xpath=/, ""))).catch(() => null);
       if (located?.found) {
+        // Read now: a click that works may take the element, or the whole page, away.
+        if (selector.startsWith("xpath=")) html.target = (await page.evaluate<ElementHtml>(elementHtmlScript(selector.slice(6))).catch(() => null))?.target ?? "";
         bbox = located.bbox;
         label ||= located.label;
         opensPopup = located.opensPopup;
@@ -314,11 +319,14 @@ export async function performStep(ctx: ActContext, plan: PlannedAction, observat
   if (freshErrors.length > 0) outcome += `; error shown: "${freshErrors[0]}"`;
   if (durationMs > 5000) outcome += `; it took ${(durationMs / 1000).toFixed(1)}s`;
 
+  if (after.overlay) html.overlay = (await page.evaluate<ElementHtml>(elementHtmlScript(null)).catch(() => null))?.overlay ?? "";
+
   return {
     payload,
     failedAttempt: Boolean(actionError) || deadClick || signals.focusMoved === false,
     historyAction: what,
     historyOutcome: outcome,
     treeLines: observation.tree.lines,
+    html,
   };
 }

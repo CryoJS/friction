@@ -1,10 +1,12 @@
 /**
- * A run = one agent attempting one task in the primary lane, then, for the top
- * VERIFY_TOP_N findings, one at a time:
+ * A run = one agent attempting one task in the primary lane, then, for the
+ * VERIFY_TOP_N findings planVerification selects (causes before symptoms), one
+ * at a time:
  *
  *   proposeFix -> verifyFix -> (if verified) findSourceFile -> generateSourceFix
  *
- * and then it waits. A pull request is opened when the user clicks "Open pull
+ * with one retry for a fix that ran and was rejected, all under
+ * VERIFY_MAX_RUNS, and then it waits. A pull request is opened when the user clicks "Open pull
  * request" in the control room (see pr.ts), or, for a scan started with
  * automatic pull requests, by the scan once all its runs are over (see
  * scanPullRequests.ts); never by the run itself.
@@ -14,20 +16,33 @@
  * browser, primary or verify, waits for a slot in the process-wide session
  * pool; mock runs hold no browser, so they skip it.
  */
-import { evidenceKey, selectTopFindings, type LaneResult, type Outcome, type ScanTaskLink, type StepEvent, type StructuredCaller } from "@friction/shared";
+import {
+  evidenceKey,
+  hitsOfFinding,
+  isSymptomCategory,
+  planVerification,
+  renderPlaywrightSpec,
+  type LaneResult,
+  type Outcome,
+  type ScanTaskLink,
+  type StepEvent,
+  type StructuredCaller,
+} from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { runAgent, type AgentResult } from "./agentRunner";
 import { githubFor, type Config, type GitHubConfig } from "./config";
 import { LaneEmitter } from "./emitter";
-import { findingForFix, openAIFixer, proposeAndReport, type FindingForFix, type FixProposer } from "./fixer";
+import { openAIFixer, proposeAndReport, type FindingForFix, type FixProposer } from "./fixer";
 import type { FixReport } from "./fixReport";
 import { openAIJudge } from "./judge";
 import { goldenFixer, goldenJudge, runMockAgent } from "./mockRunner";
-import { mockSourceFix } from "./mockSource";
+import { mockFixTest, mockSourceFix } from "./mockSource";
 import { OpenAIPlanner } from "./planner";
+import { openAITestWriter, proveFixTest } from "./prTest";
 import { findSourceFile, generateSourceFix, openAISourceFixer, type SourceFixer } from "./repo";
-import { errorMessage, log, type Semaphore } from "./util";
-import { verifyFix } from "./verify";
+import { scheduleVerifications, verificationCandidates, type AttemptResult } from "./selection";
+import { errorMessage, log, truncate, type Semaphore } from "./util";
+import { hasRecordedVerifyRun, verifyFix } from "./verify";
 import type { WorkerClient } from "./workerClient";
 
 export interface PreparedRun {
@@ -167,46 +182,68 @@ export class RunManager {
       emitter.status("failed", `Crashed: ${errorMessage(err)}`);
       emitter.done({ outcome: "failure", durationMs: 0, summary: `Crashed: ${errorMessage(err)}` });
       await emitter.flush();
-      return { outcome: "failure", steps: emitter.stepCount, durationMs: 0, summary: errorMessage(err), trees: new Map(), errored: true };
+      return { outcome: "failure", steps: emitter.stepCount, durationMs: 0, summary: errorMessage(err), trees: new Map(), html: new Map(), errored: true };
     }
   }
 
   /**
-   * The top VERIFY_TOP_N findings, one at a time: each verification is its own
-   * browser run, and one at a time keeps the verify lane's seqs in one order.
-   * Every stage is reported as it happens; a failure on one finding never
-   * stops the next.
+   * Which findings are verified is planVerification's call: causes before
+   * symptoms, one verification per element, VERIFY_TOP_N of them. One at a
+   * time: each verification is its own browser run, and one at a time keeps
+   * the verify lane's seqs in one order. After every finding has had its first
+   * attempt, a fixable finding whose fix ran and was rejected with "still
+   * fires" gets ONE more proposal, with that rejection as feedback, while the
+   * run's verifications stay under VERIFY_MAX_RUNS. Every stage is reported as
+   * it happens; a failure on one finding never stops the next.
    */
   private async verifyTopFindings(run: PreparedRun, primary: AgentResult): Promise<void> {
     const { config, worker } = this;
     const { runId, url, task, emitter } = run;
     const steps = emitter.events.filter((e): e is StepEvent => e.type === "step");
-    const candidates = emitter.findings.flatMap((f) => {
-      const finding = f.payload ? findingForFix(f.payload, steps) : null;
-      return finding ? [{ finding, findingId: finding.findingId, severity: finding.severity, confidence: f.payload?.confidence ?? 0, hitCount: finding.hitCount }] : [];
-    });
-    const top = selectTopFindings(candidates, config.verifyTopN);
-    log("run", `${runId} verifying the top ${top.length} of ${candidates.length} findings: ${top.map((t) => `${t.findingId} ${t.finding.category}`).join(", ")}`);
+    const candidates = verificationCandidates(emitter.findings.flatMap((f) => (f.payload ? [f.payload] : [])), steps);
+    const plan = planVerification(candidates, config.verifyTopN);
+    log("run", `${runId} verifying ${plan.selected.length} of ${candidates.length} findings: ${plan.selected.map((t) => `${t.findingId} ${t.category}`).join(", ")}`);
+    for (const skipped of plan.notSelected) log("run", `${runId} ${skipped.finding.findingId} ${skipped.finding.category} not selected: ${skipped.why}${skipped.sameCauseAs ? ` as ${skipped.sameCauseAs}` : ""}`);
 
     const before: LaneResult = { outcome: primary.outcome, steps: primary.steps, durationMs: primary.durationMs };
     const proposer: FixProposer = this.mock ? goldenFixer(config.mockSpeed) : openAIFixer(config);
     // A scan's runs map to the scan's repository; any other run to the env default.
     const github = run.repo ? githubFor(config, run.repo) : config.github;
     const sourceFixer: SourceFixer | null = github && !this.mock ? openAISourceFixer(config) : null;
+    const hitsBefore = (finding: FindingForFix): number => hitsOfFinding(finding, candidates.map((c) => ({ category: c.category, selector: c.selector, targetLabel: c.finding.targetLabel, hitCount: c.hitCount })));
+    /** What the agent did in a fix's rejected verify run, for its retry. */
+    const verifySteps = new Map<string, StepEvent[]>();
     let seqFloor = 0;
+    /** Findings that have had a fix proposed: a symptom among them is told by its own fix, never credited. */
+    const attempted = new Set<string>();
+    /** Symptom findings a verified fix already accounts for: no fix of their own. */
+    const credited = new Set<string>();
 
-    for (const { finding } of top) {
+    /** Propose (or re-propose onto `retryOf`), verify, and on "verified" credit the symptoms and map to source. */
+    const attempt = async (finding: FindingForFix, retryOf?: FixReport): Promise<AttemptResult<FixReport>> => {
+      let ran = false;
       try {
+        if (retryOf) log("run", `${runId} ${finding.findingId}: retrying once with the rejection as feedback (${retryOf.state.note ?? ""})`);
         const report = await proposeAndReport({
           worker,
           runId,
           proposer,
-          input: { task, finding, stepEvents: steps, tree: primary.trees.get(finding.evidenceSeq) ?? null },
+          input: {
+            task,
+            finding,
+            stepEvents: steps,
+            tree: primary.trees.get(finding.evidenceSeq) ?? null,
+            html: primary.html.get(finding.evidenceSeq) ?? null,
+            ...(retryOf ? { previous: { patchJs: retryOf.state.patchJs, note: retryOf.state.note ?? "", steps: verifySteps.get(finding.findingId) ?? [] } } : {}),
+          },
+          retryOf,
         });
-        if (!report) continue;
+        if (!report) return { ran, outcome: null };
+        attempted.add(finding.findingId);
         seqFloor = Math.max(seqFloor, report.lastSeq);
 
         const floor = seqFloor;
+        ran = true;
         const outcome = await this.withSession(() =>
           verifyFix({
             runId,
@@ -218,38 +255,109 @@ export class RunManager {
             report,
             finding,
             before,
+            categoryHitsBefore: hitsBefore(finding),
             seqFloor: floor,
             planner: this.mock ? null : new OpenAIPlanner(config),
             judge: this.judge(),
           }),
         );
         seqFloor = outcome.lastSeq;
+        verifySteps.set(finding.findingId, outcome.steps);
 
         if (outcome.verdict.stage === "verified") {
+          if (!isSymptomCategory(finding.category)) {
+            const resolved = candidates.filter(
+              (c) => isSymptomCategory(c.category) && !credited.has(c.findingId) && !attempted.has(c.findingId) && !outcome.firedCategories.has(c.category),
+            );
+            if (resolved.length > 0) {
+              resolved.forEach((c) => credited.add(c.findingId));
+              await report.update({ alsoResolved: resolved.map((c) => ({ findingId: c.findingId, category: c.category })) });
+              log("run", `${runId} ${finding.findingId}: also resolved ${resolved.map((c) => `${c.findingId} ${c.category}`).join(", ")}`);
+            }
+          }
           if (this.mock) await this.mockMapToSource(run, finding, report);
           else await this.mapToSource(finding, report, github, sourceFixer);
+          // Only a fix that has a source change gets a test: the test is for the pull request.
+          if (report.state.sourceFile) await this.writeRegressionTest(run, finding, report, { primarySteps: steps, verifySteps: outcome.steps, html: primary.html.get(finding.evidenceSeq) ?? null });
         }
         seqFloor = Math.max(seqFloor, report.lastSeq);
+        return { ran, outcome: { report, verdict: outcome.verdict } };
       } catch (err) {
         log("run", `${runId} ${finding.findingId}: ${errorMessage(err)}`);
+        return { ran, outcome: null };
       }
-    }
+    };
+
+    const { used, retried } = await scheduleVerifications({
+      selected: plan.selected.map((candidate) => candidate.finding),
+      maxRuns: config.verifyMaxRuns,
+      skip: (finding) => {
+        if (credited.has(finding.findingId)) {
+          log("run", `${runId} ${finding.findingId}: ${finding.category} no longer fired with a verified fix applied; no fix of its own`);
+          return true;
+        }
+        // Mock mode replays recorded verify runs, and can verify nothing the fixture did not record.
+        if (this.mock && !hasRecordedVerifyRun(finding.category)) {
+          log("run", `${runId} ${finding.findingId}: mock mode has no recorded verification for ${finding.category}`);
+          return true;
+        }
+        return false;
+      },
+      attempt,
+    });
+    log("run", `${runId} verification over: ${used} of at most ${config.verifyMaxRuns} runs used${retried.length > 0 ? `, retried ${retried.join(", ")}` : ""}`);
   }
 
-  /** Verified: find the source file and generate its new content. Unmapped is a normal ending. */
+  /** Verified: find the source file and generate its new content. Unmapped is a normal ending, and the row says what was searched. */
   private async mapToSource(finding: FindingForFix, report: FixReport, github: GitHubConfig | null, sourceFixer: SourceFixer | null): Promise<void> {
     if (!github || !sourceFixer) {
       log("run", `${finding.findingId}: verified; no repository connected, so it stays unmapped`);
+      await report.update({ mappingNote: "No repository is connected, so there was nothing to map it to." });
       return;
     }
-    const sourceFile = await findSourceFile(github, finding);
-    if (!sourceFile) return;
+    const { file: sourceFile, note } = await findSourceFile(github, finding, report.state.patchJs);
+    if (!sourceFile) {
+      await report.update({ mappingNote: note });
+      return;
+    }
     try {
       const newFileContent = await generateSourceFix(sourceFixer, finding, report.state, sourceFile);
       // Held on the fix row until a pull request is opened for it.
-      await report.update({ sourceFile: sourceFile.path, newFileContent, sourceSha: sourceFile.sha });
+      await report.update({ sourceFile: sourceFile.path, newFileContent, sourceSha: sourceFile.sha, mappingNote: note });
     } catch (err) {
       log("run", `${finding.findingId}: mapped to ${sourceFile.path}, but no acceptable new content: ${errorMessage(err)}`);
+      await report.update({ mappingNote: truncate(`Found ${sourceFile.path}, but no acceptable change to it was generated: ${errorMessage(err)}`, 500) });
+    }
+  }
+
+  /**
+   * The pull request's regression test (prTest.ts): written as data, run here
+   * against the site as it is (must fail) and with the verified patch (must
+   * pass), and only then rendered to a Playwright spec on the fix row. A fix
+   * with no proven test still ships; its row says why there is none. Mock mode
+   * has no browser, so its canned test stands in, and says so.
+   */
+  private async writeRegressionTest(
+    run: PreparedRun,
+    finding: FindingForFix,
+    report: FixReport,
+    context: { primarySteps: readonly StepEvent[]; verifySteps: readonly StepEvent[]; html: { target: string; overlay: string } | null },
+  ): Promise<void> {
+    if (!this.config.prTests) return;
+    const render = (test: Parameters<typeof renderPlaywrightSpec>[0]["test"]): string =>
+      renderPlaywrightSpec({ test, siteUrl: run.url, findingId: finding.findingId, summary: finding.summary, patchJs: report.state.patchJs });
+    try {
+      if (this.mock) {
+        const canned = mockFixTest(finding.category);
+        if (canned) await report.update({ testSpec: render(canned), testNote: "Mock mode: a canned regression test. No browser ran it." });
+        return;
+      }
+      const test = await openAITestWriter(this.config)({ task: run.task, siteUrl: run.url, finding, fixSummary: report.state.summary, patchJs: report.state.patchJs, ...context });
+      const proof = await this.withSession(() => proveFixTest({ config: this.config, siteUrl: run.url, test, patchJs: report.state.patchJs, findingId: finding.findingId }));
+      await report.update(proof.proven ? { testSpec: render(test), testNote: proof.note } : { testNote: proof.note });
+    } catch (err) {
+      log("run", `${finding.findingId}: no regression test: ${errorMessage(err)}`);
+      await report.update({ testNote: truncate(`No regression test: ${errorMessage(err)}`, 500) }).catch(() => undefined);
     }
   }
 

@@ -79,6 +79,7 @@ function toIssue(key: string, members: readonly Member[], totalRuns: number): Sc
     recommendation: finding.recommendation,
     page: issuePath(step?.payload.url ?? null),
     targetLabel: step?.payload.targetLabel ?? "",
+    detectedAt: step?.ts ?? null,
     runsHit: new Set(members.map((m) => m.finding.runId)).size,
     totalRuns,
     taskIndexes: [...new Set(members.map((m) => m.taskIndex))].sort((a, b) => a - b),

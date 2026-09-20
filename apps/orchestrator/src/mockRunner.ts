@@ -79,7 +79,7 @@ export async function runMockAgent(args: {
   let previousTs = script[0]?.ts ?? 0;
   // Mock mode has no browser, so there is no accessibility tree to hand a fix proposal.
   const trees = new Map<number, readonly string[]>();
-  let result: AgentResult = { outcome: "failure", steps: 0, durationMs: 0, summary: "The recording has no ending.", trees, errored: true };
+  let result: AgentResult = { outcome: "failure", steps: 0, durationMs: 0, summary: "The recording has no ending.", trees, html: new Map(), errored: true };
 
   for (const event of script) {
     await sleep(Math.min(MAX_GAP_MS, Math.max(0, event.ts - previousTs)) / config.mockSpeed);
@@ -103,7 +103,7 @@ export async function runMockAgent(args: {
       emitter.status(stateForOutcome(outcome), closing?.type === "status" ? closing.payload.message : undefined);
       const durationMs = Date.now() - startedAt;
       emitter.done({ outcome, durationMs, summary });
-      result = { outcome, steps: emitter.stepCount, durationMs, summary, trees, errored: false };
+      result = { outcome, steps: emitter.stepCount, durationMs, summary, trees, html: new Map(), errored: false };
     }
     // Recorded friction and the closing status are skipped: both are regenerated above.
   }

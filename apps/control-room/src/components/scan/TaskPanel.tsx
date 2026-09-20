@@ -10,7 +10,6 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
-  onOpenRun: (runId: string) => void;
   /** An issue key to force open (and scroll to), e.g. from clicking its satellite on the orbit graph. */
   focusedIssueKey?: string | null;
 }

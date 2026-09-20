@@ -1149,6 +1149,19 @@ a {
   letter-spacing: 0.01em;
 }
 
+.scan-form-caption strong {
+  color: var(--color-white);
+  font-weight: 700;
+}
+
+.scan-form-caption p {
+  margin: 0;
+}
+
+.scan-form-caption p + p {
+  margin-top: 10px;
+}
+
 .scan-form-options {
   display: flex;
   align-items: flex-start;
@@ -1250,6 +1263,165 @@ a {
     width: 100%;
     flex-basis: 100%;
   }
+}
+
+/* ---------------------------------------------------------- new scan dialog */
+
+.new-scan-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(10 10 10 / 0.74);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: new-scan-fade-in 160ms ease-out;
+}
+
+.new-scan-dialog {
+  position: relative;
+  width: min(100%, 500px);
+  padding: 26px;
+  border: 1px solid rgb(229 229 229 / 0.2);
+  border-radius: 24px;
+  background: var(--color-graphite);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.42), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  animation: new-scan-dialog-in 220ms var(--ease-out-expo);
+}
+
+.new-scan-dialog-header {
+  padding-right: 32px;
+}
+
+.new-scan-dialog-title {
+  margin: 0;
+  color: var(--color-white);
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.new-scan-dialog-description {
+  margin: 8px 0 0;
+  color: var(--color-smoke);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.new-scan-dialog-close {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(229 229 229 / 0.16);
+  border-radius: 9999px;
+  color: var(--color-ash);
+  transition: border-color 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.new-scan-dialog-close:hover {
+  border-color: rgb(229 229 229 / 0.5);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--color-white);
+}
+
+.new-scan-form {
+  margin-top: 24px;
+}
+
+.new-scan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-scan-field > span {
+  color: rgb(229 229 229 / 0.58);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.new-scan-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--color-void);
+  color: var(--color-white);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: normal;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.new-scan-input::placeholder {
+  color: rgb(229 229 229 / 0.42);
+}
+
+.new-scan-input:focus {
+  border-color: rgb(255 255 255 / 0.5);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.06);
+}
+
+.new-scan-input[aria-invalid="true"] {
+  border-color: var(--color-sev-5);
+}
+
+.new-scan-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.new-scan-cancel,
+.new-scan-submit {
+  height: 40px;
+  font-size: 14px;
+}
+
+.new-scan-cancel {
+  padding: 0 16px;
+}
+
+.new-scan-submit {
+  min-width: 126px;
+  padding: 0 16px;
+}
+
+.new-scan-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 126 102 / 0.28);
+  border-radius: 12px;
+  background: rgb(255 126 102 / 0.08);
+  color: var(--color-sev-5);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@keyframes new-scan-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes new-scan-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 /* The one violet: a narrow band, swept across while a persona thinks. */
@@ -1521,8 +1693,66 @@ a {
   opacity: 0;
 }
 
+.scan-flow .react-flow__attribution {
+  right: 8px;
+  bottom: 8px;
+  padding: 0;
+  background: transparent;
+  color: rgb(255 255 255 / 0.3);
+  font-size: 9px;
+  opacity: 0.72;
+  transform: scale(0.9);
+  transform-origin: bottom right;
+  transition: opacity 160ms ease-out;
+}
+
+.scan-flow .react-flow__attribution:hover {
+  opacity: 1;
+}
+
 .scan-flow .react-flow__attribution a {
+  color: inherit;
+}
+
+.issue-filter-card {
+  border-color: rgb(229 229 229 / 0.22);
+  background: rgb(10 10 10 / 0.78);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+.crawled-pages-card {
+  border-color: rgb(229 229 229 / 0.16);
+  border-style: dashed;
+  background: rgb(10 10 10 / 0.36);
+}
+
+.crawled-pages-summary {
   color: var(--color-smoke);
+}
+
+.crawled-pages-summary:hover {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--color-bone);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-5 {
+  color: var(--color-sev-5);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-4 {
+  color: var(--color-sev-4);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-3 {
+  color: var(--color-sev-3);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-2 {
+  color: var(--color-sev-2);
+}
+
+.filter-pill[aria-pressed="true"].text-sev-1 {
+  color: var(--color-sev-1);
 }
 
 /*

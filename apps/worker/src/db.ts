@@ -3,6 +3,7 @@
  * that leaves this module is the camelCase contract from @friction/shared.
  */
 import {
+  FixPayloadSchema,
   normalizeHost,
   stateForOutcome,
   type AgentState,
@@ -28,7 +29,8 @@ import lanesSql from "../migrations/0002_lanes.sql";
 import fixesSql from "../migrations/0003_fixes.sql";
 import scansSql from "../migrations/0004_scans.sql";
 import taskPullRequestsSql from "../migrations/0005_task_pull_requests.sql";
-import scanHostSql from "../migrations/0006_scan_host.sql";
+import fixDetailsSql from "../migrations/0006_fix_details.sql";
+import scanHostSql from "../migrations/0007_scan_host.sql";
 
 /* ------------------------------------------------------------------ schema */
 
@@ -49,8 +51,9 @@ const MIGRATIONS: Migration[] = [
   { name: "0003_fixes.sql", sql: fixesSql, applied: async (db) => (await tableSql(db, "fixes")) !== null },
   { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
   { name: "0005_task_pull_requests.sql", sql: taskPullRequestsSql, applied: async (db) => (await tableSql(db, "task_pull_requests")) !== null },
+  { name: "0006_fix_details.sql", sql: fixDetailsSql, applied: async (db) => /\bdetails_json\b/.test((await tableSql(db, "fixes"))?.sql ?? "") },
   {
-    name: "0006_scan_host.sql",
+    name: "0007_scan_host.sql",
     sql: scanHostSql,
     // ALTER TABLE is not idempotent, so ask the column list, not the table list.
     applied: async (db) => {
@@ -98,7 +101,7 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     console.log(`[db] applied ${migration.name} (${statements.length} statements)`);
   }
 
-  // One-off: rows written before 0006 have a null host, and only JS can parse a URL.
+  // One-off: rows written before 0007 have a null host, and only JS can parse a URL.
   const stale = await db.prepare("SELECT id, url FROM scans WHERE host IS NULL LIMIT 500").all<{ id: string; url: string }>();
   if (stale.results.length > 0) {
     await db.batch(stale.results.map((row) => db.prepare("UPDATE scans SET host = ? WHERE id = ?").bind(normalizeHost(row.url), row.id)));
@@ -400,6 +403,7 @@ interface FixRow {
   verify_live_view_url: string | null;
   verify_replay_url: string | null;
   updated_at: number;
+  details_json?: string | null;
 }
 
 function parseResult(json: string | null): LaneResult | null {
@@ -408,6 +412,19 @@ function parseResult(json: string | null): LaneResult | null {
     return JSON.parse(json) as LaneResult;
   } catch {
     return null;
+  }
+}
+
+/** The FixPayload extensions that share the details_json column. A row that no longer parses loses them, not the fix. */
+const FixDetailsSchema = FixPayloadSchema.pick({ alsoResolved: true, mappingNote: true, attempts: true, testSpec: true, testNote: true });
+
+function parseDetails(json: string | null | undefined): Pick<FixPayload, "alsoResolved" | "mappingNote" | "attempts" | "testSpec" | "testNote"> {
+  if (!json) return {};
+  try {
+    const parsed = FixDetailsSchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
   }
 }
 
@@ -429,6 +446,7 @@ function toFix(row: FixRow): FixRecord {
     ...(row.note ? { note: row.note } : {}),
     liveViewUrl: row.verify_live_view_url,
     replayUrl: row.verify_replay_url,
+    ...parseDetails(row.details_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -461,12 +479,14 @@ export async function upsertFix(db: D1Database, runId: string, upsert: FixUpsert
   const now = Date.now();
   const { newFileContent, sourceSha, ...payload } = upsert;
   const hasContent = newFileContent !== undefined ? 1 : 0;
+  const { alsoResolved, mappingNote, attempts, testSpec, testNote } = payload;
+  const details = alsoResolved || mappingNote || attempts || testSpec || testNote ? JSON.stringify({ alsoResolved, mappingNote, attempts, testSpec, testNote }) : null;
   const [, inserted] = await db.batch([
     db
       .prepare(
         `INSERT INTO fixes (id, run_id, finding_id, stage, summary, patch_js, source_file, new_file_content, before_json, after_json, pr_url, created_at,
-                            category, note, verify_live_view_url, verify_replay_url, updated_at, source_sha)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?12, ?18)
+                            category, note, verify_live_view_url, verify_replay_url, updated_at, source_sha, details_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?12, ?18, ?19)
          ON CONFLICT (run_id, finding_id) DO UPDATE SET
            stage = excluded.stage, summary = excluded.summary, patch_js = excluded.patch_js, source_file = excluded.source_file,
            new_file_content = CASE WHEN ?17 = 1 THEN excluded.new_file_content ELSE fixes.new_file_content END,
@@ -474,7 +494,7 @@ export async function upsertFix(db: D1Database, runId: string, upsert: FixUpsert
            before_json = excluded.before_json, after_json = excluded.after_json, pr_url = excluded.pr_url,
            category = excluded.category, note = excluded.note,
            verify_live_view_url = excluded.verify_live_view_url, verify_replay_url = excluded.verify_replay_url,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at, details_json = excluded.details_json`,
       )
       .bind(
         `${runId}:${payload.findingId}`,
@@ -495,6 +515,7 @@ export async function upsertFix(db: D1Database, runId: string, upsert: FixUpsert
         payload.replayUrl ?? null,
         hasContent,
         sourceSha ?? null,
+        details,
       ),
     db
       .prepare(

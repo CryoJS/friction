@@ -12,3 +12,4 @@ export * from "./scan";
 export * from "./scanReport";
 export * from "./scanPr";
 export * from "./annotations";
+export * from "./prTest";

@@ -86,6 +86,18 @@ export const Plus = (p: IconProps) => (
   </Icon>
 );
 
+export const Filter = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 4.5h13l-5 5.5v4.5l-3 1.5V10l-5-5.5Z" />
+  </Icon>
+);
+
+export const Sort = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 3.5v13M2.5 14l2.5 2.5L7.5 14M15 16.5v-13M12.5 6l2.5-2.5L17.5 6" />
+  </Icon>
+);
+
 /** A task whose run failed or timed out, on its node. */
 export const Cross = (p: IconProps) => (
   <Icon {...p}>

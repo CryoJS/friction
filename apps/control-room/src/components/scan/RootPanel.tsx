@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   SEVERITY_LABELS,
   isScanFinished,
@@ -10,7 +11,7 @@ import {
 import { pathOf } from "../../lib/format";
 import { VERDICT, VERDICT_ORDER, hostOf, runProgress } from "../../lib/scan";
 import { Dot, SEVERITY_STYLES } from "../badges";
-import { Plus } from "../icons";
+import { Cross, Filter, Plus, Sort } from "../icons";
 import { IssueCard } from "./IssueCard";
 import { Notice } from "./Notice";
 
@@ -77,7 +78,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
           reading={scan.status === "crawling"}
         />
       ) : report ? (
-        <ReportBody report={report} onSelect={onSelect} />
+        <ReportBody tree={tree} report={report} onSelect={onSelect} />
       ) : (
         <div className="flex flex-col items-center gap-4 py-10 text-body text-smoke" aria-busy="true">
           <div className="wash wash-sweep h-px w-56" aria-hidden="true" />
@@ -86,8 +87,8 @@ export function RootPanel({ tree, report, onSelect }: Props) {
       )}
 
       {hasTasks && scan.pages.length > 0 && (
-        <details className="group rounded-card border border-hairline/10 bg-white/4">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-card px-5 py-4 text-ui text-bone transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
+        <details className="crawled-pages-card group rounded-ui border">
+          <summary className="crawled-pages-summary flex cursor-pointer list-none items-center justify-between gap-4 rounded-ui px-4 py-3 text-ui transition-colors [&::-webkit-details-marker]:hidden">
             <span>
               Crawled pages <span className="tabular-nums text-smoke">{scan.pages.length}</span>
             </span>
@@ -134,8 +135,62 @@ function PageItems({ pages, className = "" }: { pages: CrawledPage[]; className?
   );
 }
 
-function ReportBody({ report, onSelect }: { report: ScanReportResponse; onSelect: (nodeId: string) => void }) {
+/** A facet's own selection: which values of one dimension (task, severity) are checked. Empty means "no filter": everything passes. */
+type FacetState<T> = ReadonlySet<T>;
+
+function toggled<T>(set: FacetState<T>, value: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+function matchesFacet<T>(set: FacetState<T>, value: T): boolean {
+  return set.size === 0 || set.has(value);
+}
+
+/** Newest first; an issue whose evidence never arrived (no detectedAt) sorts last rather than first. */
+function byRecency(a: { detectedAt: number | null }, b: { detectedAt: number | null }): number {
+  if (a.detectedAt === b.detectedAt) return 0;
+  if (a.detectedAt === null) return 1;
+  if (b.detectedAt === null) return -1;
+  return b.detectedAt - a.detectedAt;
+}
+
+function bySeverity(a: { severity: Severity; detectedAt: number | null }, b: { severity: Severity; detectedAt: number | null }): number {
+  if (a.severity !== b.severity) return b.severity - a.severity;
+  return byRecency(a, b);
+}
+
+type IssueSort = "recent" | "severity";
+
+function ReportBody({ tree, report, onSelect }: { tree: ScanTreeResponse; report: ScanReportResponse; onSelect: (nodeId: string) => void }) {
   const { summary } = report;
+
+  const [taskFilter, setTaskFilter] = useState<FacetState<number>>(new Set());
+  const [severityFilter, setSeverityFilter] = useState<FacetState<Severity>>(new Set());
+  const [sortOrder, setSortOrder] = useState<IssueSort>("recent");
+  const active = taskFilter.size + severityFilter.size > 0;
+
+  // Every task in the scan, not just ones with an issue so far: the filter's own options never
+  // shrink or grow as runs finish, so a task the report hasn't caught up to yet is still pickable.
+  const taskOptions = useMemo(() => tree.tasks.map((task) => task.index).sort((a, b) => a - b), [tree.tasks]);
+
+  const rankByKey = useMemo(() => new Map(report.issues.map((issue, index) => [issue.key, index + 1])), [report.issues]);
+
+  const visible = useMemo(
+    () =>
+      report.issues
+        .filter(
+          (issue) => matchesFacet(severityFilter, issue.severity) && (taskFilter.size === 0 || issue.taskIndexes.some((index) => taskFilter.has(index))),
+        )
+        .slice()
+        .sort(sortOrder === "recent" ? byRecency : bySeverity),
+    [report.issues, taskFilter, severityFilter, sortOrder],
+  );
+
+  const sortLabel = sortOrder === "recent" ? "Most recent first" : "Most severe first";
+
   return (
     <>
       <section aria-label="Summary" className="rounded-card border border-hairline/10 bg-white/4 p-5">
@@ -172,19 +227,120 @@ function ReportBody({ report, onSelect }: { report: ScanReportResponse; onSelect
       <section aria-label="Issues">
         <div className="flex items-baseline justify-between gap-3">
           <h3 className="font-heading text-subheading text-bone">
-            Issues <span className="tabular-nums text-smoke">{report.issues.length}</span>
+            Issues{" "}
+            <span className="tabular-nums text-smoke">
+              {active ? `${visible.length}/${report.issues.length}` : report.issues.length}
+            </span>
           </h3>
-          <p className="text-caption text-smoke">By severity, then reach</p>
+          <button
+            type="button"
+            onClick={() => setSortOrder((current) => current === "recent" ? "severity" : "recent")}
+            aria-pressed={sortOrder === "severity"}
+            className="issue-sort-toggle inline-flex items-center gap-1.5 text-caption text-smoke transition-colors hover:text-white"
+            title={`Sort issues: ${sortLabel}`}
+          >
+            <Sort size={13} />
+            {sortLabel}
+          </button>
         </div>
+
+        {report.issues.length > 0 && (
+          <IssueFilters
+            taskOptions={taskOptions}
+            taskFilter={taskFilter}
+            severityFilter={severityFilter}
+            onToggleTask={(index) => setTaskFilter((set) => toggled(set, index))}
+            onToggleSeverity={(severity) => setSeverityFilter((set) => toggled(set, severity))}
+            onClear={() => {
+              setTaskFilter(new Set());
+              setSeverityFilter(new Set());
+            }}
+          />
+        )}
+
         <div className="mt-3 space-y-2">
           {report.issues.length === 0 && (
             <p className="rounded-card border border-dashed border-hairline/20 px-6 py-10 text-center text-body text-smoke">No friction found yet.</p>
           )}
-          {report.issues.map((issue, index) => (
-            <IssueCard key={issue.key} issue={issue} rank={index + 1} onSelect={onSelect} />
+          {report.issues.length > 0 && visible.length === 0 && (
+            <p className="rounded-card border border-dashed border-hairline/20 px-6 py-10 text-center text-body text-smoke">No issue matches these filters.</p>
+          )}
+          {visible.map((issue) => (
+            <IssueCard key={issue.key} issue={issue} rank={rankByKey.get(issue.key) ?? 0} onSelect={onSelect} />
           ))}
         </div>
       </section>
     </>
+  );
+}
+
+interface IssueFiltersProps {
+  taskOptions: number[];
+  taskFilter: FacetState<number>;
+  severityFilter: FacetState<Severity>;
+  onToggleTask: (index: number) => void;
+  onToggleSeverity: (severity: Severity) => void;
+  onClear: () => void;
+}
+
+/**
+ * Two independent facets -- task and severity -- each a fixed enumeration of
+ * toggle pills that never changes shape as the scan runs (see taskOptions).
+ * Picking more than one value within a facet is an OR ("Task 1 or Task 3");
+ * picking across facets is an AND ("...and severity 5"). An empty facet
+ * filters nothing, so the default (nothing picked anywhere) shows every issue.
+ */
+function IssueFilters({ taskOptions, taskFilter, severityFilter, onToggleTask, onToggleSeverity, onClear }: IssueFiltersProps) {
+  const active = taskFilter.size + severityFilter.size > 0;
+  return (
+    <div className="issue-filter-card mt-3 space-y-2.5 rounded-ui border p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-ui text-bone">
+          <Filter size={15} />
+          Filter
+        </span>
+        {active && (
+          <button type="button" onClick={onClear} className="inline-flex items-center gap-1 text-caption text-smoke transition-colors hover:text-white">
+            <Cross size={11} />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {taskOptions.length > 1 && (
+        <FacetRow label="Task">
+          {taskOptions.map((index) => (
+            <FilterPill key={index} pressed={taskFilter.has(index)} onClick={() => onToggleTask(index)}>
+              Task {index + 1}
+            </FilterPill>
+          ))}
+        </FacetRow>
+      )}
+
+      <FacetRow label="Severity">
+        {SEVERITIES.map((severity) => (
+          <FilterPill key={severity} pressed={severityFilter.has(severity)} onClick={() => onToggleSeverity(severity)} tone={SEVERITY_STYLES[severity].text}>
+            S{severity}
+          </FilterPill>
+        ))}
+      </FacetRow>
+    </div>
+  );
+}
+
+function FacetRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="w-16 shrink-0 text-caption text-smoke">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function FilterPill({ pressed, onClick, tone, children }: { pressed: boolean; onClick: () => void; tone?: string; children: React.ReactNode }) {
+  return (
+    <button type="button" aria-pressed={pressed} onClick={onClick} className={`filter-pill pill-ghost h-7 px-2.5 text-caption ${tone ?? ""}`}>
+      {children}
+    </button>
   );
 }
