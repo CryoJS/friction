@@ -21,11 +21,20 @@
 const REPEL_RADIUS = 320;
 const MAX_OFFSET = 28;
 const SPRING = 0.22;
+/**
+ * Issue satellites lean away less than tasks: both how close the cursor has
+ * to get before one budges (its own share of REPEL_RADIUS) and how far it
+ * budges at most (its own share of MAX_OFFSET) are scaled down by this,
+ * while the spring itself (SPRING) is untouched, so a nudged issue still
+ * eases in and out at the same rate a task does -- it just travels less.
+ */
+const ISSUE_SENSITIVITY = 0.5;
 /** Below this the spring counts as settled: the result reports exactly zero, so its node lands precisely back on its rest position instead of drifting by a fraction of a pixel forever. */
 const SETTLE_EPSILON = 0.05;
 
 export interface NudgeTarget {
   id: string;
+  kind: "task" | "issue";
   /** the node's rest centre, in flow coordinates (its layout position + half its own size). */
   cx: number;
   cy: number;
@@ -50,14 +59,17 @@ export function stepNudge(targets: readonly NudgeTarget[], cursorFlow: { x: numb
       spring = { ox: 0, oy: 0 };
       state.set(target.id, spring);
     }
+    const scale = target.kind === "issue" ? ISSUE_SENSITIVITY : 1;
+    const repelRadius = REPEL_RADIUS * scale;
+    const maxOffset = MAX_OFFSET * scale;
     let tx = 0;
     let ty = 0;
     if (cursorFlow) {
       const dx = target.cx - cursorFlow.x;
       const dy = target.cy - cursorFlow.y;
       const dist = Math.hypot(dx, dy);
-      if (dist < REPEL_RADIUS && dist > 0.01) {
-        const strength = (1 - dist / REPEL_RADIUS) * MAX_OFFSET;
+      if (dist < repelRadius && dist > 0.01) {
+        const strength = (1 - dist / repelRadius) * maxOffset;
         tx = (dx / dist) * strength;
         ty = (dy / dist) * strength;
       }

@@ -152,8 +152,8 @@ function Canvas({ nodes, edges }: Props) {
     const tick = () => {
       const targets: NudgeTarget[] = [];
       for (const node of nodesRef.current) {
-        if (node.type === "task") targets.push({ id: node.id, cx: node.position.x + TASK_SIZE.w / 2, cy: node.position.y + TASK_SIZE.h / 2 });
-        else if (node.type === "issue") targets.push({ id: node.id, cx: node.position.x + ISSUE_DIAMETER / 2, cy: node.position.y + ISSUE_DIAMETER / 2 });
+        if (node.type === "task") targets.push({ id: node.id, kind: "task", cx: node.position.x + TASK_SIZE.w / 2, cy: node.position.y + TASK_SIZE.h / 2 });
+        else if (node.type === "issue") targets.push({ id: node.id, kind: "issue", cx: node.position.x + ISSUE_DIAMETER / 2, cy: node.position.y + ISSUE_DIAMETER / 2 });
       }
       const cursorFlow = cursor.current ? screenToFlowPosition(cursor.current) : null;
       const results = stepNudge(targets, cursorFlow);
