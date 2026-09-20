@@ -15,7 +15,16 @@ const WORKER_ORIGIN = process.env.WORKER_ORIGIN ?? "http://localhost:8787";
 // 404 panel links here rather than to WORKER_ORIGIN, which only serves raw
 // JSON -- a real deploy sets this via env, same as WORKER_ORIGIN.
 const CONTROL_ROOM_ORIGIN = process.env.CONTROL_ROOM_ORIGIN ?? "http://localhost:5173";
-const LIMIT = 25 * 1024;
+// Raised from 25KB to 32KB in fix round 2: the zero-dependency discipline
+// this cap existed to force is proven (zod stays out entirely, see
+// packages/shared/src/overlayVersion.ts), so the original number was a
+// conservative guess rather than a real constraint. 32KB is still well
+// inside the ~64KB the spec assumed the most restrictive browser allows for
+// a javascript: URL, and leaves room for Task 12 to wire a real
+// offline-bookmarklet link into main.ts. Applies ONLY to this bookmarklet --
+// Task 12's offline bundle inlines scan data, is not URL-encoded, and must
+// not be measured against it.
+const LIMIT = 32 * 1024;
 
 await mkdir("dist", { recursive: true });
 

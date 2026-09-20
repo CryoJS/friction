@@ -9,6 +9,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OVERLAY_ROOT_ID } from "./render";
 
+const ANNOTATIONS_KEY = "__friction_annotations";
+
+// Fix round 2, part (a): render.ts's real mountOverlay appends its root to
+// doc.body BEFORE it finishes resolving every finding (see render.ts), so a
+// throw partway through -- e.g. a malformed anchor.tag reaching
+// querySelectorAll before resolve.ts's fix round 2 guard -- leaves a first,
+// broken root already in the document when main.ts's error fallback tries
+// to mount a second one under the same id. Mocking mountOverlay to
+// reproduce exactly that ordering (append, then throw) lets the test assert
+// main.ts's own idempotence fix without needing a real malformed anchor to
+// reach resolve.ts.
+vi.mock("./render", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./render")>();
+  return {
+    ...actual,
+    mountOverlay: vi.fn(() => {
+      const stray = document.createElement("div");
+      stray.id = actual.OVERLAY_ROOT_ID;
+      document.body.appendChild(stray);
+      throw new Error("boom: simulated mid-mount crash");
+    }),
+  };
+});
+
 async function flush(): Promise<void> {
   // A few microtask/macrotask turns: main()'s chain is fetch -> res.json()
   // -> mount, each an awaited promise.
@@ -130,5 +154,54 @@ describe("main.ts entry point", () => {
 
     resolveFetch({ ok: false, status: 404, json: () => Promise.resolve({}) });
     await flush();
+  });
+
+  it("Fix round 2, part (a): exactly one #__friction-root survives a mid-mount throw, and it's the error panel", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ scanId: "s1", scannedAt: 0, url: "https://example.test/", overlayVersion: 1, findings: [] }),
+      } as unknown as Response),
+    );
+
+    await import("./main");
+    await flush();
+
+    // Without the fix, the mocked mountOverlay's own root (appended before
+    // it throws) is orphaned: document.getElementById only ever returns the
+    // FIRST match, so it would report the broken node while a SECOND root
+    // (the error panel) sits unreachable behind it. Asserting the COUNT,
+    // not just getElementById's result, is what actually catches that.
+    const roots = document.querySelectorAll(`#${OVERLAY_ROOT_ID}`);
+    expect(roots).toHaveLength(1);
+    expect(panelText()).toContain("Friction couldn't display this scan");
+
+    // Fix round 2, part (c): a response that crashed the mount must never
+    // reach sessionStorage, or every future click reads back the same
+    // poison and crashes the same way.
+    expect(sessionStorage.getItem(ANNOTATIONS_KEY)).toBeNull();
+  });
+
+  it("Fix round 2, part (c): a cached response that fails to mount is cleared, not left to poison every future click", async () => {
+    sessionStorage.setItem(
+      ANNOTATIONS_KEY,
+      JSON.stringify({
+        host: location.hostname,
+        response: { scanId: "s1", scannedAt: 0, url: "https://example.test/", overlayVersion: 1, findings: [] },
+      }),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await import("./main");
+    await flush();
+
+    expect(fetchMock).not.toHaveBeenCalled(); // this was a cache hit, not a fetch
+    const roots = document.querySelectorAll(`#${OVERLAY_ROOT_ID}`);
+    expect(roots).toHaveLength(1);
+    expect(panelText()).toContain("Friction couldn't display this scan");
+    expect(sessionStorage.getItem(ANNOTATIONS_KEY)).toBeNull();
   });
 });

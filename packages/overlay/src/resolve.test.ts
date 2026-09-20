@@ -134,6 +134,28 @@ describe("resolveAnchor", () => {
     expect(resolveAnchor({ ...base, text: "" }, doc).el).toBeNull();
   });
 
+  // Fix round 2, part (b): anchor.tag arrives from a remote /api/annotations
+  // response and is fed straight into querySelectorAll as a CSS selector in
+  // tiers 3 and 4. A malformed tag ("1button" -- a type selector cannot start
+  // with a digit) throws a DOMException in every real querySelectorAll
+  // implementation. Before this fix, tiers 3/4 called querySelectorAll(tag)
+  // directly with no try/catch (unlike tier 1's equivalent call), so this
+  // would propagate straight out of resolveAnchor() and, upstream, out of
+  // mountOverlay() -- see the fix-round-2 regression in main.test.ts.
+  it("tier 3/4: a malformed anchor.tag degrades to unlocated instead of throwing", () => {
+    const doc = load(`<body><main><p>Sold out</p></main></body>`);
+    const anchor: Anchor = {
+      ...base,
+      xpath: "/html/body/does/not/resolve",
+      tag: "1button",
+      attrs: {},
+    };
+    expect(() => resolveAnchor(anchor, doc)).not.toThrow();
+    const result = resolveAnchor(anchor, doc);
+    expect(result.el).toBeNull();
+    expect(result.confidence).toBeNull();
+  });
+
   it("returns unlocated when the element is simply gone", () => {
     const doc = load(`<body><main><p>Sold out</p></main></body>`);
     const result = resolveAnchor(base, doc);

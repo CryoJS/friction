@@ -87,6 +87,26 @@ function overlaps(a: Set<string>, b: Set<string>): boolean {
   return false;
 }
 
+/**
+ * Fix round 2 (Task 10's reviewer, authorized against this file): `anchor.tag`
+ * arrives from a remote /api/annotations response and is fed straight into
+ * querySelectorAll as a CSS selector. It is captured as `el.tagName` in
+ * pageScripts.ts, so in practice it is always a valid tag name -- but nothing
+ * here can prove that of a payload that crossed the network, and an invalid
+ * selector throws SyntaxError, not returns []. Tier 1 already guards its own
+ * querySelectorAll call this same way; every OTHER call site that uses
+ * anchor.tag as a selector (tiers 3 and 4) must degrade to "no candidates"
+ * instead, or a malformed tag takes down the whole resolveAnchor() call --
+ * and everything mountOverlay() does after it -- with an uncaught throw.
+ */
+function queryAllByTag(tag: string, doc: Document): Element[] {
+  try {
+    return [...doc.querySelectorAll<Element>(tag)];
+  } catch {
+    return [];
+  }
+}
+
 function byXPath(xpath: string, doc: Document): Element | null {
   try {
     const node = doc.evaluate(xpath, doc, null, 9 /* FIRST_ORDERED_NODE_TYPE */, null).singleNodeValue;
@@ -124,7 +144,7 @@ export function resolveAnchor(anchor: Anchor, doc: Document): Resolution {
   // tag scope MUST match capture (pageScripts.ts counts within
   // document.querySelectorAll(el.tagName)) or the ordinal indexes into a
   // different list and pins the wrong element.
-  const sameTag = [...doc.querySelectorAll<Element>(anchor.tag)].filter((el) => roleOf(el) === anchor.role && accessibleName(el) === anchor.name);
+  const sameTag = queryAllByTag(anchor.tag, doc).filter((el) => roleOf(el) === anchor.role && accessibleName(el) === anchor.name);
   if (sameTag.length > 0) return { el: sameTag[Math.min(anchor.ordinal, sameTag.length - 1)]!, confidence: "likely" };
 
   // Tier 3b: the element's tag changed since capture. Ordinal is meaningless
@@ -134,7 +154,7 @@ export function resolveAnchor(anchor: Anchor, doc: Document): Resolution {
 
   // Tier 4: same tag, same visible text. Catches a renamed aria-label.
   if (anchor.text) {
-    const byText = [...doc.querySelectorAll<Element>(anchor.tag)].filter((el) => clean((el as HTMLElement).innerText ?? el.textContent) === anchor.text);
+    const byText = queryAllByTag(anchor.tag, doc).filter((el) => clean((el as HTMLElement).innerText ?? el.textContent) === anchor.text);
     if (byText.length > 0) return { el: byText[Math.min(anchor.ordinal, byText.length - 1)]!, confidence: "likely" };
   }
 

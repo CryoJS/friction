@@ -98,8 +98,45 @@ function clearFocusTarget(): void {
   }
 }
 
+/**
+ * Fix round 2, part (c): a response is only ever cached AFTER it has
+ * mounted successfully (see main()'s success branch and the cached-response
+ * branch below). If a cached response later fails to mount anyway, the
+ * cache must be cleared here rather than left in place -- otherwise a single
+ * bad response makes the bookmarklet permanently broken for this host until
+ * sessionStorage is cleared by hand, since every future click would just
+ * read the same poisoned entry and crash the same way.
+ */
+function clearCachedResponse(): void {
+  try {
+    sessionStorage.removeItem(ANNOTATIONS_KEY);
+  } catch {
+    // nothing to clean up if storage is unavailable in the first place
+  }
+}
+
 function registerSentinel(destroy: () => void): void {
   window.__frictionOverlay = { version: OVERLAY_VERSION, destroy };
+}
+
+/**
+ * Fix round 2, part (a): removes any `#__friction-root` already in the
+ * document before a new one is appended. Nothing may assume the previous
+ * mount either never started or fully finished -- render.ts's mountOverlay
+ * appends its root to doc.body BEFORE it finishes resolving/mounting every
+ * finding, so a throw partway through (e.g. resolve.ts hitting a malformed
+ * anchor) leaves a first, broken root already in the DOM when the error
+ * panel below tries to mount a second one under the same id.
+ * document.getElementById only ever returns the FIRST match, so a second
+ * root sharing that id would be an orphan: invisible to future lookups,
+ * unremovable by any destroy() this module hands out, and still carrying
+ * whatever live listeners it managed to attach before it threw. Called at
+ * the top of every function that appends a `#__friction-root` element, so
+ * mounting is idempotent at the DOM level regardless of why the previous
+ * attempt didn't finish cleanly.
+ */
+function removeExistingRoot(): void {
+  document.getElementById(OVERLAY_ROOT_ID)?.remove();
 }
 
 /**
@@ -111,6 +148,7 @@ function registerSentinel(destroy: () => void): void {
  * built around a real AnnotationsResponse.
  */
 function mountMessage(message: string, link?: { href: string; text: string }): OverlayHandle {
+  removeExistingRoot();
   const root = document.createElement("div");
   root.id = OVERLAY_ROOT_ID;
   root.style.position = "fixed";
@@ -183,6 +221,12 @@ function addStalenessNotice(): void {
 }
 
 function finish(response: AnnotationsResponse): void {
+  // Fix round 2, part (a): see removeExistingRoot()'s doc comment. mountOverlay
+  // itself can throw partway through (a malformed anchor.tag reaching
+  // resolveAnchor, before round 2's resolve.ts fix; kept here too as a
+  // second layer, since "trust the caller cleaned up" is exactly the
+  // assumption that caused the orphan-root defect).
+  removeExistingRoot();
   const handle = mountOverlay(response, document);
   registerSentinel(handle.destroy);
 
@@ -213,14 +257,21 @@ function finish(response: AnnotationsResponse): void {
  * requirement 7 exists to prevent: at least an empty overlay says the
  * bookmarklet ran. This is the backstop for both the cached and the
  * freshly-fetched success paths.
+ *
+ * Returns whether the mount actually succeeded (fix round 2, part (c)):
+ * callers use this to decide whether the response is safe to cache -- a
+ * response that crashed the mount must never be written to sessionStorage,
+ * or every future click reads back the same poison and crashes the same way.
  */
-function mountResponseSafely(response: AnnotationsResponse): void {
+function mountResponseSafely(response: AnnotationsResponse): boolean {
   try {
     finish(response);
+    return true;
   } catch (err) {
     registerSentinel(
       mountMessage(`Friction couldn't display this scan: ${err instanceof Error ? err.message : String(err)}`).destroy,
     );
+    return false;
   }
 }
 
@@ -240,7 +291,14 @@ async function main(): Promise<void> {
   // Requirement 2.
   const cached = readCachedResponse(host);
   if (cached) {
-    mountResponseSafely(cached);
+    // Fix round 2, part (c): a cached response was only ever written after a
+    // previous successful mount, but if it fails to mount THIS time anyway
+    // (a bug, a state change since it was cached), clear it rather than
+    // leave a permanently-poisoned entry every future click will keep
+    // hitting.
+    if (!mountResponseSafely(cached)) {
+      clearCachedResponse();
+    }
     return;
   }
 
@@ -313,9 +371,15 @@ async function main(): Promise<void> {
     // overlay requirement 7 exists to prevent.
     try {
       const response = (await res.json()) as AnnotationsResponse;
-      // Requirement 5.
-      writeCachedResponse(host, response);
-      mountResponseSafely(response);
+      // Requirement 5, and fix round 2, part (c): the cache write moved to
+      // AFTER a successful mount. Writing it unconditionally (the original
+      // order) meant a payload that crashed mountOverlay got written to
+      // sessionStorage anyway -- every later click would then read that
+      // same cached entry, skip the network entirely, hit the same crash,
+      // and never get a chance to fetch a corrected response.
+      if (mountResponseSafely(response)) {
+        writeCachedResponse(host, response);
+      }
     } catch (err) {
       registerSentinel(
         mountMessage(`Friction's response couldn't be read: ${err instanceof Error ? err.message : String(err)}`).destroy,
