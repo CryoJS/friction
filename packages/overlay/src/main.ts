@@ -11,8 +11,8 @@
  */
 import type { AnnotationsResponse } from "@friction/shared";
 import { OVERLAY_VERSION } from "@friction/shared";
-import { mountOverlay, OVERLAY_ROOT_ID, type OverlayHandle } from "./render";
-import { CSS } from "./styles";
+import { mountOverlay, OVERLAY_ROOT_ID } from "./render";
+import { addStalenessNotice, mountMessage, registerSentinel, removeExistingRoot } from "./shell";
 
 // Injected by esbuild's `define` in build.mjs. Never read at runtime from
 // process.env -- there is no Node process in the page this bundle runs on.
@@ -26,24 +26,17 @@ declare const CONTROL_ROOM_ORIGIN: string;
 const ANNOTATIONS_KEY = "__friction_annotations";
 const FOCUS_KEY = "__friction_focus";
 
-/** What the versioned global sentinel actually stores. See requirement 1. */
-interface OverlaySentinel {
-  version: number;
-  destroy(): void;
-}
-
 declare global {
   interface Window {
-    __frictionOverlay?: OverlaySentinel;
     // Minor fix (fix round 1): this bundle has no module state that
     // survives between two clicks -- a javascript: bookmarklet is a fresh
     // top-level script evaluation every time it runs, so a plain `let`
     // here would reset on every click and protect nothing. Only something
-    // hung off `window` (like __frictionOverlay itself) persists between
-    // separate clicks, which is exactly the gap this closes: window.
-    // __frictionOverlay isn't written until a mount finishes, so two
-    // clicks before the first fetch settles both see it unset and both
-    // proceed, racing two fetches into two mounts.
+    // hung off `window` (like __frictionOverlay, declared in shell.ts)
+    // persists between separate clicks, which is exactly the gap this
+    // closes: window.__frictionOverlay isn't written until a mount
+    // finishes, so two clicks before the first fetch settles both see it
+    // unset and both proceed, racing two fetches into two mounts.
     __frictionRequestInFlight?: boolean;
   }
 }
@@ -113,111 +106,6 @@ function clearCachedResponse(): void {
   } catch {
     // nothing to clean up if storage is unavailable in the first place
   }
-}
-
-function registerSentinel(destroy: () => void): void {
-  window.__frictionOverlay = { version: OVERLAY_VERSION, destroy };
-}
-
-/**
- * Fix round 2, part (a): removes any `#__friction-root` already in the
- * document before a new one is appended. Nothing may assume the previous
- * mount either never started or fully finished -- render.ts's mountOverlay
- * appends its root to doc.body BEFORE it finishes resolving/mounting every
- * finding, so a throw partway through (e.g. resolve.ts hitting a malformed
- * anchor) leaves a first, broken root already in the DOM when the error
- * panel below tries to mount a second one under the same id.
- * document.getElementById only ever returns the FIRST match, so a second
- * root sharing that id would be an orphan: invisible to future lookups,
- * unremovable by any destroy() this module hands out, and still carrying
- * whatever live listeners it managed to attach before it threw. Called at
- * the top of every function that appends a `#__friction-root` element, so
- * mounting is idempotent at the DOM level regardless of why the previous
- * attempt didn't finish cleanly.
- */
-function removeExistingRoot(): void {
-  document.getElementById(OVERLAY_ROOT_ID)?.remove();
-}
-
-/**
- * Mounts a message-only panel for a state that has no findings at all -- a
- * network failure (which may or may not be a CSP block; see main()'s catch),
- * a 404, an unparseable response body, or an unexpected error. Reuses the
- * overlay's shadow-root shell and stylesheet (styles.ts) so it looks like the
- * same product, but does not go through render.ts's mountOverlay, which is
- * built around a real AnnotationsResponse.
- */
-function mountMessage(message: string, link?: { href: string; text: string }): OverlayHandle {
-  removeExistingRoot();
-  const root = document.createElement("div");
-  root.id = OVERLAY_ROOT_ID;
-  root.style.position = "fixed";
-  root.style.inset = "0";
-  root.style.margin = "0";
-  root.style.pointerEvents = "none";
-  const shadow = root.attachShadow({ mode: "open" });
-
-  const styleEl = document.createElement("style");
-  styleEl.textContent = CSS;
-  shadow.appendChild(styleEl);
-
-  const panel = document.createElement("div");
-  panel.className = "panel";
-
-  const head = document.createElement("div");
-  head.className = "panel-head";
-  const label = document.createElement("span");
-  label.textContent = "Friction overlay";
-  head.appendChild(label);
-  panel.appendChild(head);
-
-  const body = document.createElement("div");
-  body.className = "panel-body";
-  const note = document.createElement("p");
-  note.className = "empty-note";
-  note.textContent = message;
-  body.appendChild(note);
-
-  if (link) {
-    const a = document.createElement("a");
-    a.href = link.href;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = link.text;
-    body.appendChild(a);
-  }
-
-  panel.appendChild(body);
-  shadow.appendChild(panel);
-  document.body.appendChild(root);
-
-  return {
-    destroy(): void {
-      root.remove();
-    },
-    // Nothing is ever located in a message-only panel, so focusing is a no-op
-    // rather than an error -- see requirement 8's caller, which does not know
-    // in advance whether it got a real overlay or a message panel back.
-    focusFinding(): void {},
-  };
-}
-
-/**
- * Adds the "your overlay is out of date" line into an already-mounted
- * findings panel (requirement 6). render.ts's OverlayHandle exposes only
- * destroy()/focusFinding(), so this reaches the shadow root directly by id --
- * it is `mode: "open"`, so this is a supported read, not a hack around the
- * encapsulation render.ts actually cares about (which is keeping the host
- * page OUT, not keeping this module out).
- */
-function addStalenessNotice(): void {
-  const shadow = document.getElementById(OVERLAY_ROOT_ID)?.shadowRoot;
-  const body = shadow?.querySelector(".panel-body");
-  if (!body) return;
-  const notice = document.createElement("p");
-  notice.className = "empty-note";
-  notice.textContent = "This overlay is out of date. Re-drag the bookmarklet from the control room to get the latest version.";
-  body.insertBefore(notice, body.firstChild);
 }
 
 function finish(response: AnnotationsResponse): void {
