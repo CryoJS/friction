@@ -35,7 +35,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-caption text-smoke">Site report</p>
+        <p className="text-caption text-smoke">Scan results</p>
         <h2 className="mt-1 truncate font-heading text-heading-sm font-medium tracking-[-0.02em] text-white" title={scan.url}>
           {hostOf(scan.url)}
         </h2>
@@ -53,7 +53,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
               ? summarizeTaskPullRequests(pullRequests).text
               : scan.autoPr
                 ? "One draft pull request per fixable task, once every run has finished."
-                : "Pull requests are opened by hand, one fix at a time, from a task's control room."}
+                : "Pull requests are opened by hand, one fix at a time, from a task's results."}
           </p>
         </section>
       )}

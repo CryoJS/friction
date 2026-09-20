@@ -43,7 +43,7 @@ Each run works as follows:
 | --- | --- | --- | --- |
 | **A** | Orchestrator | `apps/orchestrator` | Browserbase sessions, Stagehand, OpenAI planner + judge + fixer, the agent loop, verification, repo mapping, PRs, scans (`crawl.ts`, `taskGen.ts`, `scanManager.ts`), `/suggest-tasks`. Tune prompts in `planner.ts` and `fixer.ts`; page-side measurement lives in `pageScripts.ts` |
 | **B** | Worker | `apps/worker` | Hono routes, D1 schema and queries (`db.ts`, `scanDb.ts`), SSE (`stream.ts`, `hub.ts`), R2 evidence, report, deploys |
-| **C** | Control room | `apps/control-room` | React UI in the dusk design system (`DESIGN.md`). A run's state is one reducer (`lib/runState.ts`) fed by `hooks/useRunStream.ts`; a scan polls `hooks/useScan.ts` and draws `components/scan/`. Single runs work against the fixture with nothing else running |
+| **C** | Site scan UI | `apps/control-room` | React UI in the dusk design system (`DESIGN.md`). The scan polls `hooks/useScan.ts`, draws `components/scan/`, and exposes the graph and merged Results report |
 | **D** | Shared, friction, demo | `packages/shared`, `fixtures/`, `scripts/` | Contracts, detectors + tests, verification rules + tests, scan contracts + merged report + tests, the golden run, the demo shop, the demo itself |
 
 The contract between everyone is `packages/shared/src/events.ts`. Change it there, run `pnpm typecheck`, and every app tells you what broke.
