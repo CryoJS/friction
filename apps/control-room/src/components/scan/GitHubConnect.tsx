@@ -25,7 +25,7 @@ const count = (n: number): string => (n === 0 ? "no repository yet" : n === 1 ? 
  * has no GITHUB_CLIENT_ID (or predates this): the form is then as it was.
  *
  * One quiet line once connected. Which repositories Friction may touch is
- * behind "Manage", open by itself only while nothing is allowed yet.
+ * behind "Manage", closed until the person opens it.
  */
 export function GitHubConnect({ onChanged, onOnlyRepo }: Props) {
   const [status, setStatus] = useState<GitHubConnectionStatus | null>(null);
@@ -80,20 +80,18 @@ export function GitHubConnect({ onChanged, onOnlyRepo }: Props) {
     return () => window.clearInterval(timer);
   }, [pending]);
 
-  // The moment it connects: the form re-reads its repositories, and the list opens, because nothing is allowed yet.
+  // The moment it connects: the form re-reads its repositories. Repository management stays closed until opened.
   const connected = status?.state === "connected";
-  const nothingAllowed = (status?.allowed.length ?? 0) === 0;
   useEffect(() => {
     if (connected && !wasConnected.current) {
       onChanged();
-      if (nothingAllowed) setManaging(true);
     }
     wasConnected.current = connected;
     if (!connected) {
       setTicked(null);
       setManaging(false);
     }
-  }, [connected, nothingAllowed, onChanged]);
+  }, [connected, onChanged]);
 
   if (!status || !status.available) return null;
 
