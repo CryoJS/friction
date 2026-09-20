@@ -2,24 +2,33 @@ import { useCallback, useRef, useState } from "react";
 import { Landing } from "./components/Landing";
 import { HomeScanNav, Nav } from "./components/Nav";
 import { Plus } from "./components/icons";
+import { NewScanDialog } from "./components/NewScanDialog";
 import { ScanPage } from "./components/scan/ScanPage";
 import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
   const [query, setQuery] = useQuery();
   const [overHero, setOverHero] = useState(true);
+  const [newScanOpen, setNewScanOpen] = useState(false);
   const landingScroller = useRef<HTMLElement>(null);
 
   const goHome = useCallback(() => {
     landingScroller.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setNewScanOpen(false);
     setQuery({ scan: null, node: null, tab: "scan" });
   }, [setQuery]);
   const openScan = useCallback((scanId: string) => setQuery({ scan: scanId, node: null, tab: "scan" }), [setQuery]);
+  const startNewScan = useCallback((scanId: string) => {
+    setNewScanOpen(false);
+    openScan(scanId);
+  }, [openScan]);
   const selectNode = useCallback((node: string) => setQuery({ node, tab: "scan" }), [setQuery]);
+  const openNewScan = useCallback(() => setNewScanOpen(true), []);
+  const closeNewScan = useCallback(() => setNewScanOpen(false), []);
 
-  // Every view but the landing carries the same white pill: scans start on the home page.
+  // The scan view keeps the launcher available without taking the user away from the current scan.
   const newScan = (
-    <button type="button" onClick={goHome} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
+    <button type="button" onClick={openNewScan} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
       <Plus size={14} />
       <span className="hidden sm:inline">New scan</span>
     </button>
@@ -43,6 +52,7 @@ export default function App() {
           view={query.tab === "results" ? "results" : "scan"}
           onSelectNode={selectNode}
         />
+        <NewScanDialog open={newScanOpen} onClose={closeNewScan} onStarted={startNewScan} />
       </div>
     );
   }

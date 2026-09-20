@@ -131,7 +131,14 @@ export function ScanForm({ onStarted }: Props) {
         </button>
       </div>
 
-      <p className="scan-form-caption">Find, visualize, and solve issues before your users do.</p>
+      <div className="scan-form-caption">
+        <p>
+          Friction sends <strong>multiple AI personas</strong> through your live site to complete real user tasks, uncovering UX issues as they happen.
+        </p>
+        <p>
+          Get prioritized findings with <strong>in-context annotations</strong>, then generate fixes and <strong>open PRs automatically</strong>.
+        </p>
+      </div>
 
       <GitHubConnect onChanged={refreshHealth} onOnlyRepo={chooseRepo} />
 
