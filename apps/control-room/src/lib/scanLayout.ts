@@ -55,13 +55,13 @@ import { TASK_PR, coveredByLabel, hostOf, rankedIssuesForTask, runProgress, verd
  * exactly the bug this centre-first approach exists to avoid.
  */
 const TASK_SIZE = { w: 320, h: 112 } as const; // nodes.tsx: task w-80 h-28
-const ROOT_SIZE = { w: 260, h: 170 } as const; // nodes.tsx: root w-65; height grows with content, this is a rough middle estimate used only for centring
+const ROOT_SIZE = { w: 320, h: 190 } as const; // nodes.tsx: root w-80; height grows with content, this is a rough middle estimate used only for centring
 /** The sun's approximate centre; every orbit is measured from here, not from the root node's top-left (0,0). */
 const ORBIT_CENTER = { x: ROOT_SIZE.w / 2, y: ROOT_SIZE.h / 2 };
 
 /** A task with no findings (yet) orbits at the rim; 5 is the tightest, most-critical ring. */
-const OUTER_RADIUS = 650;
-const RADIUS_BY_SEVERITY: Readonly<Record<Severity, number>> = { 5: 400, 4: 450, 3: 500, 2: 550, 1: 600 };
+const OUTER_RADIUS = 520;
+const RADIUS_BY_SEVERITY: Readonly<Record<Severity, number>> = { 5: 400, 4: 420, 3: 440, 2: 460, 1: 480 };
 /** 12 o'clock, then clockwise by rank -- rank 0 (the worst-ranked task) leads at the top. */
 const ANGLE_OFFSET = -Math.PI / 2;
 
@@ -90,10 +90,10 @@ const ISSUE_GAP = 28;
 const ISSUE_DIST_MIN = 170 + ISSUE_DIAMETER / 2 + ISSUE_GAP;
 const ISSUE_DIST_BY_SEVERITY: Readonly<Record<Severity, number>> = {
   5: ISSUE_DIST_MIN,
-  4: ISSUE_DIST_MIN + 45,
-  3: ISSUE_DIST_MIN + 90,
-  2: ISSUE_DIST_MIN + 135,
-  1: ISSUE_DIST_MIN + 180,
+  4: ISSUE_DIST_MIN + 25,
+  3: ISSUE_DIST_MIN + 50,
+  2: ISSUE_DIST_MIN + 75,
+  1: ISSUE_DIST_MIN + 100,
 };
 /** How wide, in the best case, a task's issues fan out -- a snowflake's spikes, not a narrow cone. Angular spacing still yields to ISSUE_DIST_MIN's safety minimum when there are enough issues to need it. */
 const ISSUE_FAN_TARGET = (34 * Math.PI) / 180;

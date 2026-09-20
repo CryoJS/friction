@@ -8,7 +8,7 @@
  * with pointer-events-auto.
  */
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { taskVerdict, type AgentState } from "@friction/shared";
+import { SEVERITY_LABELS, taskVerdict, type AgentState } from "@friction/shared";
 import { pathOf } from "../../lib/format";
 import { MAX_STEPS } from "../../lib/config";
 import { SCAN_STATE_LABELS, SCAN_STATUS, VERDICT, VERDICT_ORDER } from "../../lib/scan";
@@ -104,13 +104,13 @@ export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
           onClick={() => data.onSelect(id)}
           aria-current={data.selected ? "true" : undefined}
           style={nodeStyle(data.selected)}
-          className={`${frame()} ${neutralBorder(data.selected)} flex w-65 flex-col rounded-card border p-4`}
+          className={`${frame()} ${neutralBorder(data.selected)} flex w-80 flex-col rounded-card border p-5`}
         >
           <span className="flex items-center justify-between gap-2">
             <Chip tone={status.tone}>{status.label}</Chip>
             <span className="text-caption text-smoke">Site</span>
           </span>
-          <span className="mt-3 truncate font-heading text-subheading text-bone group-hover:text-white">{data.host}</span>
+          <span className="mt-3 truncate font-heading text-heading-sm text-bone group-hover:text-white">{data.host}</span>
 
           {data.status === "crawling" && (
             <>
@@ -174,7 +174,7 @@ function TaskTooltip({ data }: { data: TaskFlowNode["data"] }) {
   return (
     <div className="space-y-2.5">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-caption tabular-nums tracking-normal text-ash">Task {data.index + 1}</span>
+        <span className="font-mono text-body font-semibold tabular-nums tracking-normal text-ash">Task {data.index + 1}</span>
         <Chip tone={verdict.tone}>{verdict.label}</Chip>
       </div>
       <p className="text-ui font-medium leading-snug text-white">{data.title}</p>
@@ -214,7 +214,7 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
           className={`${frame()} ${border} flex h-28 w-80 flex-col rounded-2xl border p-3`}
         >
           <span className="flex items-center gap-2">
-            <span className="font-mono text-caption tabular-nums tracking-normal text-ash">Task {data.index + 1}</span>
+            <span className="font-mono text-heading-sm font-semibold tabular-nums tracking-normal text-ash">Task {data.index + 1}</span>
             <span className="ml-auto flex items-center gap-1.5 text-caption text-smoke">
               {stateLabel}
               <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center">
@@ -222,7 +222,9 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
               </span>
             </span>
           </span>
-          <span className="mt-1.5 line-clamp-2 text-ui leading-snug text-bone group-hover:text-white">{data.title}</span>
+          <span className="mt-1.5 truncate text-ui leading-snug text-bone group-hover:text-white" title={data.title}>
+            {data.title}
+          </span>
           <span className="mt-auto flex items-center gap-3 text-caption tabular-nums text-smoke">
             <span title={`${data.stepCount} of ${MAX_STEPS} steps`}>
               {data.stepCount}/{MAX_STEPS} steps
@@ -245,7 +247,9 @@ function IssueTooltip({ data }: { data: IssueFlowNode["data"] }) {
     <div className="space-y-2.5">
       <div className="flex items-center gap-2">
         <span className="font-mono text-caption tabular-nums tracking-normal text-ash">{String(data.rank).padStart(2, "0")}</span>
-        <span className={`text-caption tabular-nums ${style.text}`}>S{data.severity}</span>
+        <span className={`text-caption tabular-nums ${style.text}`}>
+          {data.severity}: {SEVERITY_LABELS[data.severity]}
+        </span>
       </div>
       <p className="text-ui font-medium leading-snug text-white">{categoryLabel(data.category)}</p>
       <ul className="list-disc space-y-1.5 pl-4 text-caption text-ash marker:text-smoke">
@@ -276,7 +280,7 @@ export function IssueNode({ data }: NodeProps<IssueFlowNode>) {
           style={{ backgroundColor: "var(--color-graphite)" }}
           className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-110 ${style.ring} ${data.focused ? "ring-2 ring-white/70" : ""}`}
         >
-          <span className={`font-mono text-caption tabular-nums ${style.text}`}>S{data.severity}</span>
+          <span className={`font-mono text-heading-sm font-semibold tabular-nums ${style.text}`}>S{data.severity}</span>
         </button>
       </HoverCard>
     </>
