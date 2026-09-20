@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { parseScanNode, scanNodeId } from "@friction/shared";
 import { useScan } from "../../hooks/useScan";
 import { useScanReport } from "../../hooks/useScanReport";
@@ -27,9 +27,21 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
   const selected = scanNodeId(node);
   const issueCount = report ? report.issues.length : null;
 
+  // Which issue (if any) a satellite click on the orbit graph asked the sidebar to open. Ordinary
+  // navigation (selecting a different node) clears it; only openIssue below sets it.
+  const [focusedIssueKey, setFocusedIssueKey] = useState<string | null>(null);
+  const selectNode = useCallback((id: string) => { setFocusedIssueKey(null); onSelectNode(id); }, [onSelectNode]);
+  const openIssue = useCallback(
+    (taskId: string, issueKey: string) => {
+      setFocusedIssueKey(issueKey);
+      onSelectNode(taskId);
+    },
+    [onSelectNode],
+  );
+
   const graph = useMemo(
-    () => (tree ? layoutScan(tree, { selected, issues: issueCount, onSelect: onSelectNode }) : null),
-    [tree, selected, issueCount, onSelectNode],
+    () => (tree ? layoutScan(tree, { selected, issues: issueCount, report, focusedIssueKey, onSelect: selectNode, onSelectIssue: openIssue }) : null),
+    [tree, selected, issueCount, report, focusedIssueKey, selectNode, openIssue],
   );
 
   if (missing) {
@@ -77,7 +89,7 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
       {view === "results" ? (
         <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6 sm:pb-8">
           <div className="mx-auto w-full max-w-300">
-            <RootPanel tree={tree} report={report} onSelect={onSelectNode} />
+            <RootPanel tree={tree} report={report} onSelect={selectNode} />
           </div>
         </main>
       ) : (
@@ -89,7 +101,7 @@ export function ScanPage({ scanId, nodeId, view, onSelectNode }: Props) {
             <ScanGraph nodes={graph.nodes} edges={graph.edges} />
           </section>
           <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
-            <SidePanel tree={tree} report={report} node={node} onSelect={onSelectNode} />
+            <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} focusedIssueKey={focusedIssueKey} />
           </aside>
         </div>
       )}
