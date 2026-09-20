@@ -17,6 +17,7 @@
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@friction/shared": "workspace:*",
     "@xyflow/react": "^12.11.6",
+    "lucide-react": "^1.47.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

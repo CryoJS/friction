@@ -6,7 +6,7 @@ import { SCAN_STATUS } from "../lib/scan";
 import { AgentAmbient } from "./AgentAmbient";
 import { Chip } from "./badges";
 import { HeroPreview } from "./HeroPreview";
-import { ArrowRight, Plus, Sparkle } from "./icons";
+import { ArrowRight, LogoMark } from "./icons";
 import { ScanForm } from "./ScanForm";
 
 interface Props {
@@ -17,43 +17,6 @@ interface Props {
 }
 
 type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "down" };
-
-const HOW_IT_WORKS: { title: string; detail: string }[] = [
-  {
-    title: "Read the site",
-    detail: "One browser session opens your URL and up to five pages from its navigation, keeping each page's title and accessibility tree.",
-  },
-  {
-    title: "Pick the ten critical tasks",
-    detail:
-      "One model call reads those pages and ranks the five tasks the site exists for: revenue, conversion, finding key information and getting help. Each says why it matters and what the final page shows when it is done. Nothing logs in, pays or enters personal data.",
-  },
-  {
-    title: "One isolated browser per task",
-    detail:
-      "The agent attempts every task in its own Browserbase session and context, so no cookies leak between them. Sessions come from one shared pool, most critical task first.",
-  },
-  {
-    title: "Observe, plan, act",
-    detail:
-      "Every step starts with a screenshot and the accessibility tree. One model call picks a single action, the action runs, and the evidence is kept. Each run is capped at 15 steps.",
-  },
-  {
-    title: "Detect friction deterministically",
-    detail:
-      "Nine pure detectors run after every step: dead clicks, navigation loops, retries, step budget, error messages, modal interrupts, long waits, keyboard traps and ambiguous labels. The model never decides whether something happened; it only writes the judgement.",
-  },
-  {
-    title: "Verify the fixes",
-    detail:
-      "For each task's worst findings, Friction proposes a fix and re-runs the task in a fresh browser with it installed. A fix counts as verified only if the friction is gone; a pull request is opened only when you click.",
-  },
-  {
-    title: "Merge, rank and fix",
-    detail:
-      "The same problem hit on several tasks becomes one issue: same kind of friction, same page, same element. Issues are ranked by severity, then by how many tasks hit them, each with its screenshot and what to fix. Review the complete scan from the graph and Results page.",
-  },
-];
 
 export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
   const [scans, setScans] = useState<Probe<ScanListItem[]>>({ status: "loading" });
@@ -120,41 +83,10 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
         </div>
       </section>
 
-      {/* -------------------------------------------------------- how it works */}
-      <section id="how" className="mx-auto grid max-w-300 scroll-mt-24 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12 lg:py-20">
-        <div className="self-start lg:sticky lg:top-28">
-          <h2 className="font-heading text-[32px] font-medium leading-[1.15] tracking-tight text-bone text-balance sm:text-heading">
-            Every step is observed, planned, acted on and judged.
-          </h2>
-          <p className="mt-5 max-w-[46ch] text-subheading text-ash">
-            Enter a URL. Friction reads the site, picks the five tasks that matter most, and has the agent attempt each one in an isolated Browserbase
-            session on the live site. Findings from every run are merged into one ranked report with screenshot evidence.
-          </p>
-        </div>
-
-        <ol className="flex flex-col gap-5 lg:pt-2">
-          {HOW_IT_WORKS.map((item, index) => (
-            <li key={item.title}>
-              <details className="group" open={index === 4}>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 rounded-ui py-1 text-subheading text-bone transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
-                  <span>{item.title}</span>
-                  <span className="flex shrink-0 items-center gap-3 text-ash">
-                    <span className="tabular-nums">{String(index + 1).padStart(2, "0")}</span>
-                    <Plus size={14} className="transition-transform duration-300 ease-out group-open:rotate-45" />
-                  </span>
-                </summary>
-                <p className="max-w-[60ch] pb-1 pt-2 text-body text-ash">{item.detail}</p>
-              </details>
-            </li>
-          ))}
-        </ol>
-      </section>
-
       {/* -------------------------------------------------------- recent scans */}
-      <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 sm:px-6">
+      <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 pt-24 sm:px-6 sm:pt-32">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
-          {scans.status === "ok" && scans.value.length > 0 && <p className="text-caption text-smoke">Up to five tasks per scan, one run each.</p>}
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
@@ -215,10 +147,10 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
       <footer className="mx-auto max-w-300 px-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-hairline/10 py-8 text-caption text-smoke">
           <span className="flex items-center gap-2">
-            <Sparkle size={14} className="text-bone" />
-            Friction. Built for Hack the North 2026.
+            <LogoMark size={20} />
+            Friction
           </span>
-          <span>Every run replays with the wifi off.</span>
+          <span>Built for Hack the North 2026</span>
         </div>
       </footer>
     </main>
