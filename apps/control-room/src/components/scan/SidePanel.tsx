@@ -7,14 +7,13 @@ interface Props {
   report: ScanReportResponse | null;
   node: ScanNode;
   onSelect: (nodeId: string) => void;
-  onOpenRun: (runId: string) => void;
   /** An issue key to force open in the task panel, e.g. from clicking its satellite on the orbit graph. */
   focusedIssueKey?: string | null;
 }
 
 /** The panel for the selected node. A node whose task does not exist (yet) falls back to the site report. */
-export function SidePanel({ tree, report, node, onSelect, onOpenRun, focusedIssueKey = null }: Props) {
+export function SidePanel({ tree, report, node, onSelect, focusedIssueKey = null }: Props) {
   const task = node.kind === "root" ? undefined : tree.tasks.find((t) => t.index === node.index);
-  if (task) return <TaskPanel key={task.runId} task={task} tree={tree} report={report} onSelect={onSelect} onOpenRun={onOpenRun} focusedIssueKey={focusedIssueKey} />;
+  if (task) return <TaskPanel key={task.runId} task={task} tree={tree} report={report} onSelect={onSelect} focusedIssueKey={focusedIssueKey} />;
   return <RootPanel tree={tree} report={report} onSelect={onSelect} />;
 }
