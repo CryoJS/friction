@@ -1,5 +1,6 @@
 import type {
   CreateScanResponse,
+  GitHubConnectionStatus,
   OpenPullRequestResponse,
   LiveViewResponse,
   OrchestratorHealth,
@@ -103,6 +104,12 @@ export const api = {
   liveView: (runId: string) => request<LiveViewResponse>(`${ORCHESTRATOR_URL}/runs/${encodeURIComponent(runId)}/live-view`, undefined, 6000),
 
   orchestratorHealth: () => request<OrchestratorHealth>(`${ORCHESTRATOR_URL}/health`, undefined, 2500),
+
+  /** GitHub connected with a button. Names only come back: the token stays in the orchestrator. Managing it only works from the orchestrator's own machine. */
+  github: () => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github`, undefined, 4000),
+  githubConnect: () => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github/connect`, json({}), 20_000),
+  githubSetAllowed: (repos: string[]) => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github/allowed`, json({ repos }), 30_000),
+  githubDisconnect: () => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github/disconnect`, json({}), 8000),
 
   listScans: () => request<ScanListResponse>(`${WORKER_URL}/api/scans?limit=12`, undefined, 5000),
   getScanTree: (scanId: string) => request<ScanTreeResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}`, undefined, 6000),

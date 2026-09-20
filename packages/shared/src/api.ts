@@ -282,6 +282,8 @@ export interface OrchestratorHealth {
   missingEnv: string[];
   /** Repositories a scan may be started with, as "owner/name". Never the token. */
   repos?: string[];
-  /** True when pull requests are only previewed: GITHUB_DRY_RUN, mock mode, or no GITHUB_TOKEN. */
+  /** True when pull requests are only previewed: GITHUB_DRY_RUN, mock mode, or no token from either source. */
   githubDryRun?: boolean;
+  /** Where the GitHub token comes from, and whose it is when it was connected with the button. Never the token. */
+  github?: { source: "connection" | "env" | "none"; login?: string };
 }
