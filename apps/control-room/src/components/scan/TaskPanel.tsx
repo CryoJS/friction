@@ -1,6 +1,6 @@
 import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
 import { useRunStream } from "../../hooks/useRunStream";
-import { VERDICT } from "../../lib/scan";
+import { VERDICT, rankedIssuesForTask } from "../../lib/scan";
 import { LanePane } from "../LanePane";
 import { Chip } from "../badges";
 import { ArrowRight } from "../icons";
@@ -15,6 +15,8 @@ interface Props {
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
   onOpenRun: (runId: string) => void;
+  /** An issue key to force open (and scroll to), e.g. from clicking its satellite on the orbit graph. */
+  focusedIssueKey?: string | null;
 }
 
 /**
@@ -22,13 +24,11 @@ interface Props {
  * LanePane on the run's SSE stream), and the site issues it hit. SidePanel
  * keys it by run id, so selecting another task opens that run's stream.
  */
-export function TaskPanel({ task, tree, report, onSelect, onOpenRun }: Props) {
+export function TaskPanel({ task, tree, report, onSelect, onOpenRun, focusedIssueKey = null }: Props) {
   const stream = useRunStream(task.runId, { replay: false });
   const verdict = VERDICT[taskVerdict(task.state)];
   const fixes = Object.keys(stream.view.fixes).length;
-  const ranked = report
-    ? report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(task.index))
-    : [];
+  const ranked = rankedIssuesForTask(report, task.index);
 
   return (
     <div className="space-y-5">
@@ -89,7 +89,7 @@ export function TaskPanel({ task, tree, report, onSelect, onOpenRun }: Props) {
         <div className="mt-3 space-y-2">
           {ranked.length === 0 && <p className="text-caption text-smoke">{report ? "None so far." : "Building the report…"}</p>}
           {ranked.map(({ issue, rank }) => (
-            <IssueCard key={issue.key} issue={issue} rank={rank} onSelect={onSelect} />
+            <IssueCard key={issue.key} issue={issue} rank={rank} onSelect={onSelect} forceOpen={issue.key === focusedIssueKey} />
           ))}
         </div>
       </section>

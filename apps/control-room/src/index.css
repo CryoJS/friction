@@ -1165,8 +1165,21 @@ a {
   color: var(--color-smoke);
 }
 
+/*
+ * A task's orbit radius shifts as its worst finding changes (see
+ * orbitRadius in scanLayout.ts): let it drift to its new ring rather than
+ * snap, so a newly-discovered blocker visibly pulls the planet inward.
+ * Ring nodes ride along for free since they're plain React Flow nodes too.
+ */
+.scan-flow .react-flow__node {
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scan-flow .react-flow__edge.animated path {
     animation: none;
+  }
+  .scan-flow .react-flow__node {
+    transition: none;
   }
 }

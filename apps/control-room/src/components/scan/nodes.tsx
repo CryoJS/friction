@@ -9,20 +9,47 @@
  */
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { taskVerdict, type AgentState } from "@friction/shared";
+import { pathOf } from "../../lib/format";
 import { MAX_STEPS } from "../../lib/config";
 import { SCAN_STATE_LABELS, SCAN_STATUS, VERDICT, VERDICT_ORDER } from "../../lib/scan";
-import type { RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
-import { Chip, Dot, SEVERITY_STYLES } from "../badges";
+import type { IssueFlowNode, RingFlowNode, RootFlowNode, TaskFlowNode } from "../../lib/scanLayout";
+import { Chip, Dot, SEVERITY_STYLES, categoryLabel } from "../badges";
 import { Check, Cross } from "../icons";
 import { HoverCard } from "./HoverCard";
 
-/** Shared by every node: opaque graphite, text lifts to white on hover, and a subtle brighter fill when selected. */
+/**
+ * One handle per compass side, so an edge can leave from (or arrive at)
+ * whichever side actually faces the other node -- see sideOf in scanLayout.ts.
+ * All four sit at the node's centre on both axes (React Flow only offsets
+ * them along the side they're pinned to), so the edge reads as a spoke from
+ * the node's middle, not from a corner.
+ */
+function CompassHandles({ type }: { type: "source" | "target" }) {
+  const centered = { top: "50%", left: "50%" };
+  return (
+    <>
+      <Handle type={type} id="top" position={Position.Top} isConnectable={false} style={centered} />
+      <Handle type={type} id="right" position={Position.Right} isConnectable={false} style={centered} />
+      <Handle type={type} id="bottom" position={Position.Bottom} isConnectable={false} style={centered} />
+      <Handle type={type} id="left" position={Position.Left} isConnectable={false} style={centered} />
+    </>
+  );
+}
+
+/** A dashed orbit ring, purely decorative: no pointer events, sits behind every real node. */
+export function OrbitRing({ data }: NodeProps<RingFlowNode>) {
+  const diameter = data.radius * 2;
+  return <div style={{ width: diameter, height: diameter }} className="pointer-events-none rounded-full border border-dashed border-hairline/10" />;
+}
+
+/** Shared by every node: opaque graphite, text lifts to white on hover, and a solid (never see-through) lighter fill when selected. */
 function frame(): string {
   return "group pointer-events-auto text-left transition-colors duration-150 ease-out";
 }
 
+/** Both states are fully opaque solid colours -- a node must never let the canvas, an edge or another node show through it. */
 function nodeStyle(selected: boolean): { backgroundColor: string } {
-  return { backgroundColor: selected ? "rgb(255 255 255 / 0.08)" : "var(--color-graphite)" };
+  return { backgroundColor: selected ? "#262626" : "var(--color-graphite)" };
 }
 
 /** Neutral nodes: the same hairline stays in place while selection is shown by the fill. */
@@ -119,7 +146,7 @@ export function RootNode({ id, data }: NodeProps<RootFlowNode>) {
           {data.taskSource === "fallback" && <span className="mt-2 text-caption text-sev-4">Couldn't read the site; these tasks are generic.</span>}
         </button>
       </HoverCard>
-      <Handle type="source" position={Position.Right} isConnectable={false} />
+      <CompassHandles type="source" />
     </>
   );
 }
@@ -175,7 +202,9 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
   const stateLabel = data.status === "verifying" ? "Verifying fixes" : SCAN_STATE_LABELS[data.state];
   return (
     <>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      {/* target: the spoke in from the sun. source: the spokes out to this task's own issue satellites. */}
+      <CompassHandles type="target" />
+      <CompassHandles type="source" />
       <HoverCard content={<TaskTooltip data={data} />}>
         <button
           type="button"
@@ -203,6 +232,51 @@ export function TaskNode({ id, data }: NodeProps<TaskFlowNode>) {
               {data.findingCount === 1 ? "finding" : "findings"}
             </span>
           </span>
+        </button>
+      </HoverCard>
+    </>
+  );
+}
+
+/** One issue's key facts, condensed to bullets: no evidence image, no fix list, no "runs" pill row. */
+function IssueTooltip({ data }: { data: IssueFlowNode["data"] }) {
+  const style = SEVERITY_STYLES[data.severity];
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-caption tabular-nums tracking-normal text-ash">{String(data.rank).padStart(2, "0")}</span>
+        <span className={`text-caption tabular-nums ${style.text}`}>S{data.severity}</span>
+      </div>
+      <p className="text-ui font-medium leading-snug text-white">{categoryLabel(data.category)}</p>
+      <ul className="list-disc space-y-1.5 pl-4 text-caption text-ash marker:text-smoke">
+        {data.summary && <li>{data.summary}</li>}
+        <li>
+          {data.runsHit}/{data.totalRuns} runs{data.page ? ` · ${pathOf(data.page)}` : ""}
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * One issue this task hit, a small moon trailing it. Clicking selects the
+ * task and opens (and scrolls to) that issue's card in the sidebar -- see
+ * ScanPage's openIssue and IssueCard's forceOpen.
+ */
+export function IssueNode({ data }: NodeProps<IssueFlowNode>) {
+  const style = SEVERITY_STYLES[data.severity];
+  return (
+    <>
+      <CompassHandles type="target" />
+      <HoverCard content={<IssueTooltip data={data} />}>
+        <button
+          type="button"
+          onClick={data.onOpen}
+          aria-label={`Issue ${data.rank}: ${categoryLabel(data.category)}, severity ${data.severity} of 5`}
+          style={{ backgroundColor: "var(--color-graphite)" }}
+          className={`group flex h-15 w-15 shrink-0 items-center justify-center rounded-full border-2 pointer-events-auto transition-transform duration-150 ease-out hover:scale-110 ${style.ring} ${data.focused ? "ring-2 ring-white/70" : ""}`}
+        >
+          <span className={`font-mono text-caption tabular-nums ${style.text}`}>S{data.severity}</span>
         </button>
       </HoverCard>
     </>
