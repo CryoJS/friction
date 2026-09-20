@@ -14,7 +14,9 @@
     "smoke:github-connect": "tsx scripts/smoke-github-connect.ts",
     "smoke:pr-test": "tsx scripts/smoke-pr-test.ts",
     "yield": "tsx scripts/yield-table.ts",
-    "test": "node --test --import tsx \"src/**/*.test.ts\""
+    "test": "node --test --import tsx \"src/**/*.test.ts\"",
+    "seed:annotations": "tsx scripts/seed-annotations.ts",
+    "drive:overlay": "tsx scripts/drive-overlay.ts"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.16.0",

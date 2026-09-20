@@ -24,6 +24,7 @@
  * their absence.
  */
 import { z } from "zod";
+import { AnchorSchema } from "./anchor";
 
 /* ------------------------------------------------------------------ enums */
 
@@ -149,6 +150,10 @@ export const StepPayloadSchema = z.object({
   viewport: ViewportSchema.optional(),
   /** extension: detector inputs */
   signals: StepSignalsSchema.optional(),
+  /** extension: how to find this element again later (the annotation overlay) */
+  anchor: AnchorSchema.optional(),
+  /** extension: R2 key of the HTML snapshot of this page, for the embedded viewer ("" / absent when not captured) */
+  snapshotKey: z.string().optional(),
 });
 export type StepPayload = z.infer<typeof StepPayloadSchema>;
 
@@ -178,6 +183,8 @@ export const FrictionPayloadSchema = z.object({
   hitCount: z.number().int().positive().optional(),
   /** extension: seq of the most recent step that hit it */
   lastSeq: z.number().int().nonnegative().optional(),
+  /** extension: the evidence step's anchor, copied here so the overlay needs one payload */
+  anchor: AnchorSchema.optional(),
 });
 export type FrictionPayload = z.infer<typeof FrictionPayloadSchema>;
 
@@ -405,7 +412,7 @@ export function evidenceKey(
   runId: string,
   lane: Lane,
   seq: number,
-  ext: "jpg" | "png" | "svg" = "jpg",
+  ext: "jpg" | "png" | "svg" | "html" = "jpg",
 ): string {
   return `runs/${runId}/${lane}/${String(seq).padStart(4, "0")}.${ext}`;
 }

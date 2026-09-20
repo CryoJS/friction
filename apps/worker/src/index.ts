@@ -14,6 +14,7 @@ import {
   FixUpsertSchema,
   GOLDEN_EVIDENCE_PREFIX,
   GOLDEN_RUN_ID,
+  OVERLAY_VERSION,
   RunPatchSchema,
   ScanPatchSchema,
   TaskPullRequestSchema,
@@ -23,8 +24,11 @@ import {
   formatIssues,
   isAllowedOrigin,
   normalizeTargetUrl,
+  parseAnnotationsQuery,
   parseEventBatch,
   renderMockScreenshot,
+  toAnnotationFinding,
+  type AnnotationsResponse,
   type CreateRunResponse,
   type CreateScanResponse,
   type FixListResponse,
@@ -48,12 +52,30 @@ import {
   patchRun,
   upsertFix,
 } from "./db";
-import { createScan, getRunScanLink, getScan, getScanFindingRows, getScanTree, listScans, patchScan, upsertTaskPullRequest } from "./scanDb";
+import { createScan, getLatestScanByHost, getRunScanLink, getScan, getScanFindingRows, getScanTree, listScans, patchScan, upsertTaskPullRequest } from "./scanDb";
 import type { AppEnv } from "./env";
 import { broadcast } from "./hub";
 import { handleStream } from "./stream";
 
 const app = new Hono<AppEnv>();
+
+/**
+ * The annotation overlay's only endpoint, called by a bookmarklet running on
+ * the user's OWN site, so it is the one route with an open CORS policy. The
+ * global policy in isAllowedOrigin() below stays restricted: widening it
+ * would open every mutating route on this Worker.
+ *
+ * This MUST be registered before the global cors() middleware. Hono's
+ * cors() answers an OPTIONS preflight itself and never calls next(), so
+ * whichever cors() middleware is outermost (registered first) is the one
+ * that resolves the preflight — the global one would otherwise shadow this
+ * one for every OPTIONS request, including OPTIONS /api/annotations, and
+ * the bookmarklet's declared allowHeaders would never take effect for any
+ * fetch that triggers a preflight. Being outermost also means, for a plain
+ * GET, this middleware's header write on the way back out happens last and
+ * so still wins over the global middleware's.
+ */
+app.use("/api/annotations", cors({ origin: "*", allowMethods: ["GET", "OPTIONS"], allowHeaders: ["Content-Type"], maxAge: 3600 }));
 
 /* CORS: open to localhost (any port) and *.pages.dev. */
 app.use(
@@ -286,6 +308,28 @@ app.get("/api/scans/:id/report", async (c) => {
   return c.json(assembleScanReport({ tree, findings: rows.findings, evidence: rows.evidence }));
 });
 
+/** See the app.use("/api/annotations", cors(...)) registration near the top of the file for why this route's CORS is open and why ordering matters. */
+app.get("/api/annotations", async (c) => {
+  const query = parseAnnotationsQuery({ host: c.req.query("host"), token: c.req.query("token") });
+  if (!query.ok) return c.json({ error: query.error }, 400);
+
+  const scan = query.by === "token" ? await getScan(c.env.DB, query.value) : await getLatestScanByHost(c.env.DB, query.value);
+  if (!scan) return c.json({ error: `no completed Friction scan for ${query.value}` }, 404);
+
+  const rows = await getScanFindingRows(c.env.DB, scan.id);
+  const steps = new Map(rows.evidence.map((e) => [`${e.runId}:${e.seq}`, e]));
+  const evidenceBase = new URL("/api/evidence", c.req.url).toString();
+
+  const body: AnnotationsResponse = {
+    scanId: scan.id,
+    scannedAt: scan.completedAt ?? scan.createdAt,
+    url: scan.url,
+    overlayVersion: OVERLAY_VERSION,
+    findings: rows.findings.map((f) => toAnnotationFinding(f, steps.get(`${f.runId}:${f.evidenceSeq}`), evidenceBase)),
+  };
+  return c.json(body);
+});
+
 /* ---------------------------------------------------------------- evidence */
 
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -296,7 +340,18 @@ const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   webp: "image/webp",
   svg: "image/svg+xml",
+  html: "text/html; charset=utf-8",
 };
+
+/**
+ * A snapshot is a copy of a THIRD-PARTY page served from Friction's own
+ * origin, so it must never be able to run anything. `script-src 'none'` is the
+ * boundary; the capture-time stripping in the orchestrator is only a first
+ * pass. Styles, images, fonts and media are allowed from anywhere because the
+ * snapshot's <base href> makes them load from the scanned site.
+ * The viewer additionally frames it with `sandbox` minus `allow-scripts`.
+ */
+const SNAPSHOT_CSP = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https: http:; img-src data: https: http:; font-src data: https: http:; media-src https: http:; frame-src 'none'; form-action 'none'";
 
 function validKey(key: string): boolean {
   return key.length > 0 && key.length <= 512 && /^[A-Za-z0-9._/-]+$/.test(key) && !key.includes("..") && !key.startsWith("/");
@@ -342,13 +397,14 @@ app.get("/api/evidence/:key{.+}", async (c) => {
     });
   }
 
+  const isSnapshot = key.endsWith(".html");
   return new Response(object.body, {
     headers: {
       "Content-Type": contentTypeFor(key, object.httpMetadata?.contentType),
       "Cache-Control": "public, max-age=31536000, immutable",
       ETag: object.httpEtag,
       // Evidence is only ever shown in <img>. Never let an uploaded SVG run script.
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+      "Content-Security-Policy": isSnapshot ? SNAPSHOT_CSP : "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
       "X-Content-Type-Options": "nosniff",
     },
   });

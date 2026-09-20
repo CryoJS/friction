@@ -140,6 +140,19 @@ const K = await load(keys.runId);
 const found = (snapshot: RunSnapshot): string[] => snapshot.events.flatMap((e) => (e.type === "friction" ? [e.payload.category] : []));
 const stepsOf = (snapshot: RunSnapshot) => snapshot.events.flatMap((e) => (e.type === "step" ? [e] : []));
 
+const events = P.snapshot.events;
+const clicked = events.find((e) => e.type === "step" && e.payload.actionType === "click" && e.payload.selector !== "");
+const capturedAnchor = clicked?.type === "step" ? clicked.payload.anchor : undefined;
+if (!capturedAnchor) throw new Error("no anchor was captured on a targeted click");
+if (!capturedAnchor.role || !capturedAnchor.tag) throw new Error(`anchor is missing role/tag: ${JSON.stringify(capturedAnchor)}`);
+console.log(`anchor ok: ${capturedAnchor.tag}[role=${capturedAnchor.role}] "${capturedAnchor.name}" ordinal=${capturedAnchor.ordinal}`);
+
+const frictionWithAnchor = events.find((e) => e.type === "friction" && e.payload.anchor);
+if (!frictionWithAnchor) throw new Error("no friction finding carried an anchor");
+const fa = frictionWithAnchor.type === "friction" ? frictionWithAnchor.payload.anchor : undefined;
+if (!fa || !fa.role || !fa.tag) throw new Error(`finding anchor is missing role/tag: ${JSON.stringify(fa)}`);
+console.log(`finding anchor ok: ${fa.tag}[role=${fa.role}] "${fa.name}"`);
+
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {
   if (!ok) failures += 1;

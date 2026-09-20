@@ -1,4 +1,6 @@
 export * from "./events";
+export * from "./anchor";
+export * from "./overlayVersion";
 export * from "./agent";
 export * from "./api";
 export * from "./report";
@@ -9,5 +11,6 @@ export * from "./fixes";
 export * from "./scan";
 export * from "./scanReport";
 export * from "./scanPr";
+export * from "./annotations";
 export * from "./prTest";
 export * from "./githubConnect";

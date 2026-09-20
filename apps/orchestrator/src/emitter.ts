@@ -106,7 +106,10 @@ export class LaneEmitter {
   private friction(finding: TrackedFinding, payload: Omit<FrictionPayload, "findingId">): void {
     const base = this.envelope();
     finding.findingId ??= `f${base.seq}`;
-    finding.payload = { ...payload, findingId: finding.findingId };
+    // The overlay needs one payload, so the evidence step's anchor is copied onto the finding.
+    const evidence = this.events.find((e) => e.type === "step" && e.seq === payload.evidenceSeq);
+    const anchor = evidence?.type === "step" ? evidence.payload.anchor : undefined;
+    finding.payload = { ...payload, findingId: finding.findingId, ...(anchor ? { anchor } : {}) };
     this.emit({ ...base, type: "friction", payload: finding.payload });
   }
 

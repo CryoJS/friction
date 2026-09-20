@@ -1,4 +1,5 @@
 import type {
+  AnnotationsResponse,
   CreateScanResponse,
   GitHubConnectionStatus,
   OpenPullRequestResponse,
@@ -115,6 +116,10 @@ export const api = {
   getScanTree: (scanId: string) => request<ScanTreeResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}`, undefined, 6000),
   getScanReport: (scanId: string) =>
     request<ScanReportResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}/report`, undefined, 8000),
+
+  /** This scan's own findings, in the overlay's flattened shape -- what the offline bookmarklet inlines (BookmarkletCard.tsx). `token` is the scan id, per GET /api/annotations's host-or-token contract. */
+  getAnnotations: (scanId: string) =>
+    request<AnnotationsResponse>(`${WORKER_URL}/api/annotations?token=${encodeURIComponent(scanId)}`, undefined, 8000),
 
   getSnapshot: (runId: string) => request<RunSnapshot>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}`, undefined, 6000),
   getReport: (runId: string) => request<ReportResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/report`, undefined, 6000),

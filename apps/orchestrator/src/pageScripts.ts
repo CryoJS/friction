@@ -9,11 +9,12 @@
  *
  * Shared helpers live on window.__fr so each script stays small.
  */
+import { ANCHOR_ATTRS, ANCHOR_TEXT_MAX, MAX_DATA_ATTRS, type Anchor } from "@friction/shared";
 
 const HELPERS = `
 (() => {
   const w = window;
-  if (w.__fr && w.__fr.v === 5) return;
+  if (w.__fr && w.__fr.v === 6) return;
   const clean = (s) => String(s || "").replace(/\\s+/g, " ").trim().slice(0, 90);
   const visible = (el) => {
     if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
@@ -67,7 +68,19 @@ const HELPERS = `
     }
     return null;
   };
-  const st = { v: 5, clean, visible, labelOf, rectOf, keyOf, byXPath, formState, findOverlay, formBefore: "", targets: [], phase: "ambient", ambient: new WeakSet(), meaningful: 0, lastMutation: 0 };
+  const IMPLICIT_ROLES = { a: "link", button: "button", select: "combobox", textarea: "textbox", summary: "button", form: "form", nav: "navigation", main: "main", h1: "heading", h2: "heading", h3: "heading" };
+  // Mirrored by roleOf() in packages/overlay/src/resolve.ts (the resolve
+  // side). The two run at different times on the same element and MUST
+  // agree, or every tier that compares roles fails open silently.
+  const roleOf = (el) => {
+    const explicit = el.getAttribute && el.getAttribute("role");
+    if (explicit) return explicit.trim().split(/\\s+/)[0];
+    const tag = el.tagName.toLowerCase();
+    if (tag === "a") return el.hasAttribute("href") ? "link" : "generic";
+    if (tag === "input") { const t = (el.getAttribute("type") || "text").toLowerCase(); return t === "checkbox" || t === "radio" ? t : t === "button" || t === "submit" || t === "reset" ? "button" : "textbox"; }
+    return IMPLICIT_ROLES[tag] || "generic";
+  };
+  const st = { v: 6, clean, visible, labelOf, roleOf, rectOf, keyOf, byXPath, formState, findOverlay, formBefore: "", targets: [], phase: "ambient", ambient: new WeakSet(), meaningful: 0, lastMutation: 0 };
   st.observer = new MutationObserver((records) => {
     for (const r of records) {
       // Whatever mutates while nobody is acting (carousels, timers, ads) is ambient noise.
@@ -155,17 +168,33 @@ export interface Located {
   scrolled: boolean;
   /** The element declares that it opens something (aria-haspopup / aria-controls / aria-expanded / <summary>). */
   opensPopup: boolean;
+  /** How to find this element again later. Null when the element was not found. */
+  anchor: Anchor | null;
 }
 
 /** Find a target by XPath, bring it into the viewport, and measure it. */
 export function locateScript(xpath: string): string {
   return `${HELPERS} (() => {
     const st = window.__fr; const el = st.byXPath(${JSON.stringify(xpath)});
-    if (!el || el.nodeType !== 1) return { found: false, label: "", bbox: null, scrolled: false, opensPopup: false };
+    if (!el || el.nodeType !== 1) return { found: false, label: "", bbox: null, scrolled: false, opensPopup: false, anchor: null };
     let r = el.getBoundingClientRect(); let scrolled = false;
     if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) { el.scrollIntoView({ block: "center", inline: "center" }); scrolled = true; r = el.getBoundingClientRect(); }
     const opensPopup = el.hasAttribute("aria-haspopup") || el.hasAttribute("aria-controls") || el.hasAttribute("aria-expanded") || el.tagName === "SUMMARY";
-    return { found: true, label: st.labelOf(el), bbox: r.width > 0 && r.height > 0 ? st.rectOf(el) : null, scrolled, opensPopup };
+
+    const role = st.roleOf(el);
+    const name = st.labelOf(el);
+    const attrs = {};
+    for (const key of ${JSON.stringify(ANCHOR_ATTRS)}) { const v = el.getAttribute(key); if (v) attrs[key] = String(v).slice(0, 120); }
+    let extra = 0;
+    for (const a of el.attributes) { if (extra >= ${MAX_DATA_ATTRS}) break; if (a.name.indexOf("data-") === 0 && !(a.name in attrs)) { attrs[a.name] = String(a.value).slice(0, 120); extra++; } }
+    const href = el.tagName === "A" && el.href ? (() => { try { return new URL(el.href).pathname; } catch (e) { return ""; } })() : "";
+    if (href) attrs.href = href;
+    // Which of the same-role, same-name elements this one is: the only thing that tells twelve "Add to cart" buttons apart.
+    let ordinal = 0;
+    for (const other of document.querySelectorAll(el.tagName)) { if (other === el) break; if (st.roleOf(other) === role && st.labelOf(other) === name) ordinal++; }
+
+    return { found: true, label: name, bbox: r.width > 0 && r.height > 0 ? st.rectOf(el) : null, scrolled, opensPopup,
+      anchor: { xpath: ${JSON.stringify(xpath)}, tag: el.tagName.toLowerCase(), role, name: name.slice(0, 200), text: st.clean(el.innerText).slice(0, ${ANCHOR_TEXT_MAX}), attrs, ordinal, path: location.pathname } };
   })()`;
 }
 

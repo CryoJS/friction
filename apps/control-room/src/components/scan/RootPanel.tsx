@@ -10,6 +10,7 @@ import {
 } from "@friction/shared";
 import { pathOf } from "../../lib/format";
 import { VERDICT, VERDICT_ORDER, hostOf, runProgress } from "../../lib/scan";
+import { BookmarkletCard } from "../BookmarkletCard";
 import { Dot, SEVERITY_STYLES } from "../badges";
 import { Cross, Filter, Plus, Sort } from "../icons";
 import { IssueCard } from "./IssueCard";
@@ -42,6 +43,8 @@ export function RootPanel({ tree, report, onSelect }: Props) {
         </h2>
         {showMessage && <p className="mt-1.5 text-ui text-ash">{scan.message}</p>}
       </header>
+
+      {scan.status === "completed" && <BookmarkletCard scanId={scan.id} scanUrl={scan.url} />}
 
       {scan.repo && (
         <section aria-label="Pull requests" className="rounded-card border border-hairline/10 bg-white/4 p-5">

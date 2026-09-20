@@ -4,6 +4,7 @@
  */
 import {
   FixPayloadSchema,
+  normalizeHost,
   stateForOutcome,
   type AgentState,
   type FindingInput,
@@ -29,6 +30,7 @@ import fixesSql from "../migrations/0003_fixes.sql";
 import scansSql from "../migrations/0004_scans.sql";
 import taskPullRequestsSql from "../migrations/0005_task_pull_requests.sql";
 import fixDetailsSql from "../migrations/0006_fix_details.sql";
+import scanHostSql from "../migrations/0007_scan_host.sql";
 
 /* ------------------------------------------------------------------ schema */
 
@@ -50,6 +52,15 @@ const MIGRATIONS: Migration[] = [
   { name: "0004_scans.sql", sql: scansSql, applied: async (db) => (await tableSql(db, "scans")) !== null },
   { name: "0005_task_pull_requests.sql", sql: taskPullRequestsSql, applied: async (db) => (await tableSql(db, "task_pull_requests")) !== null },
   { name: "0006_fix_details.sql", sql: fixDetailsSql, applied: async (db) => /\bdetails_json\b/.test((await tableSql(db, "fixes"))?.sql ?? "") },
+  {
+    name: "0007_scan_host.sql",
+    sql: scanHostSql,
+    // ALTER TABLE is not idempotent, so ask the column list, not the table list.
+    applied: async (db) => {
+      const ddl = await tableSql(db, "scans");
+      return ddl !== null && /\bhost\b/.test(ddl.sql);
+    },
+  },
 ];
 function statementsOf(sql: string): string[] {
   return (
@@ -89,6 +100,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     ]);
     console.log(`[db] applied ${migration.name} (${statements.length} statements)`);
   }
+
+  // One-off: rows written before 0007 have a null host, and only JS can parse a URL.
+  const stale = await db.prepare("SELECT id, url FROM scans WHERE host IS NULL LIMIT 500").all<{ id: string; url: string }>();
+  if (stale.results.length > 0) {
+    await db.batch(stale.results.map((row) => db.prepare("UPDATE scans SET host = ? WHERE id = ?").bind(normalizeHost(row.url), row.id)));
+  }
+
   schemaChecked = true;
 }
 
