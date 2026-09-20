@@ -18,9 +18,10 @@
  */
 import {
   evidenceKey,
+  hitsOfFinding,
   isSymptomCategory,
   planVerification,
-  type FrictionCategory,
+  renderPlaywrightSpec,
   type LaneResult,
   type Outcome,
   type ScanTaskLink,
@@ -35,8 +36,9 @@ import { openAIFixer, proposeAndReport, type FindingForFix, type FixProposer } f
 import type { FixReport } from "./fixReport";
 import { openAIJudge } from "./judge";
 import { goldenFixer, goldenJudge, runMockAgent } from "./mockRunner";
-import { mockSourceFix } from "./mockSource";
+import { mockFixTest, mockSourceFix } from "./mockSource";
 import { OpenAIPlanner } from "./planner";
+import { openAITestWriter, proveFixTest } from "./prTest";
 import { findSourceFile, generateSourceFix, openAISourceFixer, type SourceFixer } from "./repo";
 import { scheduleVerifications, verificationCandidates, type AttemptResult } from "./selection";
 import { errorMessage, log, truncate, type Semaphore } from "./util";
@@ -180,7 +182,7 @@ export class RunManager {
       emitter.status("failed", `Crashed: ${errorMessage(err)}`);
       emitter.done({ outcome: "failure", durationMs: 0, summary: `Crashed: ${errorMessage(err)}` });
       await emitter.flush();
-      return { outcome: "failure", steps: emitter.stepCount, durationMs: 0, summary: errorMessage(err), trees: new Map(), errored: true };
+      return { outcome: "failure", steps: emitter.stepCount, durationMs: 0, summary: errorMessage(err), trees: new Map(), html: new Map(), errored: true };
     }
   }
 
@@ -208,7 +210,9 @@ export class RunManager {
     // A scan's runs map to the scan's repository; any other run to the env default.
     const github = run.repo ? githubFor(config, run.repo) : config.github;
     const sourceFixer: SourceFixer | null = github && !this.mock ? openAISourceFixer(config) : null;
-    const hitsBefore = (category: FrictionCategory): number => candidates.filter((c) => c.category === category).reduce((n, c) => n + c.hitCount, 0);
+    const hitsBefore = (finding: FindingForFix): number => hitsOfFinding(finding, candidates.map((c) => ({ category: c.category, selector: c.selector, targetLabel: c.finding.targetLabel, hitCount: c.hitCount })));
+    /** What the agent did in a fix's rejected verify run, for its retry. */
+    const verifySteps = new Map<string, StepEvent[]>();
     let seqFloor = 0;
     /** Findings that have had a fix proposed: a symptom among them is told by its own fix, never credited. */
     const attempted = new Set<string>();
@@ -229,7 +233,8 @@ export class RunManager {
             finding,
             stepEvents: steps,
             tree: primary.trees.get(finding.evidenceSeq) ?? null,
-            ...(retryOf ? { previous: { patchJs: retryOf.state.patchJs, note: retryOf.state.note ?? "" } } : {}),
+            html: primary.html.get(finding.evidenceSeq) ?? null,
+            ...(retryOf ? { previous: { patchJs: retryOf.state.patchJs, note: retryOf.state.note ?? "", steps: verifySteps.get(finding.findingId) ?? [] } } : {}),
           },
           retryOf,
         });
@@ -250,13 +255,14 @@ export class RunManager {
             report,
             finding,
             before,
-            categoryHitsBefore: hitsBefore(finding.category),
+            categoryHitsBefore: hitsBefore(finding),
             seqFloor: floor,
             planner: this.mock ? null : new OpenAIPlanner(config),
             judge: this.judge(),
           }),
         );
         seqFloor = outcome.lastSeq;
+        verifySteps.set(finding.findingId, outcome.steps);
 
         if (outcome.verdict.stage === "verified") {
           if (!isSymptomCategory(finding.category)) {
@@ -271,6 +277,8 @@ export class RunManager {
           }
           if (this.mock) await this.mockMapToSource(run, finding, report);
           else await this.mapToSource(finding, report, github, sourceFixer);
+          // Only a fix that has a source change gets a test: the test is for the pull request.
+          if (report.state.sourceFile) await this.writeRegressionTest(run, finding, report, { primarySteps: steps, verifySteps: outcome.steps, html: primary.html.get(finding.evidenceSeq) ?? null });
         }
         seqFloor = Math.max(seqFloor, report.lastSeq);
         return { ran, outcome: { report, verdict: outcome.verdict } };
@@ -319,6 +327,37 @@ export class RunManager {
     } catch (err) {
       log("run", `${finding.findingId}: mapped to ${sourceFile.path}, but no acceptable new content: ${errorMessage(err)}`);
       await report.update({ mappingNote: truncate(`Found ${sourceFile.path}, but no acceptable change to it was generated: ${errorMessage(err)}`, 500) });
+    }
+  }
+
+  /**
+   * The pull request's regression test (prTest.ts): written as data, run here
+   * against the site as it is (must fail) and with the verified patch (must
+   * pass), and only then rendered to a Playwright spec on the fix row. A fix
+   * with no proven test still ships; its row says why there is none. Mock mode
+   * has no browser, so its canned test stands in, and says so.
+   */
+  private async writeRegressionTest(
+    run: PreparedRun,
+    finding: FindingForFix,
+    report: FixReport,
+    context: { primarySteps: readonly StepEvent[]; verifySteps: readonly StepEvent[]; html: { target: string; overlay: string } | null },
+  ): Promise<void> {
+    if (!this.config.prTests) return;
+    const render = (test: Parameters<typeof renderPlaywrightSpec>[0]["test"]): string =>
+      renderPlaywrightSpec({ test, siteUrl: run.url, findingId: finding.findingId, summary: finding.summary, patchJs: report.state.patchJs });
+    try {
+      if (this.mock) {
+        const canned = mockFixTest(finding.category);
+        if (canned) await report.update({ testSpec: render(canned), testNote: "Mock mode: a canned regression test. No browser ran it." });
+        return;
+      }
+      const test = await openAITestWriter(this.config)({ task: run.task, siteUrl: run.url, finding, fixSummary: report.state.summary, patchJs: report.state.patchJs, ...context });
+      const proof = await this.withSession(() => proveFixTest({ config: this.config, siteUrl: run.url, test, patchJs: report.state.patchJs, findingId: finding.findingId }));
+      await report.update(proof.proven ? { testSpec: render(test), testNote: proof.note } : { testNote: proof.note });
+    } catch (err) {
+      log("run", `${finding.findingId}: no regression test: ${errorMessage(err)}`);
+      await report.update({ testNote: truncate(`No regression test: ${errorMessage(err)}`, 500) }).catch(() => undefined);
     }
   }
 

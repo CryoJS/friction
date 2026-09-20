@@ -77,6 +77,8 @@ export interface Config {
   verifyTopN: number;
   /** Cap on one run's verifications, first attempts and retries together (each is a full browser run). */
   verifyMaxRuns: number;
+  /** Write and prove a Playwright regression test for every mapped fix (one model call and two short browser sessions each). PR_TESTS=0 turns it off. */
+  prTests: boolean;
   /**
    * The repository verified fixes are mapped to and PRs opened against, via a
    * personal access token. Null unless GITHUB_TOKEN, GITHUB_OWNER and
@@ -165,6 +167,7 @@ function load(): Config {
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     verifyMaxRuns: int("VERIFY_MAX_RUNS", DEFAULT_VERIFY_MAX_RUNS, 1, 10),
+    prTests: !["0", "false", "no"].includes((text("PR_TESTS") ?? "").toLowerCase()),
     github: githubConfig(),
     githubToken: text("GITHUB_TOKEN"),
     githubBaseBranch: text("GITHUB_BASE_BRANCH"),

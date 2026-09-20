@@ -8,6 +8,7 @@ import {
   describeComparison,
   guardPatch,
   describeNotSelected,
+  hitsOfFinding,
   judgeVerification,
   patchSearchTerms,
   planRetries,
@@ -156,6 +157,40 @@ describe("planVerification", () => {
   });
 });
 
+describe("hitsOfFinding: a fix is judged by its own element", () => {
+  // Live scan s_306u6lr9cv task 1: the fix for the popup's dead "No thanks" was rejected with
+  // "dead_click still fires (2 times)" while the page's other dead buttons were what still fired.
+  const noThanks = { category: "dead_click" as const, selector: "xpath=/html[1]/body[1]/div[2]/div[1]/button[2]", targetLabel: "No thanks" };
+  const others = [
+    { category: "dead_click" as const, selector: "xpath=/html[1]/body[1]/main[1]/div[3]/div[1]/button[2]", targetLabel: "Add to wishlist", hitCount: 1 },
+    { category: "dead_click" as const, selector: "xpath=/html[1]/body[1]/main[1]/div[2]/div[2]/button[1]", targetLabel: "Select options", hitCount: 1 },
+  ];
+
+  it("does not count the page's other dead buttons against it", () => {
+    expect(hitsOfFinding(noThanks, others)).toBe(0);
+    const verdict = judgeVerification({ category: "dead_click", before: { outcome: "success", steps: 6, durationMs: 1 }, after: { result: { outcome: "success", steps: 6, durationMs: 1 }, errored: false, patchActive: true, categoryHits: hitsOfFinding(noThanks, others), reachedFindingPage: true }, target: "No thanks" });
+    expect(verdict).toMatchObject({ stage: "verified", reason: "no_longer_fires" });
+  });
+
+  it("counts the same element by selector, or by name when a patch shifted its xpath", () => {
+    expect(hitsOfFinding(noThanks, [...others, { ...noThanks, hitCount: 2 }])).toBe(2);
+    expect(hitsOfFinding(noThanks, [{ category: "dead_click", selector: "xpath=/html[1]/body[1]/div[1]/div[1]/button[2]", targetLabel: " no  THANKS ", hitCount: 3 }])).toBe(3);
+    expect(hitsOfFinding(noThanks, [{ ...noThanks, category: "retry", hitCount: 5 }])).toBe(0);
+  });
+
+  it("names the element in a rejection", () => {
+    const verdict = judgeVerification({ category: "dead_click", before: { outcome: "success", steps: 6, durationMs: 1 }, after: { result: { outcome: "success", steps: 6, durationMs: 1 }, errored: false, patchActive: true, categoryHits: 2, reachedFindingPage: true }, target: "No thanks" });
+    expect(verdict.note).toBe('dead_click still fires on "No thanks" (2 times); the agent completed the task in 6 steps, no change from before.');
+  });
+
+  it("counts across the category where a finding has no element of its own", () => {
+    const loop = { category: "loop" as const, selector: "xpath=/html/body/a", targetLabel: "Home" };
+    expect(hitsOfFinding(loop, [{ category: "loop", selector: "", targetLabel: "", hitCount: 2 }, { category: "loop", selector: "x", targetLabel: "y", hitCount: 1 }])).toBe(3);
+    expect(hitsOfFinding({ category: "modal_interrupt", selector: "#a", targetLabel: "Add" }, [{ category: "modal_interrupt", selector: "#b", targetLabel: "Other", hitCount: 1 }])).toBe(1);
+    expect(hitsOfFinding({ category: "dead_click", selector: "", targetLabel: "" }, others)).toBe(2);
+  });
+});
+
 describe("planRetries", () => {
   const verdict = (reason: Verdict["reason"], stage: Verdict["stage"] = "rejected"): Verdict => ({ stage, reason, note: "" });
   const attempt = (findingId: string, category: SelectableFinding["category"], v: Verdict, attempts = 1) => ({ findingId, category, verdict: v, attempts });
@@ -174,6 +209,10 @@ describe("planRetries", () => {
       attempt("f", "dead_click", verdict("still_fires"), 2),
     ];
     expect(planRetries(attempts, { used: 0, maxRuns: 10 })).toEqual([]);
+  });
+
+  it("also retries a fix that made the category go quiet by breaking the task: the note says what it broke", () => {
+    expect(planRetries([attempt("f10", "modal_interrupt", verdict("outcome_worse"))], { used: 1, maxRuns: 4 })).toEqual(["f10"]);
   });
 
   it("a retry never exceeds the cap", () => {

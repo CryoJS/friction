@@ -52,8 +52,10 @@ export interface ProposeFixInput {
   stepEvents: readonly StepEvent[];
   /** Pruned accessibility tree the agent saw at the failing step; null when there was no browser (mock). */
   tree: readonly string[] | null;
-  /** The retry: the patch that was verified and rejected, and the verdict's sentence on what is still wrong. */
-  previous?: { patchJs: string; note: string };
+  /** The real markup at the failing step: the target element and any overlay covering the page. Null in mock mode and on older runs. */
+  html?: { target: string; overlay: string } | null;
+  /** The retry: the patch that was verified and rejected, the verdict's sentence on what is still wrong, and what the agent did with it installed. */
+  previous?: { patchJs: string; note: string; steps?: readonly StepEvent[] };
 }
 
 export type FixProposer = (input: ProposeFixInput) => Promise<FixProposal>;
@@ -72,30 +74,43 @@ const FIX_JSON_SCHEMA = {
 
 /* ----------------------------------------------------------------- prompt */
 
+/**
+ * Every rule under "Patches that were rejected" is a defect seen in a real
+ * rejected patch (three live scans, 2026-09-19), not a guess at best practice.
+ */
 const INSTRUCTIONS = [
   "You write a small JavaScript patch that fixes ONE specific usability problem on a web page, so that a test can check whether the fix lets a user complete their task.",
   "How it runs: Playwright's page.addInitScript() installs it in a disposable test browser. It runs on EVERY document load, BEFORE the page's own scripts and before <body> exists. It never reaches the real site or its users.",
+  "How it is judged: the same task is re-run from scratch by an agent that reads the accessibility tree and clicks real elements. The fix passes when THIS element's problem no longer occurs and the task still completes. A patch that makes the page harder to use fails, even if the problem is gone.",
   "Rules:",
-  "- Plain browser JavaScript (ES2020). Self-contained: no imports, no network (no fetch, XMLHttpRequest, WebSocket, sendBeacon), no navigation, no cookies, no eval.",
+  "- Plain browser JavaScript (ES2020). Self-contained: no imports, no network (no fetch, XMLHttpRequest, WebSocket, sendBeacon), no cookies, no eval.",
+  "- Never navigate from script: no assignment to location or location.href, no location.assign/replace/reload, no window.open, no history.pushState. When a control should take the visitor somewhere, make it a real link and let the browser navigate: set the href attribute of the <a> (element.setAttribute('href', url)), or call .click() on the working link that already goes there.",
   "- Wrap everything in try/catch. Never throw.",
-  "- If you need elements, wait for DOMContentLoaded, and assume they may render later: prefer event delegation on document (capture phase) or a MutationObserver over grabbing an element once.",
-  "- Scope it narrowly: match the specific element (the selector is usually an XPath; document.evaluate works, but prefer stable attributes, roles or accessible names you can see in the tree), and check location.pathname when the problem is page-specific, so other pages are untouched.",
+  "- Elements may not exist yet. Prefer ONE delegated listener on document (capture phase), which needs no element up front. When you must touch an element, wait for DOMContentLoaded and use a MutationObserver for late renders.",
+  "- Select the element by what the MARKUP below shows: an id, a data-* attribute, a name, a class that is clearly its own, an aria-label. Do not guess class names that are not in the markup. Do not use the XPath: removing or adding a node shifts it.",
+  "- Scope it: check location.pathname when the problem is page-specific, so other pages are untouched.",
   "- Make the behaviour genuinely work for a person. Do not merely hide the symptom. By category:",
-  "    dead_click: make the click do what it should, or give visible, actionable feedback (say what is missing and move focus to it), or remove the disabled/pending state that blocks the click.",
+  "    dead_click: make the click do what it should; or give visible, actionable feedback in the page (say what is missing, in an element with role=\"alert\", and move focus to what is missing); or remove the disabled/pending state that blocks it. When the handler exists but returns early, satisfy its precondition or explain it; do not stopPropagation() on the click, which kills the page's own handler too.",
   "    retry: give immediate visible feedback on press, and make the action succeed or explain why not.",
-  "    keyboard_trap: make the unreachable control focusable (tabindex) and operable (keydown Enter/Space/Escape); move focus into dialogs when they open.",
-  "    modal_interrupt: suppress the overlay on the matching route (remove or hide it and restore scrolling).",
-  "    error_text: prevent the error before commit (mark unavailable options as unavailable), or make the message say how to fix it.",
-  "    ambiguous_label: give each control a unique accessible name (aria-label) that includes its context.",
+  "    keyboard_trap: make the unreachable control focusable (tabindex=\"0\") and operable (keydown Enter/Space/Escape); move focus into dialogs when they open.",
+  "    modal_interrupt: stop the overlay appearing. Remove the overlay's own root element (the one in the markup below) with .remove(), then undo what it did to the page: overflow on <html> and <body>, and any inert or aria-hidden it set on the page's content.",
+  "    error_text: prevent the error before commit (mark unavailable options as unavailable and disabled), or make the message say how to fix it.",
+  "    ambiguous_label: give each control a unique accessible name (aria-label) that includes its context, e.g. the product it belongs to.",
   "    long_wait: acknowledge the wait at once with a visible loading state.",
   "    loop / step_budget: surface the information the visitor kept going back and forth for, on the page where they need it.",
+  "Patches that were rejected, and why. Do not repeat these:",
+  "- Finding an overlay by text (el.textContent.includes('10% off')) over many elements ('body *', 'body > *', '.modal, .overlay, .popup'). EVERY ancestor of the overlay contains that text too, so the patch hid or removed the page's root and the agent could do nothing. Match the overlay's own root by its id, class, role or aria-label from the markup; if you must test text, test it on that one element only.",
+  "- A MutationObserver with attributes: true (or characterData) whose callback sets styles or attributes. That re-triggers itself forever and freezes the page. Observe { childList: true, subtree: true } only, do nothing when there is nothing to do, and disconnect() once the job is done for good.",
+  "- Hiding with display:none plus aria-hidden while leaving the overlay's buttons in the DOM, then listening for clicks on them. The agent can no longer see them, and the page's scroll lock stayed on. Remove the root element instead.",
+  "- Re-scanning the whole document on every mutation (querySelectorAll('body *')). Look up one element by one selector.",
+  "- Navigating from script to fix a dead link. It is refused before it runs; make it a real link.",
   `- At most ${MAX_PATCH_LINES} lines. At most one short comment line.`,
 ].join("\n");
 
-function trail(stepEvents: readonly StepEvent[], evidenceSeq: number): string {
+function trail(stepEvents: readonly StepEvent[], evidenceSeq: number, keep = 6): string {
   return stepEvents
     .filter((s) => s.seq <= evidenceSeq)
-    .slice(-6)
+    .slice(-keep)
     .map((s) => {
       const p = s.payload;
       const marker = s.seq === evidenceSeq ? "   <-- the problem" : "";
@@ -113,6 +128,8 @@ function inputText(input: ProposeFixInput): string {
     `What happened: ${finding.summary}`,
     `Why it matters: ${finding.whyItMatters}`,
     `Element: ${finding.selector || "(none)"}${finding.targetLabel ? ` named "${finding.targetLabel}"` : ""}`,
+    ...(input.html?.target ? ["The element's markup, inside its ancestors' opening tags (select it by what you see here):", input.html.target] : []),
+    ...(input.html?.overlay ? ["Markup of the overlay covering the page at that step (its FIRST lines are ancestors; the last is the overlay's own root):", input.html.overlay] : []),
     `Page: ${finding.url}`,
     `Recommended fix: ${finding.recommendation}`,
     "Steps up to the problem:",
@@ -127,7 +144,8 @@ function inputText(input: ProposeFixInput): string {
           `Result of that run: ${input.previous.note}`,
           "The previous patch:",
           input.previous.patchJs,
-          "It loaded and ran, so the approach is what failed: it matched the wrong element, acted too late, or changed something the visitor does not depend on. Write a different patch that addresses what the result says is still wrong. Do not repeat it.",
+          ...(input.previous.steps && input.previous.steps.length > 0 ? ["What the agent did with that patch installed (its last steps):", trail(input.previous.steps, Number.MAX_SAFE_INTEGER, 8)] : []),
+          "It loaded and ran, so the approach is what failed: it matched the wrong element, acted too late, changed something the visitor does not depend on, or made the page harder to use than before. When the result says the agent no longer completed the task, the patch broke something the task needs: check it against the rejected patterns above. Write a different patch that addresses what the result says is still wrong. Do not repeat it.",
         ]
       : []),
   ].join("\n");

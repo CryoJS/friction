@@ -147,8 +147,9 @@ export function describeNotSelected(entry: { why: NotSelectedWhy; sameCauseAs?: 
 /**
  * Which rejected fixes get their one retry, in the order given (rank order),
  * while the run's verifications stay under the cap. Only a fixable finding
- * whose patch ran and whose category still fired: the rejection note then says
- * exactly what is still wrong, which is worth one more proposal.
+ * whose patch ran, and whose problem still fired or whose patch broke the
+ * task: either way the rejection note says exactly what is still wrong, which
+ * is worth one more proposal.
  */
 export function planRetries(
   attempts: ReadonlyArray<{ findingId: string; category: FrictionCategory; verdict: Verdict; attempts: number }>,
@@ -156,7 +157,7 @@ export function planRetries(
 ): string[] {
   const left = Math.max(0, budget.maxRuns - budget.used);
   return attempts
-    .filter((a) => a.attempts === 1 && a.verdict.stage === "rejected" && a.verdict.reason === "still_fires" && !isSymptomCategory(a.category))
+    .filter((a) => a.attempts === 1 && a.verdict.stage === "rejected" && (a.verdict.reason === "still_fires" || a.verdict.reason === "outcome_worse") && !isSymptomCategory(a.category))
     .slice(0, left)
     .map((a) => a.findingId);
 }
@@ -397,6 +398,8 @@ export interface PullRequestFacts {
   };
   /** Symptom findings of the same run that no longer fired in this fix's verify run. */
   alsoResolved?: ReadonlyArray<{ findingId: string; category: FrictionCategory }>;
+  /** The Playwright regression test: the path this PR adds it at (null: none was added) and what is known about it. */
+  test?: { path: string | null; note: string };
   /** Absolute URL of the evidence screenshot (served from R2 by the Worker). */
   evidenceUrl: string | null;
   primaryReplayUrl: string | null;
@@ -473,6 +476,16 @@ function findingSections(facts: Omit<PullRequestFacts, "task" | "siteUrl">, head
     "",
     `This PR implements that behaviour in \`${fix.sourceFile}\`. The source change was generated from the verified patch and **has not itself been run**: review it and run your tests before merging.`,
     "",
+    ...(facts.test
+      ? [
+          `${heading} Regression test`,
+          "",
+          facts.test.path
+            ? `This PR adds \`${facts.test.path}\`, a Playwright test of this fix. ${facts.test.note} It has **not** been run against this PR's source change. Run it against your build: \`BASE_URL=http://localhost:<port> npx playwright test tests/friction\` (needs \`@playwright/test\`). With \`FRICTION_RUNTIME_PATCH=1\` it installs the runtime patch instead, which shows it passing against the unfixed site.`
+            : facts.test.note,
+          "",
+        ]
+      : []),
     `${heading} Evidence`,
     "",
     facts.evidenceUrl ? `- Screenshot of the problem: ${facts.evidenceUrl}` : "- Screenshot of the problem: not captured",
@@ -564,6 +577,35 @@ export function taskBranchName(scanId: string, taskIndex: number, suffix?: strin
 
 /* ---------------------------------------------------------------- verdict */
 
+/** Categories where one finding is one element: its fix is judged by that element, not by its neighbours. */
+const ELEMENT_CATEGORIES: readonly FrictionCategory[] = ["dead_click", "retry", "ambiguous_label", "keyboard_trap"];
+
+export interface ElementHit {
+  category: FrictionCategory;
+  selector: string;
+  /** Accessible name of the element the evidencing step targeted. */
+  targetLabel: string;
+  hitCount: number;
+}
+
+const sameLabel = (a: string, b: string): boolean => a.trim() !== "" && a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * How often THIS finding's problem fired among a run's findings. A page with
+ * five dead buttons has five findings; a fix for one of them is not refuted by
+ * the other four still being dead. The same element is the same selector, or
+ * the same accessible name: a patch that removes a node shifts every
+ * structural xpath after it, so the selector alone is not enough. Categories
+ * with no element of their own (a loop, an overlay), and findings that
+ * recorded none, are counted across the category as before.
+ */
+export function hitsOfFinding(finding: Pick<ElementHit, "category" | "selector" | "targetLabel">, observed: readonly ElementHit[]): number {
+  const inCategory = observed.filter((hit) => hit.category === finding.category);
+  const scoped = ELEMENT_CATEGORIES.includes(finding.category) && (finding.selector.trim() !== "" || finding.targetLabel.trim() !== "");
+  const own = scoped ? inCategory.filter((hit) => (finding.selector.trim() !== "" && hit.selector === finding.selector) || sameLabel(finding.targetLabel, hit.targetLabel)) : inCategory;
+  return own.reduce((n, hit) => n + hit.hitCount, 0);
+}
+
 export interface VerifyObservation {
   result: LaneResult;
   /** The verify run did not run properly (no session, crashed): nothing can be concluded. */
@@ -629,6 +671,8 @@ export function judgeVerification(args: {
   after: VerifyObservation;
   /** Hits of the category in the primary run. Absent: the third way only accepts a page that was never needed. */
   categoryHitsBefore?: number;
+  /** The element the hits were counted for (hitsOfFinding), named in the note. Absent: they are the whole category's. */
+  target?: string;
 }): Verdict {
   const { category, before, after } = args;
   const comparison = describeComparison(before, after.result);
@@ -654,7 +698,8 @@ export function judgeVerification(args: {
     return { stage: "verified", reason: "fewer_steps", note: `With the fix, the agent ${comparison}; ${category} fired ${times(after.categoryHits)}, down from ${times(args.categoryHitsBefore)}.` };
   }
 
-  if (after.categoryHits > 0) return { stage: "rejected", reason: "still_fires", note: `${category} still fires (${times(after.categoryHits)}); the agent ${comparison}.` };
+  const on = args.target ? ` on "${args.target}"` : "";
+  if (after.categoryHits > 0) return { stage: "rejected", reason: "still_fires", note: `${category} still fires${on} (${times(after.categoryHits)}); the agent ${comparison}.` };
   if (worse && after.reachedFindingPage) return { stage: "rejected", reason: "outcome_worse", note: `${category} no longer fires, but with the fix the agent no longer completed the task: it ${comparison}.` };
   return { stage: "rejected", reason: "not_reached", note: `The agent never reached the page where ${category} happened, so the fix was not exercised; it ${comparison}.` };
 }

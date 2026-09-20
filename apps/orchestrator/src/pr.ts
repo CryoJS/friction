@@ -17,11 +17,11 @@
  * Never merges. Never force-pushes. Uses a personal access token from env.
  */
 import type { Octokit } from "@octokit/rest";
-import { FRICTION_BRANCH_PREFIX, buildPullRequest, committablePathProblem, fixBranchName, type FixRecord, type RunSnapshot, type StepEvent } from "@friction/shared";
+import { FRICTION_BRANCH_PREFIX, buildPullRequest, committablePathProblem, fixBranchName, fixTestPath, isFrictionTestPath, type FixRecord, type RunSnapshot, type StepEvent } from "@friction/shared";
 import { githubFor, type Config, type GitHubConfig } from "./config";
 import { FixReport } from "./fixReport";
 import { baseBranch, describeGitHubError, githubCall, octokitFor, statusOf } from "./repo";
-import { log } from "./util";
+import { errorMessage, log } from "./util";
 import type { WorkerClient } from "./workerClient";
 
 export class PullRequestError extends Error {
@@ -105,6 +105,38 @@ export async function commitFile(target: GitHubTarget, branch: string, file: { p
       content: Buffer.from(file.content, "utf8").toString("base64"),
     }),
   );
+}
+
+/**
+ * Adds the fix's proven Playwright spec, as a NEW file under tests/friction/.
+ * Not through commitFile: the path guard refuses test files, rightly, since a
+ * fix must never rewrite a repository's tests. This path has its own, stricter
+ * check (a shape only Friction produces) and no sha, so GitHub refuses it if
+ * the file already exists. Returns the path, or null when it was not added:
+ * the test is a bonus, and never the reason a pull request fails.
+ */
+export async function commitTestFile(target: GitHubTarget, branch: string, fix: FixRecord, runId: string): Promise<string | null> {
+  if (!fix.testSpec) return null;
+  const path = fixTestPath(runId, fix.findingId);
+  const { octokit, github, base } = target;
+  try {
+    if (!isFrictionTestPath(path)) throw new Error(`${JSON.stringify(path)} is not a Friction test path`);
+    if (!branch.startsWith(FRICTION_BRANCH_PREFIX) || branch === base) throw new Error(`${branch} is not a Friction branch`);
+    await githubCall("write", "repos.createOrUpdateFileContents", () =>
+      octokit.rest.repos.createOrUpdateFileContents({
+        owner: github.owner,
+        repo: github.repo,
+        branch,
+        path,
+        message: `Test: ${fix.summary}\n\nA Playwright regression test written and proven by Friction (run ${runId}, finding ${fix.findingId}).`,
+        content: Buffer.from(fix.testSpec ?? "", "utf8").toString("base64"),
+      }),
+    );
+    return path;
+  } catch (err) {
+    log("pr", `${fix.findingId}: the regression test was not added: ${errorMessage(err)}`);
+    return null;
+  }
 }
 
 /** A draft pull request against the base branch. Never merged by Friction. */
@@ -224,8 +256,9 @@ async function createDraftPullRequest(args: { fix: MappedFix; snapshot: RunSnaps
     const file = await checkBaseFile(target, fix.sourceFile, fix.sourceSha);
     const branch = await ensureBranch(target, [fixBranchName(fix.findingId), fixBranchName(fix.findingId, runId), fixBranchName(fix.findingId, `${runId}-${Date.now().toString(36)}`)]);
     await commitFile(target, branch, { path: fix.sourceFile, content: fix.newFileContent, fileSha: file.sha, message: commitMessage(fix, runId) });
+    const testPath = await commitTestFile(target, branch, fix, runId);
 
-    const { title, body } = buildPullRequest({ task: snapshot.run.task, siteUrl: snapshot.run.url, ...describeFix(snapshot, fix, args.workerUrl) });
+    const { title, body } = buildPullRequest({ task: snapshot.run.task, siteUrl: snapshot.run.url, ...describeFix(snapshot, fix, args.workerUrl, testPath) });
     return await openDraft(target, { branch, title, body });
   } catch (err) {
     if (err instanceof PullRequestError) throw err;
@@ -234,12 +267,14 @@ async function createDraftPullRequest(args: { fix: MappedFix; snapshot: RunSnaps
 }
 
 /** One fix as a pull request describes it: the finding, the fix, the evidence and both replays. */
-export function describeFix(snapshot: RunSnapshot, fix: MappedFix, workerUrl: string) {
+export function describeFix(snapshot: RunSnapshot, fix: MappedFix, workerUrl: string, testPath: string | null = null) {
   const { primaryStepNumber, evidenceUrl, finding } = describeFinding(snapshot, fix, workerUrl);
   return {
     finding: { ...finding, stepNumber: primaryStepNumber },
     fix: { summary: fix.summary, patchJs: fix.patchJs, sourceFile: fix.sourceFile, before: fix.before, after: fix.after, note: fix.note },
     alsoResolved: fix.alsoResolved,
+    // A spec that was proven but could not be added is not claimed; a fix with no proven test says why.
+    test: fix.testSpec && testPath ? { path: testPath, note: fix.testNote ?? "" } : fix.testNote && !fix.testSpec ? { path: null, note: fix.testNote } : undefined,
     evidenceUrl,
     primaryReplayUrl: snapshot.run.replayUrl,
     verifyReplayUrl: fix.replayUrl ?? null,

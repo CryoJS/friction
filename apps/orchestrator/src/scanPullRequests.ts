@@ -23,6 +23,7 @@
 import {
   buildTaskPullRequest,
   countLineChanges,
+  fixTestPath,
   planTaskPullRequests,
   planVerification,
   summarizeTaskPullRequests,
@@ -42,6 +43,7 @@ import {
   PullRequestError,
   checkBaseFile,
   commitFile,
+  commitTestFile,
   commitMessage,
   describeFinding,
   describeFix,
@@ -156,7 +158,7 @@ export async function openScanPullRequests(args: {
           const titles = new Map(work.map((other) => [other.taskIndex, other.title] as const));
           const alsoUnblocks = plan.alsoUnblocks.map((taskIndex) => ({ taskIndex, title: titles.get(taskIndex) ?? `Task ${taskIndex + 1}` }));
           const snapshot = task.snapshot ?? (await worker.getSnapshot(task.runId));
-          const job: TaskJob = { scanId, task, fixes: task.fixes, plan, snapshot, alsoUnblocks, workerUrl: config.workerUrl };
+          const job: TaskJob = { scanId, task, fixes: task.fixes, plan, snapshot, alsoUnblocks, workerUrl: config.workerUrl, testPaths: new Map() };
           if (dryRun) result = record(await previewTask(job, target));
           else if (!target) result = record({ status: "failed", findingIds: [], notFixed: plan.notFixed, reason: targetError ?? "GitHub could not be reached." });
           else result = record(await openTask(job, target, worker));
@@ -222,6 +224,8 @@ interface TaskJob {
   snapshot: RunSnapshot;
   alsoUnblocks: TaskPullRequestFacts["alsoUnblocks"];
   workerUrl: string;
+  /** findingId -> the regression test this PR adds (or would add) for it. */
+  testPaths: Map<string, string>;
 }
 
 type TaskResult = Omit<TaskPullRequest, "scanId" | "runId" | "taskIndex">;
@@ -239,7 +243,7 @@ function pullRequestFor(job: TaskJob, committed: readonly MappedFix[], listed: T
     task: job.snapshot.run.task,
     taskIndex: job.task.taskIndex,
     siteUrl: job.snapshot.run.url,
-    fixes: committed.map((fix) => ({ ...describeFix(job.snapshot, fix, job.workerUrl), alsoResolved: fix.alsoResolved?.filter((item) => resolved.has(item.findingId)) })),
+    fixes: committed.map((fix) => ({ ...describeFix(job.snapshot, fix, job.workerUrl, job.testPaths.get(fix.findingId) ?? null), alsoResolved: fix.alsoResolved?.filter((item) => resolved.has(item.findingId)) })),
     notFixed: notFixed.map((item) => {
       // A finding that never had a fix is described from the recorded run alone.
       const fix = job.fixes.find((candidate) => candidate.findingId === item.findingId) ?? { findingId: item.findingId, summary: item.findingId };
@@ -302,6 +306,8 @@ async function openTask(job: TaskJob, target: GitHubTarget, worker: WorkerClient
     try {
       await commitFile(target, branch, { path: fix.sourceFile, content: fix.newFileContent, fileSha, message: commitMessage(fix, job.task.runId) });
       committed.push(fix);
+      const testPath = await commitTestFile(target, branch, fix, job.task.runId);
+      if (testPath) job.testPaths.set(fix.findingId, testPath);
     } catch (err) {
       notFixed.push({ findingId: fix.findingId, reason: sentence(err) });
     }
@@ -333,6 +339,11 @@ async function previewTask(job: TaskJob, target: GitHubTarget | null): Promise<T
     try {
       const original = target ? (await checkBaseFile(target, fix.sourceFile, fix.sourceSha)).content : (mockOriginalFor(fix.sourceFile) ?? "");
       files.push({ path: fix.sourceFile, ...countLineChanges(original, fix.newFileContent) });
+      if (fix.testSpec) {
+        const testPath = fixTestPath(job.task.runId, fix.findingId);
+        job.testPaths.set(fix.findingId, testPath);
+        files.push({ path: testPath, addedLines: fix.testSpec.split("\n").length, removedLines: 0 });
+      }
       included.push(fix);
     } catch (err) {
       notFixed.push({ findingId: fix.findingId, reason: err instanceof PullRequestError || !target ? errorMessage(err) : describeGitHubError(err, target.github) });

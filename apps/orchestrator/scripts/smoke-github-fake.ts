@@ -11,7 +11,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { isCommittablePath, type FixRecord, type FixUpsert, type RunSnapshot, type TaskPullRequest } from "@friction/shared";
+import { isCommittablePath, isFrictionTestPath, type FixRecord, type FixUpsert, type RunSnapshot, type TaskPullRequest } from "@friction/shared";
 import { getGoldenRun } from "@friction/shared/golden";
 import { config as loaded, type Config } from "../src/config";
 import { openScanPullRequests } from "../src/scanPullRequests";
@@ -98,10 +98,13 @@ class FakeGitHub {
         return send(200, { type: "file", path: file, sha: this.sha(content), size: content.length, encoding: "base64", content: Buffer.from(content).toString("base64") });
       }
       if (req.method === "PUT") {
-        const put = JSON.parse(body) as { branch: string; sha: string; content: string };
+        const put = JSON.parse(body) as { branch: string; sha?: string; content: string };
         const branch = this.branches.get(put.branch);
         if (!branch) return send(404, { message: "Branch not found" });
-        if (put.sha !== this.sha(this.files.get(file) ?? "")) return send(409, { message: "sha does not match" });
+        // As GitHub does: no sha creates a file, and is refused (422) when the file already exists; a sha updates exactly that blob.
+        const exists = this.files.has(file) || branch.has(file);
+        if (put.sha === undefined && exists) return send(422, { message: 'Invalid request. "sha" wasn\'t supplied.' });
+        if (put.sha !== undefined && put.sha !== this.sha(this.files.get(file) ?? "")) return send(409, { message: "sha does not match" });
         branch.set(file, Buffer.from(put.content, "base64").toString("utf8"));
         return send(200, { content: { path: file }, commit: { sha: "c1" } });
       }
@@ -125,6 +128,9 @@ class FakeGitHub {
 }
 
 /* -------------------------------------------------------------- fake Worker */
+
+/** Stands in for a proven spec: what reaches GitHub is the row's testSpec, byte for byte. */
+const TEST_SPEC = ['import { expect, test } from "@playwright/test";', 'test("x", async () => {});', ""].join("\n");
 
 function fix(findingId: string, stage: FixRecord["stage"], sourceFile: string | null, original: string | null, github: FakeGitHub): FixRecord {
   return {
@@ -184,7 +190,8 @@ const MODAL = "export const modal = 1;\n".repeat(10);
 github.files.set("src/Cart.tsx", CART).set("src/Search.tsx", SEARCH).set("src/Modal.tsx", `${MODAL}// edited since\n`).set(".github/workflows/ci.yml", "on: push\n");
 
 const fixesOf = (): Record<string, FixRecord[]> => ({
-  r0: [fix("f3", "verified", "src/Cart.tsx", CART, github), fix("f9", "rejected", null, null, github)],
+  // f3 carries a proven regression test; no other fix does.
+  r0: [{ ...fix("f3", "verified", "src/Cart.tsx", CART, github), testSpec: TEST_SPEC, testNote: "Regression test proven in a browser." }, fix("f9", "rejected", null, null, github)],
   r1: [fix("f4", "verified", "src/Cart.tsx", CART, github), fix("f5", "verified", "src/Search.tsx", SEARCH, github)],
   // The file changed on main since the fix was generated, and a path the guard refuses.
   r2: [fix("f6", "verified", "src/Modal.tsx", MODAL, github), fix("f7", "verified", ".github/workflows/ci.yml", "on: push\n", github)],
@@ -200,10 +207,14 @@ check([...(github.branches.get("friction/scan-scanone1-task-2") ?? new Map()).ke
 check(first.results[1]?.notFixed.some((item) => item.findingId === "f4" && item.coveredBy === 0), "task 2's Cart.tsx fix is recorded as covered by task 1");
 check(github.pulls[0]?.body.includes("## Also unblocks") && github.pulls[0]?.body.includes("Task 2"), "task 1's PR lists task 2 under Also unblocks");
 check(github.pulls[0]?.body.includes("## Found, not fixed") && github.pulls[0]?.body.includes("dead_click still fires"), "task 1's PR lists its rejected fix under Found, not fixed");
+check([...(github.branches.get("friction/scan-scanone1-task-1") ?? new Map()).keys()].sort().join() === "src/Cart.tsx,tests/friction/r0-f3.spec.ts", "task 1 commits its fix AND adds its regression test, as a new file under tests/friction/");
+check(github.pulls[0]?.body.includes("## Regression test") && github.pulls[0]?.body.includes("tests/friction/r0-f3.spec.ts") && github.pulls[0]?.body.includes("has **not** been run against this PR"), "task 1 PR names the test, and says it has not been run against the source change");
+check(!github.pulls[1]?.body.includes("## Regression test"), "a fix with no proven test claims none");
 check(first.results[2]?.notFixed.some((item) => item.reason.includes("has changed on main")), "a file that changed since generation is skipped, not overwritten");
 check(first.results[2]?.notFixed.some((item) => item.reason.includes(".github/ is off limits")), "the workflow file is refused by the path guard");
 check(first.posted.filter((p) => p.stage === "pr_opened").map((p) => p.findingId).join() === "f3,f5", "committed fixes move to pr_opened with the PR's URL");
-check([...github.branches.values()].every((branch) => [...branch.keys()].every(isCommittablePath)), "nothing outside the path guard was committed");
+// The one file a pull request may add outside the source guard is Friction's own regression test.
+check([...github.branches.values()].every((branch) => [...branch.keys()].every((path) => isCommittablePath(path) || isFrictionTestPath(path))), "nothing outside the path guard was committed, but Friction's own tests/friction/ spec");
 check(github.branches.get("main")?.size === 0, "nothing was committed to main");
 check(github.writes.every((w) => /^(POST \/repos\/acme\/shop\/(git\/refs|pulls)|PUT \/repos\/acme\/shop\/contents\/)/.test(w)), "the only writes are createRef, createOrUpdateFileContents and pulls.create");
 
