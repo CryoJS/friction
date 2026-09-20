@@ -19,3 +19,6 @@ inference_summary/
 
 <THEIRS>
 .claude/worktrees/
+
+# The GitHub connection made with the Connect button: a token. Never commit it.
+.friction/

@@ -10,3 +10,4 @@ export * from "./scan";
 export * from "./scanReport";
 export * from "./scanPr";
 export * from "./prTest";
+export * from "./githubConnect";

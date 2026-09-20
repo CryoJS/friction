@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { DEFAULT_VERIFY_MAX_RUNS, DEFAULT_VERIFY_TOP_N, matchAllowedRepo, parseRepoSlug } from "@friction/shared";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GitHubConnection } from "./githubConnection";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(appDir, "../..");
@@ -179,6 +180,29 @@ function load(): Config {
 }
 
 export const config: Config = load();
+
+/**
+ * GitHub connected with a button (githubConnection.ts), over the environment's
+ * token and allow-list as the fallback. Mock mode connects to nothing: it has
+ * no client id and keeps no file, so it stays exactly as it was.
+ */
+export const githubConnection = new GitHubConnection({
+  clientId: config.mode === "mock" ? null : text("GITHUB_CLIENT_ID"),
+  oauthUrl: (text("GITHUB_OAUTH_URL") ?? "https://github.com").replace(/\/+$/, ""),
+  apiUrl: (config.githubApiUrl ?? "https://api.github.com").replace(/\/+$/, ""),
+  // GITHUB_CONNECTION_FILE is for the smoke test, so it never touches a real connection.
+  file: text("GITHUB_CONNECTION_FILE") ?? resolve(appDir, ".friction", config.mode === "mock" ? "github.mock-unused.json" : "github.json"),
+  env: { token: config.githubToken, allowed: config.allowedRepos },
+});
+
+// The three fields a pull request depends on are LIVE: connecting, ticking a repository or disconnecting takes effect on the
+// next read, with no restart. Every existing reader keeps reading config.*; a spread copy (the smokes make one) stays a snapshot.
+const dryRunForced = config.mode === "mock" || flag("GITHUB_DRY_RUN");
+Object.defineProperties(config, {
+  githubToken: { enumerable: true, get: () => githubConnection.token },
+  allowedRepos: { enumerable: true, get: () => [...githubConnection.allowed] },
+  githubDryRun: { enumerable: true, get: () => dryRunForced || githubConnection.token === null },
+});
 
 /** Viewport every session uses. Step bboxes are relative to it. */
 export const VIEWPORT = { w: 1280, h: 720 } as const;
