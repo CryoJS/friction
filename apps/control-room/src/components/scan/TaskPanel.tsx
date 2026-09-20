@@ -1,7 +1,5 @@
 import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
-import { useRunStream } from "../../hooks/useRunStream";
 import { VERDICT, rankedIssuesForTask } from "../../lib/scan";
-import { LanePane } from "../LanePane";
 import { Chip } from "../badges";
 import { IssueCard } from "./IssueCard";
 import { TaskPullRequestCard } from "./TaskPullRequestCard";
@@ -17,15 +15,9 @@ interface Props {
   focusedIssueKey?: string | null;
 }
 
-/**
- * One task: what it is, why it matters, its run live (the control room's own
- * LanePane on the run's SSE stream), and the site issues it hit. SidePanel
- * keys it by run id, so selecting another task opens that run's stream.
- */
-export function TaskPanel({ task, tree, report, onSelect, onOpenRun, focusedIssueKey = null }: Props) {
-  const stream = useRunStream(task.runId, { replay: false });
+/** One task: what it is, why it matters, its pull request, and the site issues it hit. */
+export function TaskPanel({ task, tree, report, onSelect, focusedIssueKey = null }: Props) {
   const verdict = VERDICT[taskVerdict(task.state)];
-  const fixes = Object.keys(stream.view.fixes).length;
   const ranked = rankedIssuesForTask(report, task.index);
 
   return (
