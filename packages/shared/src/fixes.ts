@@ -636,9 +636,16 @@ export function judgeVerification(args: {
   if (after.errored) return { stage: "rejected", reason: "errored", note: `The verification run did not complete, so nothing could be concluded (${OUTCOME_WORDS[after.result.outcome]} after ${after.result.steps} steps).` };
   if (!after.patchActive) return { stage: "rejected", reason: "patch_inactive", note: "The fix did not load in the verification session, so it was not tested." };
   if (before.outcome !== "success" && after.result.outcome === "success") return { stage: "verified", reason: "outcome_improved", note: `With the fix, the agent ${comparison}.` };
-  // A patch that silences the detector by breaking the task has fixed nothing.
-  const worse = before.outcome === "success" && after.result.outcome !== "success";
-  if (after.categoryHits === 0 && after.reachedFindingPage && !worse) return { stage: "verified", reason: "no_longer_fires", note: `${category} no longer fires; the agent ${comparison}.` };
+  // A patch that silences the detector by breaking the task has fixed nothing. Running out of steps is only evidence
+  // of that when the primary run had steps to spare: one that finished on its last step or so, and a verify run that
+  // ran out at the same count, differ by the agent's variance at the cap, not by the fix.
+  const ranOutWhereItBarelyFinished = after.result.outcome === "timeout" && Math.abs(after.result.steps - before.steps) < FEWER_STEPS_MIN;
+  const notCompleted = before.outcome === "success" && after.result.outcome !== "success";
+  const worse = notCompleted && !ranOutWhereItBarelyFinished;
+  if (after.categoryHits === 0 && after.reachedFindingPage && !worse) {
+    const caveat = notCompleted ? ` The primary run only finished on its last steps (${before.steps}), so running out of steps is not held against the fix.` : "";
+    return { stage: "verified", reason: "no_longer_fires", note: `${category} no longer fires; the agent ${comparison}.${caveat}` };
+  }
 
   const saved = before.steps - after.result.steps;
   const fewerSteps = before.outcome === "success" && after.result.outcome === "success" && saved >= FEWER_STEPS_MIN && saved >= before.steps * FEWER_STEPS_RATIO;

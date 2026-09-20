@@ -277,6 +277,25 @@ describe("judgeVerification, from the rejections of three live scans (2026-09-19
     expect(judgeVerification({ category: "loop", before: lane("timeout", 15), after: seen(lane("failure", 9), { reachedFindingPage: true }) })).toMatchObject({ stage: "verified", reason: "no_longer_fires" });
   });
 
+  it("running out of steps where the primary run barely finished is variance at the cap, not the fix breaking the task", () => {
+    // Live scan, rejected by the first version of the rule: "modal_interrupt no longer fires, but with the fix the agent
+    // no longer completed the task: it timed out after 15 steps, compared with 15 steps." The same for a dead_click.
+    for (const category of ["modal_interrupt", "dead_click"] as const) {
+      const verdict = judgeVerification({ category, before: lane("success", 15), after: seen(lane("timeout", 15), { reachedFindingPage: true }), categoryHitsBefore: 1 });
+      expect(verdict).toMatchObject({ stage: "verified", reason: "no_longer_fires" });
+      expect(verdict.note).toBe(
+        `${category} no longer fires; the agent timed out after 15 steps, compared with 15 steps. The primary run only finished on its last steps (15), so running out of steps is not held against the fix.`,
+      );
+    }
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 14), after: seen(lane("timeout", 15), { reachedFindingPage: true }) }).stage).toBe("verified");
+    // With steps to spare before, running out of them now IS worse; so is giving up, at any count.
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 6), after: seen(lane("timeout", 15), { reachedFindingPage: true }) })).toMatchObject({ stage: "rejected", reason: "outcome_worse" });
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("failure", 15), { reachedFindingPage: true }) })).toMatchObject({ stage: "rejected", reason: "outcome_worse" });
+    // It never rescues a category that still fires, or a run that never reached the page.
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("timeout", 15), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 1 }).stage).toBe("rejected");
+    expect(judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("timeout", 15)) }).stage).toBe("rejected");
+  });
+
   it("fewer hits AND clearly fewer steps is verified; the same hits, or a step of variance, is not", () => {
     const fewer = judgeVerification({ category: "dead_click", before: lane("success", 15), after: seen(lane("success", 6), { categoryHits: 1, reachedFindingPage: true }), categoryHitsBefore: 3 });
     expect(fewer).toMatchObject({ stage: "verified", reason: "fewer_steps" });
