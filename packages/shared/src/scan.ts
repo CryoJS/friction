@@ -333,6 +333,8 @@ export interface ScanIssue {
   /** Normalized path of the representative's evidence ("" when it never arrived). */
   page: string;
   targetLabel: string;
+  /** The representative occurrence's step timestamp (ms epoch), for sorting by recency. Null when its evidence never arrived. */
+  detectedAt: number | null;
   /** Distinct runs (one per task) that hit this. */
   runsHit: number;
   totalRuns: number;
