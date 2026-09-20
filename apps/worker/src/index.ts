@@ -14,6 +14,7 @@ import {
   FixUpsertSchema,
   GOLDEN_EVIDENCE_PREFIX,
   GOLDEN_RUN_ID,
+  OVERLAY_VERSION,
   RunPatchSchema,
   ScanPatchSchema,
   TaskPullRequestSchema,
@@ -23,8 +24,11 @@ import {
   formatIssues,
   isAllowedOrigin,
   normalizeTargetUrl,
+  parseAnnotationsQuery,
   parseEventBatch,
   renderMockScreenshot,
+  toAnnotationFinding,
+  type AnnotationsResponse,
   type CreateRunResponse,
   type CreateScanResponse,
   type FixListResponse,
@@ -48,7 +52,7 @@ import {
   patchRun,
   upsertFix,
 } from "./db";
-import { createScan, getRunScanLink, getScan, getScanFindingRows, getScanTree, listScans, patchScan, upsertTaskPullRequest } from "./scanDb";
+import { createScan, getLatestScanByHost, getRunScanLink, getScan, getScanFindingRows, getScanTree, listScans, patchScan, upsertTaskPullRequest } from "./scanDb";
 import type { AppEnv } from "./env";
 import { broadcast } from "./hub";
 import { handleStream } from "./stream";
@@ -284,6 +288,35 @@ app.get("/api/scans/:id/report", async (c) => {
   if (!scan) return c.json({ error: `scan ${c.req.param("id")} not found` }, 404);
   const [tree, rows] = await Promise.all([getScanTree(c.env.DB, scan), getScanFindingRows(c.env.DB, scan.id)]);
   return c.json(assembleScanReport({ tree, findings: rows.findings, evidence: rows.evidence }));
+});
+
+/**
+ * The annotation overlay's only endpoint, called by a bookmarklet running on
+ * the user's OWN site, so it is the one route with an open CORS policy. The
+ * global policy in isAllowedOrigin() stays restricted: widening it would open
+ * every mutating route on this Worker.
+ */
+app.use("/api/annotations", cors({ origin: "*", allowMethods: ["GET", "OPTIONS"], allowHeaders: ["Content-Type"], maxAge: 3600 }));
+
+app.get("/api/annotations", async (c) => {
+  const query = parseAnnotationsQuery({ host: c.req.query("host"), token: c.req.query("token") });
+  if (!query.ok) return c.json({ error: query.error }, 400);
+
+  const scan = query.by === "token" ? await getScan(c.env.DB, query.value) : await getLatestScanByHost(c.env.DB, query.value);
+  if (!scan) return c.json({ error: `no completed Friction scan for ${query.value}` }, 404);
+
+  const rows = await getScanFindingRows(c.env.DB, scan.id);
+  const steps = new Map(rows.evidence.map((e) => [`${e.runId}:${e.seq}`, e]));
+  const evidenceBase = new URL("/api/evidence", c.req.url).toString();
+
+  const body: AnnotationsResponse = {
+    scanId: scan.id,
+    scannedAt: scan.completedAt ?? scan.createdAt,
+    url: scan.url,
+    overlayVersion: OVERLAY_VERSION,
+    findings: rows.findings.map((f) => toAnnotationFinding(f, steps.get(`${f.runId}:${f.evidenceSeq}`), evidenceBase)),
+  };
+  return c.json(body);
 });
 
 /* ---------------------------------------------------------------- evidence */
