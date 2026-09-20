@@ -11,6 +11,9 @@
  *     `covered` by that PR: re-scans never duplicate
  *   - a dry run (GITHUB_DRY_RUN, mock mode, or no token) does everything but
  *     the network writes and stores the would-be PR as a preview
+ *   - every finding of the task is accounted for: committed, credited to a
+ *     committed fix ("also resolved"), or not fixed with the furthest stage it
+ *     reached, the findings that were never selected for verification included
  *
  * Nothing here throws: whatever goes wrong with one task ends as that task's
  * recorded `failed` status with a sentence a person can act on, and the next
@@ -20,7 +23,9 @@
 import {
   buildTaskPullRequest,
   countLineChanges,
+  fixTestPath,
   planTaskPullRequests,
+  planVerification,
   summarizeTaskPullRequests,
   taskBranchName,
   type CoveredBy,
@@ -38,6 +43,7 @@ import {
   PullRequestError,
   checkBaseFile,
   commitFile,
+  commitTestFile,
   commitMessage,
   describeFinding,
   describeFix,
@@ -51,12 +57,15 @@ import {
   type MappedFix,
 } from "./pr";
 import { describeGitHubError } from "./repo";
+import { recordedCandidates, unfixedFindings } from "./selection";
 import { errorMessage, log, truncate } from "./util";
 import type { WorkerClient } from "./workerClient";
 
 /** TaskPullRequestSchema's limits (packages/shared/src/scan.ts). */
 const REASON_MAX = 500;
 const PREVIEW_BODY_MAX = 60_000;
+const NOT_FIXED_MAX = 20;
+const SUMMARY_MAX = 300;
 /** GitHub refuses a pull request body over 65536 characters. */
 const PR_BODY_MAX = 65_000;
 
@@ -69,6 +78,10 @@ export interface ScanTaskRun {
 interface TaskWork extends ScanTaskRun {
   /** Null: the Worker could not be read, so nothing is known about this task's fixes. */
   fixes: FixRecord[] | null;
+  /** The recorded run, for what the PR says about each finding. Null: it could not be read, and findings without a fix go unexplained. */
+  snapshot: RunSnapshot | null;
+  /** The run's findings with no fix row, and why (selection.ts). */
+  unfixed: Array<{ findingId: string; reason: string }>;
 }
 
 /**
@@ -95,7 +108,15 @@ export async function openScanPullRequests(args: {
       log("scan-pr", `${scanId} task ${task.taskIndex + 1}: could not read its fixes: ${errorMessage(err)}`);
       return null;
     });
-    work.push({ ...task, fixes });
+    const snapshot = fixes
+      ? await worker.getSnapshot(task.runId).catch((err: unknown) => {
+          log("scan-pr", `${scanId} task ${task.taskIndex + 1}: could not read its run: ${errorMessage(err)}`);
+          return null;
+        })
+      : null;
+    // The same pure plan the run verified by, re-derived from what it recorded.
+    const unfixed = fixes && snapshot ? unfixedFindings(planVerification(recordedCandidates(snapshot), config.verifyTopN), fixes, config.mode === "mock") : [];
+    work.push({ ...task, fixes, snapshot, unfixed });
   }
 
   // One client for the whole scan, and with it the files that open Friction PRs already change.
@@ -119,12 +140,14 @@ export async function openScanPullRequests(args: {
   for (const [position, task] of work.entries()) {
     const record = (result: Omit<TaskPullRequest, "scanId" | "runId" | "taskIndex">): TaskPullRequest => ({ scanId, runId: task.runId, taskIndex: task.taskIndex, ...result });
     let result: TaskPullRequest;
+    let planned: TaskPlan | undefined;
     try {
       if (!task.fixes) {
         result = record({ status: "failed", findingIds: [], notFixed: [], reason: "This task's fixes could not be read from the Worker." });
       } else {
         // Planned again from here on, with what actually happened so far: a task whose PR failed claims nothing.
         const [plan] = planTaskPullRequests(work.slice(position).map(plannable), claims);
+        planned = plan;
         if (!plan) {
           result = record({ status: "nothing_to_fix", findingIds: [], notFixed: [] });
         } else if (plan.action !== "open") {
@@ -134,8 +157,8 @@ export async function openScanPullRequests(args: {
           await args.progress(`${dryRun ? "Previewing" : "Opening"} pull requests (${attempt} of ${Math.max(total, attempt)}).`);
           const titles = new Map(work.map((other) => [other.taskIndex, other.title] as const));
           const alsoUnblocks = plan.alsoUnblocks.map((taskIndex) => ({ taskIndex, title: titles.get(taskIndex) ?? `Task ${taskIndex + 1}` }));
-          const snapshot = await worker.getSnapshot(task.runId);
-          const job: TaskJob = { scanId, task, fixes: task.fixes, plan, snapshot, alsoUnblocks, workerUrl: config.workerUrl };
+          const snapshot = task.snapshot ?? (await worker.getSnapshot(task.runId));
+          const job: TaskJob = { scanId, task, fixes: task.fixes, plan, snapshot, alsoUnblocks, workerUrl: config.workerUrl, testPaths: new Map() };
           if (dryRun) result = record(await previewTask(job, target));
           else if (!target) result = record({ status: "failed", findingIds: [], notFixed: plan.notFixed, reason: targetError ?? "GitHub could not be reached." });
           else result = record(await openTask(job, target, worker));
@@ -147,7 +170,21 @@ export async function openScanPullRequests(args: {
       result = record({ status: "failed", findingIds: [], notFixed: [], reason: errorMessage(err) });
     }
 
-    result = { ...result, reason: result.reason ? truncate(result.reason, REASON_MAX) : undefined, notFixed: result.notFixed.map((item) => ({ ...item, reason: truncate(item.reason, REASON_MAX) })) };
+    if (planned) {
+      const credits = settleCredits(planned, result.status === "opened" || result.status === "dry_run" ? result.findingIds : []);
+      result = { ...result, notFixed: [...result.notFixed, ...credits.notFixed], alsoResolved: credits.alsoResolved.length > 0 ? credits.alsoResolved : undefined };
+    }
+    // Each finding's own line, from the recorded run, so the card can say what "f8" was.
+    const summaryOf = (findingId: string): { summary?: string } => {
+      const summary = task.snapshot ? describeFinding(task.snapshot, { findingId, summary: "" }, config.workerUrl).finding.summary : "";
+      return summary ? { summary: truncate(summary, SUMMARY_MAX) } : {};
+    };
+    result = {
+      ...result,
+      reason: result.reason ? truncate(result.reason, REASON_MAX) : undefined,
+      notFixed: result.notFixed.slice(0, NOT_FIXED_MAX).map((item) => ({ ...item, reason: truncate(item.reason, REASON_MAX), ...summaryOf(item.findingId) })),
+      alsoResolved: result.alsoResolved?.map((item) => ({ ...item, ...summaryOf(item.findingId) })),
+    };
     if (result.status === "opened" || result.status === "dry_run") {
       const committed = new Set(result.findingIds);
       for (const entry of task.fixes ?? []) if (committed.has(entry.findingId) && entry.sourceFile) claims.set(entry.sourceFile, task.taskIndex);
@@ -172,7 +209,10 @@ function plannable(task: TaskWork): PlannableTask {
       hasContent: isMappedFix(fix),
       note: fix.note,
       prUrl: fix.prUrl,
+      mappingNote: fix.mappingNote,
+      alsoResolved: fix.alsoResolved?.map((item) => item.findingId),
     })),
+    unfixed: task.unfixed,
   };
 }
 
@@ -184,6 +224,8 @@ interface TaskJob {
   snapshot: RunSnapshot;
   alsoUnblocks: TaskPullRequestFacts["alsoUnblocks"];
   workerUrl: string;
+  /** findingId -> the regression test this PR adds (or would add) for it. */
+  testPaths: Map<string, string>;
 }
 
 type TaskResult = Omit<TaskPullRequest, "scanId" | "runId" | "taskIndex">;
@@ -193,19 +235,38 @@ function plannedFixes(job: TaskJob): MappedFix[] {
   return job.plan.commit.flatMap(({ findingId }) => job.fixes.filter((fix): fix is MappedFix => fix.findingId === findingId && isMappedFix(fix)));
 }
 
-function pullRequestFor(job: TaskJob, committed: readonly MappedFix[], notFixed: TaskPullRequest["notFixed"]): { title: string; body: string } {
+function pullRequestFor(job: TaskJob, committed: readonly MappedFix[], listed: TaskPullRequest["notFixed"]): { title: string; body: string } {
+  const credits = settleCredits(job.plan, committed.map((fix) => fix.findingId));
+  const resolved = new Set(credits.alsoResolved.map((item) => item.findingId));
+  const notFixed = [...listed, ...credits.notFixed];
   const { title, body } = buildTaskPullRequest({
     task: job.snapshot.run.task,
     taskIndex: job.task.taskIndex,
     siteUrl: job.snapshot.run.url,
-    fixes: committed.map((fix) => describeFix(job.snapshot, fix, job.workerUrl)),
+    fixes: committed.map((fix) => ({ ...describeFix(job.snapshot, fix, job.workerUrl, job.testPaths.get(fix.findingId) ?? null), alsoResolved: fix.alsoResolved?.filter((item) => resolved.has(item.findingId)) })),
     notFixed: notFixed.map((item) => {
-      const fix = job.fixes.find((candidate) => candidate.findingId === item.findingId);
-      return { findingId: item.findingId, summary: fix ? describeFinding(job.snapshot, fix, job.workerUrl).finding.summary : item.findingId, reason: item.reason };
+      // A finding that never had a fix is described from the recorded run alone.
+      const fix = job.fixes.find((candidate) => candidate.findingId === item.findingId) ?? { findingId: item.findingId, summary: item.findingId };
+      return { findingId: item.findingId, summary: describeFinding(job.snapshot, fix, job.workerUrl).finding.summary, reason: item.reason };
     }),
     alsoUnblocks: job.alsoUnblocks,
   });
   return { title, body: truncate(body, PR_BODY_MAX) };
+}
+
+/**
+ * A symptom is "also resolved" only by a fix that was really committed. The
+ * plan credits it to a fix it means to commit; when that fix does not make it
+ * (the file changed, GitHub refused), the symptom is not fixed after all.
+ */
+function settleCredits(plan: TaskPlan, committedIds: readonly string[]): { alsoResolved: TaskPlan["alsoResolved"]; notFixed: TaskPullRequest["notFixed"] } {
+  const shipped = new Set(committedIds);
+  return {
+    alsoResolved: plan.alsoResolved.filter((item) => shipped.has(item.by)),
+    notFixed: plan.alsoResolved
+      .filter((item) => !shipped.has(item.by))
+      .map((item) => ({ findingId: item.findingId, reason: `It no longer fired once the fix for ${item.by} was applied, but that fix could not be committed.` })),
+  };
 }
 
 function branchCandidates(job: TaskJob): string[] {
@@ -245,6 +306,8 @@ async function openTask(job: TaskJob, target: GitHubTarget, worker: WorkerClient
     try {
       await commitFile(target, branch, { path: fix.sourceFile, content: fix.newFileContent, fileSha, message: commitMessage(fix, job.task.runId) });
       committed.push(fix);
+      const testPath = await commitTestFile(target, branch, fix, job.task.runId);
+      if (testPath) job.testPaths.set(fix.findingId, testPath);
     } catch (err) {
       notFixed.push({ findingId: fix.findingId, reason: sentence(err) });
     }
@@ -276,6 +339,11 @@ async function previewTask(job: TaskJob, target: GitHubTarget | null): Promise<T
     try {
       const original = target ? (await checkBaseFile(target, fix.sourceFile, fix.sourceSha)).content : (mockOriginalFor(fix.sourceFile) ?? "");
       files.push({ path: fix.sourceFile, ...countLineChanges(original, fix.newFileContent) });
+      if (fix.testSpec) {
+        const testPath = fixTestPath(job.task.runId, fix.findingId);
+        job.testPaths.set(fix.findingId, testPath);
+        files.push({ path: testPath, addedLines: fix.testSpec.split("\n").length, removedLines: 0 });
+      }
       included.push(fix);
     } catch (err) {
       notFixed.push({ findingId: fix.findingId, reason: err instanceof PullRequestError || !target ? errorMessage(err) : describeGitHubError(err, target.github) });

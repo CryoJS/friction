@@ -12,7 +12,7 @@
  * and no model name anywhere in this codebase.
  */
 import { existsSync } from "node:fs";
-import { DEFAULT_VERIFY_TOP_N, matchAllowedRepo, parseRepoSlug } from "@friction/shared";
+import { DEFAULT_VERIFY_MAX_RUNS, DEFAULT_VERIFY_TOP_N, matchAllowedRepo, parseRepoSlug } from "@friction/shared";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -75,6 +75,10 @@ export interface Config {
   agentTimeoutMs: number;
   /** How many of a run's findings get a fix proposed and verified (each costs a full browser run). */
   verifyTopN: number;
+  /** Cap on one run's verifications, first attempts and retries together (each is a full browser run). */
+  verifyMaxRuns: number;
+  /** Write and prove a Playwright regression test for every mapped fix (one model call and two short browser sessions each). PR_TESTS=0 turns it off. */
+  prTests: boolean;
   /**
    * The repository verified fixes are mapped to and PRs opened against, via a
    * personal access token. Null unless GITHUB_TOKEN, GITHUB_OWNER and
@@ -162,6 +166,8 @@ function load(): Config {
     maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 5, 1, 100), 1, 100),
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
+    verifyMaxRuns: int("VERIFY_MAX_RUNS", DEFAULT_VERIFY_MAX_RUNS, 1, 10),
+    prTests: !["0", "false", "no"].includes((text("PR_TESTS") ?? "").toLowerCase()),
     github: githubConfig(),
     githubToken: text("GITHUB_TOKEN"),
     githubBaseBranch: text("GITHUB_BASE_BRANCH"),

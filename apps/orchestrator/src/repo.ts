@@ -3,19 +3,35 @@
  * repository, and the complete new content of that file.
  *
  * This path never reads from the browser. The rendered DOM is not the source
- * code: it goes finding.selector (and the element's visible text) -> GitHub
+ * code: it goes finding.selector (and the element's visible text; failing
+ * those, the verified patch's selectors, then the page's route) -> GitHub
  * code search -> the source file as committed -> a model writes the COMPLETE
  * replacement file (never a diff; LLM patches rarely apply) -> pr.ts commits it.
  */
 import { Octokit } from "@octokit/rest";
 import OpenAI from "openai";
-import { FRICTION_LABELS, checkGeneratedFile, rankSearchHits, searchTermsFor, unwrapFence, type FixPayload, type SearchHit } from "@friction/shared";
+import {
+  FRICTION_LABELS,
+  checkGeneratedFile,
+  committablePathProblem,
+  patchSearchTerms,
+  rankSearchHits,
+  routeHits,
+  routeSearchTerms,
+  searchTermsFor,
+  unwrapFence,
+  visibleTextTerms,
+  type FixPayload,
+  type SearchHit,
+} from "@friction/shared";
 import type { Config, GitHubConfig } from "./config";
 import type { FindingForFix } from "./fixer";
-import { errorMessage, log, sleep } from "./util";
+import { errorMessage, log, sleep, truncate } from "./util";
 
-/** Search terms tried per finding (the code search API allows ~10 requests a minute). */
+/** Search terms tried per source of terms (the code search API allows ~10 requests a minute; githubCall waits out a rate limit). */
 const MAX_TERMS = 4;
+/** FixPayloadSchema's limit on mappingNote. */
+const NOTE_MAX = 500;
 /** Candidates whose content is fetched and checked, best first. */
 const MAX_CANDIDATES = 3;
 /** Files larger than this are not rewritten whole by a model. */
@@ -116,53 +132,90 @@ async function readFile(octokit: Octokit, github: GitHubConfig, path: string, re
   return { path, content: Buffer.from(data.content, "base64").toString("utf8"), sha: data.sha, ref };
 }
 
-/**
- * The single best source file for a finding, or null. Null is a normal
- * outcome, not a failure: the fix stays verified-but-unmapped.
- */
-export async function findSourceFile(github: GitHubConfig, finding: FindingForFix): Promise<SourceFile | null> {
-  const terms = searchTermsFor({ selector: finding.selector, targetLabel: finding.targetLabel, texts: finding.texts }).slice(0, MAX_TERMS);
-  if (terms.length === 0) {
-    log("repo", `${finding.findingId}: nothing to search for (the selector is structural and the element has no name)`);
-    return null;
+/** What a lookup found, and the sentence the fix row keeps about it: which fallback hit, or everything that was tried. */
+export interface SourceLookup {
+  file: SourceFile | null;
+  note: string;
+}
+
+const quoted = (terms: readonly string[]): string => terms.map((t) => `"${t}"`).join(", ");
+
+/** One content search per term; one bad term (rate limit, a query GitHub refuses) must not sink the others. */
+async function searchCode(octokit: Octokit, github: GitHubConfig, terms: readonly string[]): Promise<SearchHit[]> {
+  const hits: SearchHit[] = [];
+  for (const term of terms) {
+    try {
+      const { data } = await githubCall("read", "search.code", () =>
+        octokit.rest.search.code({ q: `"${term.replace(/"/g, "")}" repo:${github.owner}/${github.repo}`, per_page: 30 }),
+      );
+      for (const item of data.items) hits.push({ path: item.path, terms: [term] });
+    } catch (err) {
+      log("repo", `search "${term}" failed: ${errorMessage(err)}`);
+    }
   }
+  return hits;
+}
+
+/** Every file path on the branch, for the route fallback: matched by name, so no search index is involved. */
+async function listPaths(octokit: Octokit, github: GitHubConfig, ref: string): Promise<string[]> {
+  const { data } = await githubCall("read", "git.getTree", () => octokit.rest.git.getTree({ owner: github.owner, repo: github.repo, tree_sha: ref, recursive: "true" }));
+  return data.tree.flatMap((entry) => (entry.type === "blob" && entry.path ? [entry.path] : []));
+}
+
+/**
+ * The single best source file for a finding, or none. None is a normal
+ * outcome, not a failure: the fix stays verified-but-unmapped, and the note
+ * says what was searched for.
+ *
+ * Four sources of search terms, in order, stopping at the first that yields a
+ * file: the finding's selector and label; the selectors of the VERIFIED patch
+ * (it was proven to touch the right element); the parts of the target's
+ * visible text; the finding's page route, matched against file paths under a
+ * routes directory. Whatever the source, the candidates go through
+ * rankSearchHits and the path guard: text from the scanned site only ever
+ * suggests, it never chooses a file.
+ */
+export async function findSourceFile(github: GitHubConfig, finding: FindingForFix, patchJs = ""): Promise<SourceLookup> {
+  const tiers: Array<{ name: string; terms: string[]; byPath?: boolean }> = [
+    { name: "the finding's selector and label", terms: searchTermsFor({ selector: finding.selector, targetLabel: finding.targetLabel, texts: finding.texts }) },
+    { name: "the verified patch's selectors", terms: patchSearchTerms(patchJs) },
+    { name: "the target's visible text", terms: visibleTextTerms([finding.targetLabel, ...finding.texts]) },
+    { name: "the page route", terms: routeSearchTerms(finding.url), byPath: true },
+  ];
 
   const octokit = octokitFor(github);
+  const tried: string[] = [];
+  const seen = new Set<string>();
   try {
-    const hits: SearchHit[] = [];
-    for (const term of terms) {
-      try {
-        const { data } = await githubCall("read", "search.code", () =>
-          octokit.rest.search.code({ q: `"${term.replace(/"/g, "")}" repo:${github.owner}/${github.repo}`, per_page: 30 }),
-        );
-        for (const item of data.items) hits.push({ path: item.path, terms: [term] });
-      } catch (err) {
-        // One bad term (rate limit, a query GitHub refuses) must not sink the others.
-        log("repo", `search "${term}" failed: ${errorMessage(err)}`);
-      }
-    }
-
-    const ranked = rankSearchHits(hits, terms);
-    if (ranked.length === 0) {
-      log("repo", `${finding.findingId}: no source file matched ${terms.map((t) => `"${t}"`).join(", ")}`);
-      return null;
-    }
-
     const ref = await baseBranch(octokit, github);
-    for (const candidate of ranked.slice(0, MAX_CANDIDATES)) {
-      const file = await readFile(octokit, github, candidate.path, ref).catch(() => null);
-      // The search index can lag the branch: only accept a file that really contains a term today.
-      if (file && terms.some((t) => file.content.toLowerCase().includes(t.toLowerCase()))) {
-        log("repo", `${finding.findingId}: mapped to ${file.path} (matched ${candidate.terms.join(", ")})`);
-        return file;
+    for (const tier of tiers) {
+      const terms = tier.terms.filter((t) => !seen.has(t.toLowerCase())).slice(0, MAX_TERMS);
+      if (terms.length === 0) continue;
+      terms.forEach((t) => seen.add(t.toLowerCase()));
+      tried.push(`${quoted(terms)} (${tier.name})`);
+
+      const hits = tier.byPath ? routeHits(await listPaths(octokit, github, ref), terms) : await searchCode(octokit, github, terms);
+      const ranked = rankSearchHits(hits, terms).filter((hit) => committablePathProblem(hit.path) === null);
+      for (const candidate of ranked.slice(0, MAX_CANDIDATES)) {
+        const file = await readFile(octokit, github, candidate.path, ref).catch(() => null);
+        // The search index can lag the branch: only accept a file that really contains a term today. A path match needs no such check.
+        if (file && (tier.byPath || terms.some((t) => file.content.toLowerCase().includes(t.toLowerCase())))) {
+          log("repo", `${finding.findingId}: mapped to ${file.path} by ${tier.name} (matched ${candidate.terms.join(", ")})`);
+          return { file, note: `Mapped by ${tier.name}: ${quoted(candidate.terms)}.` };
+        }
       }
+      log("repo", `${finding.findingId}: ${tier.name} found no source file for ${quoted(terms)}`);
     }
-    log("repo", `${finding.findingId}: candidates found, none still contains the terms on ${ref}`);
-    return null;
   } catch (err) {
     log("repo", `${finding.findingId}: repository lookup failed: ${errorMessage(err)}`);
-    return null;
+    return { file: null, note: truncate(`The repository lookup failed: ${errorMessage(err)}`, NOTE_MAX) };
   }
+
+  if (tried.length === 0) {
+    log("repo", `${finding.findingId}: nothing to search for (no element, no name, no patch selectors, no route)`);
+    return { file: null, note: "There was nothing to search the repository for: the finding has no element or name, and the patch no selectors." };
+  }
+  return { file: null, note: truncate(`Searched for ${tried.join("; ")}: no source file matched.`, NOTE_MAX) };
 }
 
 /* ------------------------------------------------------- source generation */
