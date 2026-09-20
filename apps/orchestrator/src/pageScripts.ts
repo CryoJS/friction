@@ -69,6 +69,9 @@ const HELPERS = `
     return null;
   };
   const IMPLICIT_ROLES = { a: "link", button: "button", select: "combobox", textarea: "textbox", summary: "button", form: "form", nav: "navigation", main: "main", h1: "heading", h2: "heading", h3: "heading" };
+  // Mirrored by roleOf() in packages/overlay/src/resolve.ts (the resolve
+  // side). The two run at different times on the same element and MUST
+  // agree, or every tier that compares roles fails open silently.
   const roleOf = (el) => {
     const explicit = el.getAttribute && el.getAttribute("role");
     if (explicit) return explicit.trim().split(/\\s+/)[0];

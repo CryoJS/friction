@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Unlike packages/shared (WebWorker), this package resolves anchors
+    // against a real DOM (Document, Element, CSS.escape, doc.evaluate), so it
+    // needs the DOM lib -- the same choice apps/orchestrator's tsconfig makes
+    // for the page scripts it hands to page.evaluate().
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src"]
+}
