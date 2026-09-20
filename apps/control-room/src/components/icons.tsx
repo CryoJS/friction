@@ -104,51 +104,6 @@ export const ChevronRight = (p: IconProps) => (
   </Icon>
 );
 
-export const AlertTriangle = (p: IconProps) => (
-  <Icon {...p}>
-    <path d="m10 3 7 13H3L10 3Z" />
-    <path d="M10 7.5v4M10 14.25v.1" />
-  </Icon>
-);
-
-/** S1: a plain dot. The mildest risk mark. */
-export const RiskDot = (p: IconProps) => (
-  <Icon {...p}>
-    <circle cx="10" cy="10" r="2.6" fill="currentColor" stroke="none" />
-  </Icon>
-);
-
-/** S2: a dot with a ring, one step up from RiskDot. */
-export const RiskRing = (p: IconProps) => (
-  <Icon {...p}>
-    <circle cx="10" cy="10" r="3" fill="currentColor" stroke="none" />
-    <circle cx="10" cy="10" r="6.5" />
-  </Icon>
-);
-
-/** S5: a filled hazard triangle, the most severe mark. */
-export const HazardTriangle = (p: IconProps) => (
-  <Icon {...p} fill="currentColor">
-    <path d="m10 2 8.5 15H1.5L10 2Z" stroke="none" />
-    <path d="M10 7.2v4.6" stroke="var(--color-void)" strokeWidth={1.8} />
-    <circle cx="10" cy="14.6" r="1" fill="var(--color-void)" stroke="none" />
-  </Icon>
-);
-
-/** Risk marks that escalate in shape with severity, not just color: dot, ringed dot, triangle, triangle, filled hazard triangle. */
-export function riskIcon(severity: 1 | 2 | 3 | 4 | 5) {
-  switch (severity) {
-    case 1:
-      return RiskDot;
-    case 2:
-      return RiskRing;
-    case 5:
-      return HazardTriangle;
-    default:
-      return AlertTriangle;
-  }
-}
-
 export const Sort = (p: IconProps) => (
   <Icon {...p}>
     <path d="M5 3.5v13M2.5 14l2.5 2.5L7.5 14M15 16.5v-13M12.5 6l2.5-2.5L17.5 6" />

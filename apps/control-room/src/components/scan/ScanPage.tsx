@@ -136,7 +136,7 @@ export function ScanPage({ scanId, nodeId, view, scanView, focusedAnnotationId, 
              onSelectNode={selectNode}
             />
           </section>
-          <aside aria-label="Details" className="pane shrink-0 lg:w-115 lg:overflow-y-auto lg:pr-1">
+          <aside aria-label="Details" className={`pane shrink-0 w-130 lg:overflow-y-auto pr-3`}>
             <SidePanel tree={tree} report={report} node={node} onSelect={selectNode} onOpenAnnotation={onOpenAnnotation} focusedIssueKey={focusedIssueKey} />
           </aside>
         </div>

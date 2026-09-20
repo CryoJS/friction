@@ -1,4 +1,5 @@
 import { FRICTION_LABELS, SEVERITY_LABELS, type AgentState, type FixStage, type FrictionCategory, type Severity } from "@friction/shared";
+import { CircleAlert, OctagonAlert, Sparkles, TriangleAlert, ShieldAlert, type LucideIcon } from "lucide-react";
 
 /** A status light. "glow" is the violet running glow; the rest are flat dots. */
 export type Tone = "idle" | "glow" | "good" | "warn" | "bad";
@@ -78,6 +79,19 @@ export const SEVERITY_STYLES: Record<Severity, { text: string; dot: string; box:
   1: { text: "text-sev-1", dot: "bg-sev-1", box: "border-sev-1", ring: "border-sev-1/45" },
 };
 
+const SEVERITY_ICONS: Record<Severity, LucideIcon> = {
+  5: ShieldAlert,
+  4: OctagonAlert,
+  3: TriangleAlert,
+  2: CircleAlert,
+  1: Sparkles,
+};
+
+export function SeverityIcon({ severity, size = 14, className }: { severity: Severity; size?: number; className?: string }) {
+  const Icon = SEVERITY_ICONS[severity];
+  return <Icon aria-hidden="true" className={className} size={size} strokeWidth={1.8} />;
+}
+
 export function SeverityBadge({ severity }: { severity: Severity }) {
   const style = SEVERITY_STYLES[severity];
   return (
@@ -85,7 +99,7 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
       className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-caption tabular-nums ${style.ring} ${style.text}`}
       title={`Severity ${severity} of 5: ${SEVERITY_LABELS[severity]}`}
     >
-      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      <SeverityIcon severity={severity} size={13} className={style.text} />
       {SEVERITY_LABELS[severity]}
     </span>
   );
