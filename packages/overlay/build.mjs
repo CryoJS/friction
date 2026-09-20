@@ -11,6 +11,10 @@ import { build } from "esbuild";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const WORKER_ORIGIN = process.env.WORKER_ORIGIN ?? "http://localhost:8787";
+// apps/control-room's dev port (see apps/control-room/package.json). The
+// 404 panel links here rather than to WORKER_ORIGIN, which only serves raw
+// JSON -- a real deploy sets this via env, same as WORKER_ORIGIN.
+const CONTROL_ROOM_ORIGIN = process.env.CONTROL_ROOM_ORIGIN ?? "http://localhost:5173";
 const LIMIT = 25 * 1024;
 
 await mkdir("dist", { recursive: true });
@@ -22,7 +26,7 @@ const result = await build({
   keepNames: false,
   format: "iife",
   target: "es2020",
-  define: { WORKER_ORIGIN: JSON.stringify(WORKER_ORIGIN) },
+  define: { WORKER_ORIGIN: JSON.stringify(WORKER_ORIGIN), CONTROL_ROOM_ORIGIN: JSON.stringify(CONTROL_ROOM_ORIGIN) },
   write: false,
 });
 

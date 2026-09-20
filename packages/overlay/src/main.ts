@@ -17,6 +17,11 @@ import { CSS } from "./styles";
 // Injected by esbuild's `define` in build.mjs. Never read at runtime from
 // process.env -- there is no Node process in the page this bundle runs on.
 declare const WORKER_ORIGIN: string;
+// Same mechanism, for the 404 link: WORKER_ORIGIN is the API, not a page a
+// human should land on (it serves raw JSON at "/"). This is the control
+// room's own origin, set properly by whatever deploys this build; the
+// localhost:5173 default matches apps/control-room's dev port.
+declare const CONTROL_ROOM_ORIGIN: string;
 
 const ANNOTATIONS_KEY = "__friction_annotations";
 const FOCUS_KEY = "__friction_focus";
@@ -30,6 +35,16 @@ interface OverlaySentinel {
 declare global {
   interface Window {
     __frictionOverlay?: OverlaySentinel;
+    // Minor fix (fix round 1): this bundle has no module state that
+    // survives between two clicks -- a javascript: bookmarklet is a fresh
+    // top-level script evaluation every time it runs, so a plain `let`
+    // here would reset on every click and protect nothing. Only something
+    // hung off `window` (like __frictionOverlay itself) persists between
+    // separate clicks, which is exactly the gap this closes: window.
+    // __frictionOverlay isn't written until a mount finishes, so two
+    // clicks before the first fetch settles both see it unset and both
+    // proceed, racing two fetches into two mounts.
+    __frictionRequestInFlight?: boolean;
   }
 }
 
@@ -89,10 +104,11 @@ function registerSentinel(destroy: () => void): void {
 
 /**
  * Mounts a message-only panel for a state that has no findings at all -- a
- * fetch failure, a CSP block, or a 404. Reuses the overlay's shadow-root
- * shell and stylesheet (styles.ts) so it looks like the same product, but
- * does not go through render.ts's mountOverlay, which is built around a real
- * AnnotationsResponse.
+ * network failure (which may or may not be a CSP block; see main()'s catch),
+ * a 404, an unparseable response body, or an unexpected error. Reuses the
+ * overlay's shadow-root shell and stylesheet (styles.ts) so it looks like the
+ * same product, but does not go through render.ts's mountOverlay, which is
+ * built around a real AnnotationsResponse.
  */
 function mountMessage(message: string, link?: { href: string; text: string }): OverlayHandle {
   const root = document.createElement("div");
@@ -188,6 +204,26 @@ function finish(response: AnnotationsResponse): void {
   }
 }
 
+/**
+ * Fix round 1, Finding 1: finish() calls into render.ts's mountOverlay with
+ * data this bundle does not control the shape of (a parsed HTTP response
+ * body, or whatever got round-tripped through sessionStorage). If that
+ * throws, an unguarded call here would leave the user with NOTHING -- no
+ * markers, no panel, no error -- which is worse than the empty-overlay case
+ * requirement 7 exists to prevent: at least an empty overlay says the
+ * bookmarklet ran. This is the backstop for both the cached and the
+ * freshly-fetched success paths.
+ */
+function mountResponseSafely(response: AnnotationsResponse): void {
+  try {
+    finish(response);
+  } catch (err) {
+    registerSentinel(
+      mountMessage(`Friction couldn't display this scan: ${err instanceof Error ? err.message : String(err)}`).destroy,
+    );
+  }
+}
+
 async function main(): Promise<void> {
   // Requirement 1: toggle off if an overlay (from this bundle or an older
   // one) is already mounted. Deleting the global before returning is what
@@ -204,58 +240,102 @@ async function main(): Promise<void> {
   // Requirement 2.
   const cached = readCachedResponse(host);
   if (cached) {
-    finish(cached);
+    mountResponseSafely(cached);
     return;
   }
 
-  // Requirement 3.
-  let res: Response;
+  // Minor fix (fix round 1): a second click while the first request is still
+  // in flight is a no-op rather than a second fetch racing the first --
+  // window.__frictionOverlay above only catches the SETTLED case, since it
+  // is not written until a mount finishes. This flag lives on `window`,
+  // not as a local variable, because a bookmarklet click is a fresh script
+  // evaluation every time -- nothing module-scoped survives to see it.
+  if (window.__frictionRequestInFlight) return;
+  window.__frictionRequestInFlight = true;
+
   try {
-    res = await fetch(`${WORKER_ORIGIN}/api/annotations?host=${encodeURIComponent(host)}`);
-  } catch (err) {
-    // Requirement 4, CSP branch: a fetch() rejection whose error is a
-    // TypeError means the browser never got to send the request at all --
-    // on a real page the overwhelmingly common cause is the site's
-    // connect-src CSP refusing WORKER_ORIGIN. This is NOT "no scan found":
-    // a scan may well exist, the request just never reached the Worker. Do
-    // not conflate the two -- see requirement 4's CSP branch.
-    if (err instanceof TypeError) {
+    // Requirement 3.
+    let res: Response;
+    try {
+      res = await fetch(`${WORKER_ORIGIN}/api/annotations?host=${encodeURIComponent(host)}`);
+    } catch (err) {
+      // Requirement 4, network-failure branch. Fix round 1, Finding 3: the
+      // Fetch spec rejects with a TypeError for ANY network-level failure --
+      // a CSP connect-src block, but equally a dead Worker, no DNS, being
+      // offline, or an ordinary CORS failure. JavaScript cannot distinguish
+      // these, so the copy leads with what's certain and hedges the rest,
+      // rather than asserting CSP as fact. navigator.onLine gets the one
+      // case that CAN be told apart for certain.
+      if (err instanceof TypeError) {
+        if (navigator.onLine === false) {
+          registerSentinel(mountMessage("You appear to be offline.").destroy);
+          return;
+        }
+        registerSentinel(
+          mountMessage(
+            `Friction couldn't be reached (${WORKER_ORIGIN}). This is usually the site's Content-Security-Policy blocking the request, but it can also mean the Friction worker is unreachable. If it's the site's policy, use the offline bookmarklet instead -- it pastes the scan data in directly and needs no network request.`,
+          ).destroy,
+        );
+        return;
+      }
+      registerSentinel(mountMessage(`Could not reach Friction: ${err instanceof Error ? err.message : String(err)}`).destroy);
+      return;
+    }
+
+    // Requirement 4, 404 branch.
+    if (res.status === 404) {
       registerSentinel(
-        mountMessage(
-          `This site's Content-Security-Policy blocked the request to Friction (${WORKER_ORIGIN}), so this bookmarklet can't tell whether a scan exists. Use the offline bookmarklet instead -- it pastes the scan data in directly and needs no network request.`,
-        ).destroy,
+        mountMessage(`No Friction scan for ${host} yet.`, { href: CONTROL_ROOM_ORIGIN, text: "Open the control room" })
+          .destroy,
       );
       return;
     }
-    registerSentinel(mountMessage(`Could not reach Friction: ${err instanceof Error ? err.message : String(err)}`).destroy);
-    return;
-  }
 
-  // Requirement 4, 404 branch.
-  if (res.status === 404) {
-    registerSentinel(
-      mountMessage(`No Friction scan for ${host} yet.`, { href: WORKER_ORIGIN, text: "Open Friction to run a scan" }).destroy,
-    );
-    return;
-  }
-
-  // Requirement 4, any other non-OK status.
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const body = (await res.json()) as { error?: string };
-      detail = body.error ?? "";
-    } catch {
-      // Body wasn't JSON (or wasn't readable) -- report the bare status.
+    // Requirement 4, any other non-OK status.
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const body = (await res.json()) as { error?: string };
+        detail = body.error ?? "";
+      } catch {
+        // Body wasn't JSON (or wasn't readable) -- report the bare status.
+      }
+      registerSentinel(mountMessage(`Friction request failed (${res.status})${detail ? `: ${detail}` : ""}.`).destroy);
+      return;
     }
-    registerSentinel(mountMessage(`Friction request failed (${res.status})${detail ? `: ${detail}` : ""}.`).destroy);
-    return;
-  }
 
-  const response = (await res.json()) as AnnotationsResponse;
-  // Requirement 5.
-  writeCachedResponse(host, response);
-  finish(response);
+    // Fix round 1, Finding 1: unlike the branch above, this parse was
+    // previously unguarded. A malformed or truncated 200 body (a corporate
+    // proxy, a compressing middlebox, a CDN edge glitch -- all real on a
+    // third-party network) would throw here, become an unhandled rejection
+    // (main() was invoked as bare `void main()`), and leave the user with
+    // nothing: no markers, no panel, no error. That is worse than the empty
+    // overlay requirement 7 exists to prevent.
+    try {
+      const response = (await res.json()) as AnnotationsResponse;
+      // Requirement 5.
+      writeCachedResponse(host, response);
+      mountResponseSafely(response);
+    } catch (err) {
+      registerSentinel(
+        mountMessage(`Friction's response couldn't be read: ${err instanceof Error ? err.message : String(err)}`).destroy,
+      );
+    }
+  } finally {
+    window.__frictionRequestInFlight = false;
+  }
 }
 
-void main();
+// Fix round 1, Finding 1 (belt and braces): every failure this module knows
+// how to name is already handled above with its own mountMessage() call.
+// This is the backstop for one it doesn't -- a truly unexpected throw
+// anywhere in main() (a bug, not a modeled failure mode) still must not
+// leave the user looking at nothing. Only mounts if nothing else already
+// did, so it never stacks a second panel on top of a real one.
+main().catch((err: unknown) => {
+  if (!document.getElementById(OVERLAY_ROOT_ID)) {
+    registerSentinel(
+      mountMessage(`Friction hit an unexpected error: ${err instanceof Error ? err.message : String(err)}`).destroy,
+    );
+  }
+});
