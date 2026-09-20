@@ -329,9 +329,19 @@ async function main(): Promise<void> {
           registerSentinel(mountMessage("You appear to be offline.").destroy);
           return;
         }
+        // Task 12: this branch now has an actual offline bookmarklet to
+        // point at, but only as far as the control room -- this fetch was
+        // BY HOST (see the URL above), never by scan id, so this module
+        // never learns which scan it would have shown even on success, and
+        // has no way to deep-link straight to an offline bookmarklet built
+        // for one. Naming the control room's origin (already known via
+        // CONTROL_ROOM_ORIGIN, same as the 404 branch below) is as far as
+        // this can go: the user opens it, finds their scan, and drags the
+        // offline link from there themselves.
         registerSentinel(
           mountMessage(
             `Friction couldn't be reached (${WORKER_ORIGIN}). This is usually the site's Content-Security-Policy blocking the request, but it can also mean the Friction worker is unreachable. If it's the site's policy, use the offline bookmarklet instead -- it pastes the scan data in directly and needs no network request.`,
+            { href: CONTROL_ROOM_ORIGIN, text: "Open the control room to get it" },
           ).destroy,
         );
         return;

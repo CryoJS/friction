@@ -98,6 +98,13 @@ describe("main.ts entry point", () => {
     expect(text).toContain("Content-Security-Policy");
     expect(text).toContain("unreachable");
     expect(text).not.toMatch(/^This site's Content-Security-Policy blocked/);
+
+    // Task 12: this panel can only ever point at the control room, never at
+    // a specific scan's offline bookmarklet -- the fetch that failed was by
+    // host, not by scan id, so this module never learns one to link to.
+    const root = document.getElementById(OVERLAY_ROOT_ID);
+    const link = root?.shadowRoot?.querySelector(".panel-body a") as HTMLAnchorElement | null;
+    expect(link?.href).toBe("http://localhost:5173/");
   });
 
   it("Fix round 1, Finding 3: navigator.onLine === false is reported as offline, not CSP", async () => {

@@ -44,7 +44,7 @@ export function RootPanel({ tree, report, onSelect }: Props) {
         {showMessage && <p className="mt-1.5 text-ui text-ash">{scan.message}</p>}
       </header>
 
-      {scan.status === "completed" && <BookmarkletCard scanUrl={scan.url} />}
+      {scan.status === "completed" && <BookmarkletCard scanId={scan.id} scanUrl={scan.url} />}
 
       {scan.repo && (
         <section aria-label="Pull requests" className="rounded-card border border-hairline/10 bg-white/4 p-5">

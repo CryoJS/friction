@@ -50,3 +50,31 @@ if (bookmarklet.length > LIMIT) {
   console.error(`bookmarklet is ${bookmarklet.length} bytes; the cap is ${LIMIT}`);
   process.exit(1);
 }
+
+// Task 12: the offline escape hatch. src/offline.ts expects
+// window.__FRICTION_DATA__ to already hold an AnnotationsResponse and never
+// fetches, so it needs neither WORKER_ORIGIN nor CONTROL_ROOM_ORIGIN.
+//
+// Written out PLAIN -- not url-encoded, and NOT measured against LIMIT
+// above. apps/control-room/src/components/BookmarkletCard.tsx assembles the
+// real javascript: URL per scan, by concatenating
+// "window.__FRICTION_DATA__=<json>;" with this file's text and url-encoding
+// the combined string itself, because the payload differs every scan. LIMIT
+// exists to keep the bookmarklet.txt artifact draggable; this file is a
+// component of a different, per-scan artifact that the control room checks
+// against its own 60000-character cap, so generalizing this check to cover
+// this file too would fail a build that was never meant to fit it.
+const offlineResult = await build({
+  entryPoints: ["src/offline.ts"],
+  bundle: true,
+  minify: true,
+  keepNames: false,
+  format: "iife",
+  target: "es2020",
+  write: false,
+});
+
+const offlineCode = offlineResult.outputFiles[0].text;
+await writeFile("dist/overlay-offline.iife.js", offlineCode);
+
+console.log(`offline overlay ${(offlineCode.length / 1024).toFixed(1)} KB`);
