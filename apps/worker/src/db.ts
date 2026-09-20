@@ -31,6 +31,7 @@ import scansSql from "../migrations/0004_scans.sql";
 import taskPullRequestsSql from "../migrations/0005_task_pull_requests.sql";
 import fixDetailsSql from "../migrations/0006_fix_details.sql";
 import scanHostSql from "../migrations/0007_scan_host.sql";
+import scanSurveySql from "../migrations/0008_scan_survey.sql";
 
 /* ------------------------------------------------------------------ schema */
 

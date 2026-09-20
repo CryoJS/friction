@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   SEVERITY_LABELS,
+  describeCrawlSurvey,
   isScanFinished,
   summarizeTaskPullRequests,
   type CrawledPage,
@@ -42,6 +43,11 @@ export function RootPanel({ tree, report, onSelect, onOpenAnnotation }: Props) {
           {hostOf(scan.url)}
         </h2>
         {showMessage && <p className="mt-1.5 text-ui text-ash">{scan.message}</p>}
+        {scan.survey && (
+          <p className="mt-1.5 text-caption text-smoke" title="The crawl reads pages over Browserbase's Fetch API and opens a browser session only for the pages that need one.">
+            {describeCrawlSurvey(scan.survey)}
+          </p>
+        )}
       </header>
 
       {scan.repo && (

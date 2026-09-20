@@ -6,6 +6,7 @@ import {
   normalizeHost,
   TaskPullRequestSchema,
   type AgentState,
+  CrawlSurveySchema,
   type CrawledPage,
   type FrictionCategory,
   type RunScanLink,
@@ -35,6 +36,7 @@ interface ScanRow {
   completed_at: number | null;
   repo: string | null;
   auto_pr: number | null;
+  survey: string | null;
 }
 
 interface ScanListRow extends ScanRow {
@@ -85,6 +87,17 @@ interface ScanFindingRow {
   e_payload: string | null;
 }
 
+/** A survey column that no longer parses costs the one line it prints, not the scan. */
+function toSurvey(json: string | null): ScanRecord["survey"] {
+  if (!json) return null;
+  try {
+    const parsed = CrawlSurveySchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 function toScan(row: ScanRow): ScanRecord {
   let pages: CrawledPage[] = [];
   try {
@@ -104,6 +117,7 @@ function toScan(row: ScanRow): ScanRecord {
     completedAt: row.completed_at,
     repo: row.repo ?? null,
     autoPr: row.auto_pr === 1,
+    survey: toSurvey(row.survey),
   };
 }
 
@@ -120,6 +134,7 @@ export async function createScan(db: D1Database, url: string, options: { repo?: 
     repo: options.repo ?? null,
     // Without a repository there is nothing to open a pull request against.
     autoPr: options.repo !== undefined && options.autoPr === true,
+    survey: null,
   };
   await db
     .prepare("INSERT INTO scans (id, url, status, message, pages, created_at, repo, auto_pr, host) VALUES (?, ?, ?, ?, '[]', ?, ?, ?, ?)")
@@ -152,6 +167,10 @@ export async function patchScan(db: D1Database, scanId: string, patch: ScanPatch
   if (patch.taskSource !== undefined) {
     sets.push("task_source = ?");
     binds.push(patch.taskSource);
+  }
+  if (patch.survey !== undefined) {
+    sets.push("survey = ?");
+    binds.push(JSON.stringify(patch.survey));
   }
   if (patch.page !== undefined) {
     sets.push("pages = json_insert(pages, '$[#]', json(?))");

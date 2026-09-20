@@ -1,7 +1,9 @@
 /**
  * A scan: one URL -> crawl -> up to MAX_SCAN_TASKS generated tasks -> one run per task.
  *
- *   crawling   one browser session reads the landing page and up to five nav pages
+ *   crawling   Browserbase Fetch surveys the landing page and its navigation
+ *              pages with no session at all; only the pages that need one
+ *              (client-rendered, or the most interactive) get a browser
  *   running    every task is a normal run (the agent, then its fix
  *              verifications); all of them queue for the shared session pool
  *              in task-rank order
@@ -171,7 +173,7 @@ export class ScanManager {
         await this.worker.patchScan(scanId, { page: { url: page.url, title: truncate(page.title, TITLE_MAX) }, message: truncate(message, MESSAGE_MAX) });
       }),
     );
-    await this.worker.patchScan(scanId, { message: `Choosing the ${taskCount} most critical tasks.` });
+    await this.worker.patchScan(scanId, { survey: crawl.survey, message: `Choosing the ${taskCount} most critical tasks.` });
     return generateTasks(this.config, url, crawl, taskCount);
   }
 

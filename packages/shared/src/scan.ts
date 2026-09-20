@@ -83,12 +83,44 @@ export const CrawledPageSchema = z.object({
 });
 export type CrawledPage = z.infer<typeof CrawledPageSchema>;
 
+/**
+ * What the crawl's Fetch pre-pass bought. Browserbase's Fetch API reads a page
+ * for a fraction of a cent and opens no browser session, so the crawl surveys
+ * the site with it first and spends sessions only on the pages that need one
+ * (client-rendered shells, and the most interactive flows).
+ *
+ * sessionsOpened is browser SESSIONS, browserPages is the pages read inside
+ * them: one session reads several pages, so the two are not the same number.
+ */
+export const CrawlSurveySchema = z.object({
+  /** Pages read over Fetch, landing page included. */
+  fetched: z.number().int().min(0).max(1000),
+  /** Browser sessions the crawl actually opened. 0 when Fetch was enough. */
+  sessionsOpened: z.number().int().min(0).max(50),
+  /** Pages read inside those sessions. */
+  browserPages: z.number().int().min(0).max(50),
+  /** Fetched pages that were judged not to need a browser. */
+  sessionsAvoided: z.number().int().min(0).max(1000),
+});
+export type CrawlSurvey = z.infer<typeof CrawlSurveySchema>;
+
+const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/** The one line the log and the scan panel both say. */
+export function describeCrawlSurvey(survey: CrawlSurvey): string {
+  const surveyed = `Surveyed ${plural(survey.fetched, "page")} via Fetch`;
+  if (survey.sessionsOpened === 0) return `${surveyed}, no browser session needed.`;
+  return `${surveyed}, opened ${plural(survey.sessionsOpened, "browser session")} for ${survey.browserPages} of them.`;
+}
+
 /** PATCH /api/scans/:id. `page` appends one crawled page. */
 export const ScanPatchSchema = z.object({
   status: ScanStatusSchema.optional(),
   message: z.string().max(500).nullable().optional(),
   taskSource: TaskSourceSchema.optional(),
   page: CrawledPageSchema.optional(),
+  /** Sent once, when the crawl is over. */
+  survey: CrawlSurveySchema.optional(),
 });
 export type ScanPatch = z.infer<typeof ScanPatchSchema>;
 
@@ -108,6 +140,8 @@ export interface ScanRecord {
   repo?: string | null;
   /** Whether the scan opens its draft pull requests by itself. */
   autoPr?: boolean;
+  /** What the crawl's Fetch pre-pass bought. Null on scans crawled before Fetch existed, and while the crawl is still going. */
+  survey?: CrawlSurvey | null;
 }
 
 /* ------------------------------------------------------- task pull requests */

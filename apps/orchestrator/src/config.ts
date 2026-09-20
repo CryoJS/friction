@@ -74,6 +74,15 @@ export interface Config {
   maxSessions: number;
   /** Wall-clock budget for one agent run (primary or verify). */
   agentTimeoutMs: number;
+  /**
+   * Pages the crawl surveys over Browserbase's Fetch API before it opens a
+   * browser. Fetch costs about $1 per 1000 pages and takes no session, so the
+   * survey can be far wider than the crawl ever was. 0 turns the pre-pass off:
+   * the crawl is then the session-based one it always was.
+   */
+  crawlFetchMax: number;
+  /** Most pages of one crawl that earn a browser session. The session is opened once and reused for all of them. */
+  crawlSessionMax: number;
   /** How many of a run's findings get a fix proposed and verified (each costs a full browser run). */
   verifyTopN: number;
   /** Cap on one run's verifications, first attempts and retries together (each is a full browser run). */
@@ -166,6 +175,8 @@ function load(): Config {
     // PERSONA_CONCURRENCY is the old name, still honoured so existing .env files keep working.
     maxSessions: int("MAX_SESSIONS", int("PERSONA_CONCURRENCY", 5, 1, 100), 1, 100),
     agentTimeoutMs: int("AGENT_TIMEOUT_MS", 300_000, 30_000, 900_000),
+    crawlFetchMax: int("CRAWL_FETCH_MAX", 20, 0, 200),
+    crawlSessionMax: int("CRAWL_SESSION_MAX", 3, 0, 6),
     verifyTopN: int("VERIFY_TOP_N", DEFAULT_VERIFY_TOP_N, 0, 5),
     verifyMaxRuns: int("VERIFY_MAX_RUNS", DEFAULT_VERIFY_MAX_RUNS, 1, 10),
     prTests: !["0", "false", "no"].includes((text("PR_TESTS") ?? "").toLowerCase()),
