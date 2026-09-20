@@ -25,6 +25,19 @@
  *    element that genuinely floats over scrolling content -- which is
  *    exactly what the panel and an open card do here.
  *
+ * `.layer` fills the root element's own box (`inset: 0`) rather than
+ * assuming the root sits at the document origin. render.ts gives the root
+ * an inline `position: fixed` (a real CSS position, so `.layer`'s
+ * `position: absolute` actually resolves against it) and then computes
+ * every marker/card offset from the root's own measured
+ * getBoundingClientRect(), never from document coordinates or scrollX/Y --
+ * that is what keeps markers correctly placed even when the host page's
+ * <body>/<html> is itself position:relative, position:fixed, or has a
+ * transform, any of which would otherwise hijack the containing-block
+ * search. `.layer` and the root are pointer-events:none so the full-viewport
+ * overlay never blocks clicks to the page underneath; `.marker`, `.panel`
+ * and `.card` opt back into pointer-events:auto individually.
+ *
  * Kept deliberately plain otherwise. The whole bundle (this string included,
  * verbatim, since a minifier will not touch text inside a JS string literal)
  * has to clear a 25KB budget alongside the resolver and the renderer.
@@ -40,7 +53,8 @@ export const CSS = `
   letter-spacing: 0.025em;
   color: #ededed;
 }
-.layer { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: visible; }
+.layer { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.panel, .card { pointer-events: auto; }
 
 .marker {
   position: absolute;

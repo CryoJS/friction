@@ -54,6 +54,69 @@ describe("mountOverlay", () => {
     handle.destroy();
   });
 
+  it("never renders an empty overlay: an empty findings array still shows an explicit message", () => {
+    const doc = load(`<body></body>`);
+    const handle = mountOverlay(response([]), doc);
+    const root = doc.getElementById(OVERLAY_ROOT_ID);
+    const panelText = root?.shadowRoot?.querySelector(".panel")?.textContent ?? "";
+    expect(panelText).toContain("No findings were recorded for this scan.");
+    handle.destroy();
+  });
+
+  describe("positioning", () => {
+    it("places a marker from the root's own measured box, independent of whatever containing block the root itself resolved against", () => {
+      // happy-dom has no layout engine: getBoundingClientRect() always
+      // returns zeros regardless of CSS, so it cannot reproduce "the host
+      // page's <body> is position:relative and offsets the containing
+      // block" the way a real browser would. What it CAN prove is the
+      // property that fix relies on: the renderer must derive a marker's
+      // position purely from (target rect − root rect), so that whatever
+      // viewport coordinates the root's own box happens to land at -- 0,0,
+      // or somewhere else entirely because an ancestor's position/transform
+      // hijacked its containing block -- the marker still lands exactly on
+      // its target. We control those two rects directly and assert the math.
+      const doc = load(`<body style="position:relative"><button id="target">Add to cart</button></body>`);
+      const target = doc.getElementById("target")!;
+
+      const original = Element.prototype.getBoundingClientRect;
+      const fakeRect = (r: Partial<DOMRect>): DOMRect => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}), ...r }) as DOMRect;
+      Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+        if (this.id === OVERLAY_ROOT_ID) {
+          // Stand-in for a root box that landed away from the viewport
+          // origin -- e.g. because the host body's position:relative (or a
+          // transformed ancestor) became the containing block fixed
+          // positioning resolved against.
+          return fakeRect({ left: 65, top: 40, x: 65, y: 40 });
+        }
+        if (this === target) {
+          return fakeRect({ left: 265, top: 140, right: 320, bottom: 172, width: 55, height: 32, x: 265, y: 140 });
+        }
+        return original.call(this);
+      };
+
+      try {
+        const anchor = {
+          xpath: "/html/body/button",
+          tag: "button",
+          role: "button",
+          name: "Add to cart",
+          text: "Add to cart",
+          attrs: { id: "target" },
+          ordinal: 0,
+          path: "/",
+        };
+        const handle = mountOverlay(response([finding({ anchor })]), doc);
+        const root = doc.getElementById(OVERLAY_ROOT_ID)!;
+        const marker = root.shadowRoot!.querySelector(".marker") as HTMLElement;
+        expect(marker.style.left).toBe(`${265 - 65}px`);
+        expect(marker.style.top).toBe(`${140 - 40}px`);
+        handle.destroy();
+      } finally {
+        Element.prototype.getBoundingClientRect = original;
+      }
+    });
+  });
+
   describe("destroy()", () => {
     it("removes the root element from the document", () => {
       const doc = load(`<body></body>`);
@@ -134,6 +197,9 @@ describe("mountOverlay", () => {
 
       handle.focusFinding("f1");
       expect(scrollSpy).toHaveBeenCalled();
+      const root = doc.getElementById(OVERLAY_ROOT_ID);
+      const card = root?.shadowRoot?.querySelector(".card") as HTMLElement | undefined;
+      expect(card?.hidden).toBe(false);
 
       handle.destroy();
     });

@@ -14,7 +14,8 @@
  * marker never looks more certain than resolveAnchor found it to be.
  */
 import type { AnnotationFinding, AnnotationsResponse } from "@friction/shared";
-import { FRICTION_LABELS, SEVERITY_LABELS, normalizeUrlForVisit } from "@friction/shared";
+import { FRICTION_LABELS, SEVERITY_LABELS } from "@friction/shared";
+import { sameLoggedPage } from "./pageMatch";
 import type { Confidence } from "./resolve";
 import { resolveAnchor } from "./resolve";
 import { CSS } from "./styles";
@@ -55,7 +56,10 @@ function labelledRowText(item: Numbered): string {
 
 /** The card content for one finding. Built once per located finding, toggled open/closed by the marker and its own close button. */
 function buildCard(doc: Document, finding: AnnotationFinding, n: number, confidence: Confidence): HTMLElement {
-  const card = el(doc, "div", `card sev-${finding.severity}`);
+  // No sev-<n> class here: .card's own background is declared after .sev-1..5
+  // in styles.ts, so it would always win anyway. Severity is already carried
+  // by the badge below and by the marker that opens this card.
+  const card = el(doc, "div", "card");
   card.hidden = true;
 
   const head = el(doc, "div", "card-head");
@@ -122,6 +126,17 @@ export function mountOverlay(response: AnnotationsResponse, doc: Document): Over
 
   const root = doc.createElement("div");
   root.id = OVERLAY_ROOT_ID;
+  // Inline, not just via :host in styles.ts: a host-page rule targeting
+  // #__friction-root by id would out-specificity a :host rule. This also
+  // gives .layer inside the shadow root an actual CSS position to resolve
+  // its own position:absolute against, instead of walking past a `:host {
+  // all: initial }`-reset, effectively-static root into the host page's own
+  // ancestor chain looking for one (see styles.ts for how that mispositions
+  // markers whenever the host's <body>/<html> is itself positioned).
+  root.style.position = "fixed";
+  root.style.inset = "0";
+  root.style.margin = "0";
+  root.style.pointerEvents = "none";
   const shadow = root.attachShadow({ mode: "open" });
 
   const styleEl = doc.createElement("style");
@@ -140,17 +155,22 @@ export function mountOverlay(response: AnnotationsResponse, doc: Document): Over
   // page currently loaded. A finding recorded on a *different* page is never
   // fed through resolveAnchor here -- doing so could accidentally match a
   // similarly-named element on this page and pin someone else's finding onto
-  // the wrong page's control. Findings with no recorded url ("") are treated
-  // as belonging here, since that "" means the url was never captured, not
-  // that it is known to be elsewhere.
-  const currentUrl = normalizeUrlForVisit(doc.location?.href ?? "");
+  // the wrong page's control.
+  const currentPageUrl = doc.location?.href ?? "";
   const entries: MarkerEntry[] = [];
   const unlocatedHere: Numbered[] = [];
   const elsewhere = new Map<string, Numbered[]>();
 
   response.findings.forEach((finding, i) => {
     const item: Numbered = { n: i + 1, finding };
-    const belongsHere = finding.url === "" || normalizeUrlForVisit(finding.url) === currentUrl;
+    // finding.url === "" means the step that produced this finding never
+    // captured a url (older scans, a failed capture) -- there is no page to
+    // compare against, so it has no anchor either (toAnnotationFinding never
+    // sets one without a step), and the ladder is never reached for it
+    // regardless of which branch we take here. Treating it as "belongs here"
+    // rather than an unreachable "elsewhere" link is what actually lists it
+    // somewhere a person can read it.
+    const belongsHere = finding.url === "" || sameLoggedPage(finding.url, currentPageUrl);
     if (!belongsHere) {
       const list = elsewhere.get(finding.url) ?? [];
       list.push(item);
@@ -191,20 +211,31 @@ export function mountOverlay(response: AnnotationsResponse, doc: Document): Over
   });
 
   // Steps 3 & 4: position markers from the resolved element's bounding rect,
-  // plus scroll offsets, and keep them attached through scroll/resize/layout
-  // shift -- throttled to one recompute per animation frame.
+  // and keep them attached through scroll/resize/layout shift -- throttled
+  // to one recompute per animation frame.
+  //
+  // Both the target's rect and the root's own rect come from
+  // getBoundingClientRect(), which always reports viewport coordinates no
+  // matter what containing block either element actually resolved against.
+  // Subtracting the root's origin from the target's therefore gives the
+  // right offset within the root's own box (which .layer exactly fills)
+  // regardless of what CSS positioning scheme the root itself landed under --
+  // static, relative, fixed, or hijacked by a transformed ancestor. This
+  // also needs no scrollX/scrollY term: scrolling the page moves the
+  // target's viewport rect (which we re-read on every call), not some
+  // separate document-coordinate math.
   function positionMarker(entry: MarkerEntry): void {
+    const base = root.getBoundingClientRect();
     const rect = entry.el.getBoundingClientRect();
-    const x = rect.left + (win?.scrollX ?? 0);
-    const y = rect.top + (win?.scrollY ?? 0);
-    entry.markerEl.style.left = `${x}px`;
-    entry.markerEl.style.top = `${y}px`;
+    entry.markerEl.style.left = `${rect.left - base.left}px`;
+    entry.markerEl.style.top = `${rect.top - base.top}px`;
   }
 
   function positionCard(entry: MarkerEntry): void {
+    const base = root.getBoundingClientRect();
     const rect = entry.el.getBoundingClientRect();
-    entry.cardEl.style.left = `${rect.left + (win?.scrollX ?? 0)}px`;
-    entry.cardEl.style.top = `${rect.bottom + (win?.scrollY ?? 0) + 8}px`;
+    entry.cardEl.style.left = `${rect.left - base.left}px`;
+    entry.cardEl.style.top = `${rect.bottom - base.top + 8}px`;
   }
 
   function updatePositions(): void {
