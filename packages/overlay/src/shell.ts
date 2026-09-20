@@ -79,6 +79,11 @@ export function mountMessage(message: string, link?: { href: string; text: strin
   root.style.inset = "0";
   root.style.margin = "0";
   root.style.pointerEvents = "none";
+  // See the matching comment in render.ts's mountOverlay: without its own
+  // z-index, this root is just an ordinary z-index:auto positioned element,
+  // and a host element with any explicit z-index of its own can still paint
+  // over it.
+  root.style.zIndex = "2147483647";
   const shadow = root.attachShadow({ mode: "open" });
 
   const styleEl = document.createElement("style");

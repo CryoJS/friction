@@ -27,6 +27,7 @@ import {
   parseAnnotationsQuery,
   parseEventBatch,
   renderMockScreenshot,
+  SNAPSHOT_CSP,
   toAnnotationFinding,
   type AnnotationsResponse,
   type CreateRunResponse,
@@ -342,16 +343,6 @@ const CONTENT_TYPES: Record<string, string> = {
   svg: "image/svg+xml",
   html: "text/html; charset=utf-8",
 };
-
-/**
- * A snapshot is a copy of a THIRD-PARTY page served from Friction's own
- * origin, so it must never be able to run anything. `script-src 'none'` is the
- * boundary; the capture-time stripping in the orchestrator is only a first
- * pass. Styles, images, fonts and media are allowed from anywhere because the
- * snapshot's <base href> makes them load from the scanned site.
- * The viewer additionally frames it with `sandbox` minus `allow-scripts`.
- */
-const SNAPSHOT_CSP = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https: http:; img-src data: https: http:; font-src data: https: http:; media-src https: http:; frame-src 'none'; form-action 'none'";
 
 function validKey(key: string): boolean {
   return key.length > 0 && key.length <= 512 && /^[A-Za-z0-9._/-]+$/.test(key) && !key.includes("..") && !key.startsWith("/");

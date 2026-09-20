@@ -1,27 +1,41 @@
 import { useEffect, useRef, useState } from "react";
-import type { AnnotationFinding, AnnotationsResponse } from "@friction/shared";
+import { SNAPSHOT_CSP, type AnnotationFinding, type AnnotationsResponse } from "@friction/shared";
 import { mountOverlay, type OverlayHandle } from "@friction/overlay/src/render";
 
-/**
- * The CSP the snapshot is rendered under. The Worker sends its own header, but
- * that only covers a frame loaded by URL — this viewer uses srcdoc, so the
- * policy has to travel inside the document. `script-src 'none'` plus a sandbox
- * without `allow-scripts` is the actual boundary; the capture-time stripping in
- * the orchestrator is only a first pass.
- */
 /** The viewport the orchestrator captures at (config.VIEWPORT.w). The frame is laid out at this
  *  width and then scaled to fit, so the snapshot reflows exactly as it did during the scan. */
 const FRAME_WIDTH = 1280;
 
-const SNAPSHOT_CSP =
-  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https: http:; img-src data: https: http:; font-src data: https: http:; media-src https: http:; frame-src 'none'; form-action 'none'";
-
-/** Puts the policy first in <head> so it governs everything that follows. */
+/**
+ * The snapshot is rendered under SNAPSHOT_CSP (see packages/shared): the
+ * Worker sends its own header, but that only covers a frame loaded by URL —
+ * this viewer uses srcdoc, so the policy has to travel inside the document
+ * instead. `script-src 'none'` plus a sandbox without `allow-scripts` is the
+ * actual boundary; the capture-time stripping in the orchestrator is only a
+ * first pass.
+ *
+ * The second injected tag makes the snapshot's own content inert: without
+ * scripts, a click on the site's own elements is still a real click, and the
+ * sandbox (no `allow-top-navigation`) only stops it from breaking out of the
+ * frame -- a link still navigates *this* frame to the real, live URL its
+ * `<base href>` resolves against, which then loads under the same
+ * script-blocked sandbox and typically renders a blank page. `pointer-events:
+ * none` on everything except the overlay's own root stops that click from
+ * ever firing, which is also exactly "only the annotations are
+ * interactable". `!important` guards against the page's own inline styles;
+ * `#__friction-root` doesn't exist in the DOM yet when this is injected, but
+ * the selector is evaluated live and the overlay mounts (see onLoad) after
+ * this document has already loaded, so it excludes it correctly once it does.
+ *
+ * Puts both tags first in <head> so they govern everything that follows.
+ */
 function withPolicy(html: string): string {
   const meta = `<meta http-equiv="Content-Security-Policy" content="${SNAPSHOT_CSP}">`;
+  const inert = `<style>body > :not(#__friction-root) { pointer-events: none !important; }</style>`;
+  const tags = meta + inert;
   return html.includes("<head")
-    ? html.replace(/<head([^>]*)>/i, `<head$1>${meta}`)
-    : `${meta}${html}`;
+    ? html.replace(/<head([^>]*)>/i, `<head$1>${tags}`)
+    : `${tags}${html}`;
 }
 
 /**

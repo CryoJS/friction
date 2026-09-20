@@ -41,6 +41,19 @@ export interface AnnotationsResponse {
   findings: AnnotationFinding[];
 }
 
+/**
+ * The Content-Security-Policy a captured HTML snapshot is always rendered
+ * under: `script-src 'none'` is the actual boundary (the capture-time script
+ * stripping in the orchestrator is only a first pass). One constant, not one
+ * per consumer -- the Worker sends it as a response header for a
+ * snapshot served by URL; the control room's srcdoc viewer gets no benefit
+ * from that header (srcdoc has no URL to attach one to) and instead inlines
+ * the same string as a <meta> tag. Two copies of this string would be able
+ * to drift apart silently; this is the one place either reads it from.
+ */
+export const SNAPSHOT_CSP =
+  "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' https: http:; img-src data: https: http:; font-src data: https: http:; media-src https: http:; frame-src 'none'; form-action 'none'";
+
 export type AnnotationsQuery =
   | { ok: true; by: "host" | "token"; value: string }
   | { ok: false; error: string };
