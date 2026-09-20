@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MousePointer2 } from "lucide-react";
 
 type Accent = "coral" | "amber" | "cobalt";
 
@@ -88,7 +89,7 @@ function AgentScene({ scene }: { scene: Scene }) {
             <span className="agent-skeleton agent-skeleton--card agent-skeleton--card-short" />
           </div>
           <span className="agent-target" />
-          <span className="agent-pointer" />
+          <MousePointer2 className="agent-pointer" fill="currentColor" stroke="currentColor" strokeWidth={1.5} />
           <span className="agent-callout">{scene.action}</span>
         </div>
       </div>

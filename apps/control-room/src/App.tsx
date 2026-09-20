@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Landing } from "./components/Landing";
-import { Nav } from "./components/Nav";
+import { HomeScanNav, Nav } from "./components/Nav";
 import { Plus } from "./components/icons";
 import { ScanPage } from "./components/scan/ScanPage";
 import { useQuery, type Tab } from "./lib/useQuery";
@@ -50,12 +50,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <Nav onHome={goHome} frosted={overHero}>
-        <a href="#how" className="pill-ghost hidden border-transparent md:inline-flex">
-          How it works
-        </a>
-        <a href="#scans" className="pill-ghost hidden border-transparent md:inline-flex">
-          Recent scans
-        </a>
+        <HomeScanNav onOpenScan={openScan} />
       </Nav>
       <Landing onOpenScan={openScan} onOverHero={setOverHero} scrollerRef={landingScroller} />
     </div>

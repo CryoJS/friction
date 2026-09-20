@@ -21,9 +21,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { ScanFlowNode } from "../../lib/scanLayout";
 import { Minus, Plus } from "../icons";
-import { RootNode, TaskNode } from "./nodes";
+import { IssueNode, OrbitRing, RootNode, TaskNode } from "./nodes";
 
-const NODE_TYPES: NodeTypes = { root: RootNode, task: TaskNode };
+const NODE_TYPES: NodeTypes = { root: RootNode, task: TaskNode, ring: OrbitRing, issue: IssueNode };
 /** maxZoom 1 keeps a lone site node (while crawling) at its real size. */
 const FIT: FitViewOptions = { padding: 0.12, maxZoom: 1 };
 
