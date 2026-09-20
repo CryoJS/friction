@@ -1,5 +1,5 @@
 import { taskVerdict, type ScanReportResponse, type ScanTreeResponse, type ScanTreeTask } from "@friction/shared";
-import { VERDICT } from "../../lib/scan";
+import { VERDICT, rankedIssuesForTask } from "../../lib/scan";
 import { Chip } from "../badges";
 import { IssueCard } from "./IssueCard";
 import { TaskPullRequestCard } from "./TaskPullRequestCard";
@@ -10,14 +10,15 @@ interface Props {
   tree: ScanTreeResponse;
   report: ScanReportResponse | null;
   onSelect: (nodeId: string) => void;
+  onOpenRun: (runId: string) => void;
+  /** An issue key to force open (and scroll to), e.g. from clicking its satellite on the orbit graph. */
+  focusedIssueKey?: string | null;
 }
 
-/** One task: what it is, why it matters, its pull request outcome and site issues. */
-export function TaskPanel({ task, tree, report, onSelect }: Props) {
+/** One task: what it is, why it matters, its pull request, and the site issues it hit. */
+export function TaskPanel({ task, tree, report, onSelect, focusedIssueKey = null }: Props) {
   const verdict = VERDICT[taskVerdict(task.state)];
-  const ranked = report
-    ? report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(task.index))
-    : [];
+  const ranked = rankedIssuesForTask(report, task.index);
 
   return (
     <div className="space-y-5">
@@ -50,7 +51,7 @@ export function TaskPanel({ task, tree, report, onSelect }: Props) {
         <div className="mt-3 space-y-2">
           {ranked.length === 0 && <p className="text-caption text-smoke">{report ? "None so far." : "Building the report…"}</p>}
           {ranked.map(({ issue, rank }) => (
-            <IssueCard key={issue.key} issue={issue} rank={rank} onSelect={onSelect} />
+            <IssueCard key={issue.key} issue={issue} rank={rank} onSelect={onSelect} forceOpen={issue.key === focusedIssueKey} />
           ))}
         </div>
       </section>

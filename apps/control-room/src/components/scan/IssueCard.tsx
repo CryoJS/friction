@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { FRICTION_LABELS, scanNodeId, type ScanIssue } from "@friction/shared";
 import { EvidenceImage } from "../EvidenceImage";
 import { SEVERITY_STYLES, SeverityBadge, categoryLabel } from "../badges";
@@ -8,6 +9,8 @@ interface Props {
   /** 1-based position in the site report's ranking. */
   rank: number;
   onSelect: (nodeId: string) => void;
+  /** True when something outside this card (e.g. its satellite on the orbit graph) asked it to open and come into view. */
+  forceOpen?: boolean;
 }
 
 /**
@@ -15,16 +18,27 @@ interface Props {
  * what it is, how widespread. Opening it shows the evidence, the three
  * one-line bullets (what, cost, fix) and every run that hit it.
  */
-export function IssueCard({ issue, rank, onSelect }: Props) {
+export function IssueCard({ issue, rank, onSelect, forceOpen = false }: Props) {
   const style = SEVERITY_STYLES[issue.severity];
+  const ref = useRef<HTMLDetailsElement>(null);
   const bullets = [
     issue.summary && { label: null, text: issue.summary },
     issue.whyItMatters && { label: "Cost", text: issue.whyItMatters },
     { label: "Fix", text: issue.recommendation },
   ].filter((bullet): bullet is { label: string | null; text: string } => Boolean(bullet));
 
+  // A satellite click on the orbit graph asks this specific card to open and scroll into view. This
+  // nudges the DOM once, imperatively, rather than binding `open` as a controlled prop: the polling
+  // re-renders this component every couple of seconds, and a controlled `open` would fight back every
+  // time the viewer manually closed a card that was still the focused one.
+  useEffect(() => {
+    if (!forceOpen || !ref.current) return;
+    ref.current.open = true;
+    ref.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [forceOpen]);
+
   return (
-    <details className="group overflow-hidden rounded-card border border-hairline/10 bg-white/4">
+    <details ref={ref} className="group overflow-hidden rounded-card border border-hairline/10 bg-white/4">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-white/4 [&::-webkit-details-marker]:hidden">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2.5">

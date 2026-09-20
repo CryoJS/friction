@@ -96,47 +96,43 @@ export function ScanForm({ onStarted }: Props) {
   }
 
   return (
-    <form onSubmit={(event) => void start(event)} className="glass rounded-card border border-hairline/15 p-3 shadow-subtle sm:p-4" aria-label="Scan a site" noValidate>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          ref={field}
-          type="text"
-          inputMode="url"
-          value={url}
-          onChange={(event) => {
-            setUrl(event.target.value);
-            if (failure?.kind === "invalid") setFailure(null);
-          }}
-          aria-invalid={failure?.kind === "invalid"}
-          aria-describedby={failure ? "scan-form-error" : undefined}
-          placeholder="https://your-store.com"
-          aria-label="Website URL"
-          autoComplete="url"
-          spellCheck={false}
-          className="field h-14 min-w-0 flex-1 px-6 font-mono text-body tracking-normal"
-        />
-        <button type="submit" disabled={busy} className="pill-cta h-14 shrink-0 px-6 text-body">
-          {busy ? "Starting…" : "Scan & test"}
-          {!busy && <ArrowRight size={16} />}
+    <form onSubmit={(event) => void start(event)} className="scan-form" aria-label="Scan a site" noValidate>
+      <div className="scan-form-entry">
+        <label className="scan-form-url">
+          <span className="scan-form-url-label">URL</span>
+          <input
+            ref={field}
+            type="text"
+            inputMode="url"
+            value={url}
+            onChange={(event) => {
+              setUrl(event.target.value);
+              if (failure?.kind === "invalid") setFailure(null);
+            }}
+            aria-invalid={failure?.kind === "invalid"}
+            aria-describedby={failure ? "scan-form-error" : undefined}
+            placeholder="https://your-store.com"
+            aria-label="Website URL"
+            autoComplete="url"
+            spellCheck={false}
+          />
+        </label>
+        <button type="submit" disabled={busy} className="scan-form-submit">
+          <span>{busy ? "Starting…" : "Scan"}</span>
+          {!busy && <ArrowRight size={17} />}
         </button>
       </div>
 
-      <p className="mt-3 px-2 text-caption text-ash">Friction reads the site, picks its 10 most critical tasks and has the agent attempt each one.</p>
+      <p className="scan-form-caption">Find, visualize, and solve issues before your users do.</p>
 
-      {health && repos.length === 0 && (
-        <p className="mt-2 px-2 text-caption text-smoke">
-          To get draft pull requests for what it finds, connect a repository: set <span className="font-mono tracking-normal">GITHUB_TOKEN</span> and{" "}
-          <span className="font-mono tracking-normal">GITHUB_REPO</span> for the orchestrator.
-        </p>
-      )}
       {repos.length > 0 && (
-        <div className="mt-3 space-y-2 px-2">
-          <label className="flex min-w-0 items-center gap-3 text-caption text-ash">
-            <span className="shrink-0">Repository</span>
+        <div className="scan-form-options">
+          <label className="scan-form-repository">
+            <span>Repository</span>
             <select
               value={repo}
               onChange={(event) => chooseRepo(event.target.value)}
-              className="field h-9 min-w-0 flex-1 px-4 font-mono text-caption tracking-normal"
+              className="scan-form-select"
             >
               <option value="">None</option>
               {repos.map((name) => (
@@ -147,22 +143,19 @@ export function ScanForm({ onStarted }: Props) {
             </select>
           </label>
           {repo && (
-            <label className="flex items-center gap-2 text-caption text-ash">
-              <input type="checkbox" checked={autoPr} onChange={(event) => setAutoPr(event.target.checked)} className="h-4 w-4 shrink-0 accent-white" />
-              Open draft pull requests automatically
+            <label className="scan-form-checkbox">
+              <input type="checkbox" checked={autoPr} onChange={(event) => setAutoPr(event.target.checked)} />
+              Open draft PRs
             </label>
           )}
-          {repo && health?.githubDryRun && <p className="text-caption text-smoke">Preview only, nothing will be pushed.</p>}
+          {repo && health?.githubDryRun && <p className="scan-form-hint">Preview only, nothing will be pushed.</p>}
         </div>
       )}
 
       {failure && (
-        <p id="scan-form-error" role="alert" className="mt-2 px-2 text-caption text-sev-5">
-          {failure.kind === "invalid" ? (
-            "Enter a website URL, like https://your-store.com."
-          ) : (
-            <>Couldn't start the scan ({failure.detail}). Is the orchestrator running?</>
-          )}
+        <p id="scan-form-error" role="alert" className="scan-form-error">
+          <span className="scan-form-error-dot" aria-hidden="true" />
+          {failure.kind === "invalid" ? "Enter a website URL, like https://your-store.com." : `Couldn't start the scan (${failure.detail}). Is the orchestrator running?`}
         </p>
       )}
     </form>

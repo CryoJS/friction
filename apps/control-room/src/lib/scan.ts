@@ -2,7 +2,9 @@
 import {
   taskVerdict,
   type AgentState,
+  type ScanIssue,
   type ScanNode,
+  type ScanReportResponse,
   type ScanStatus,
   type ScanTreeResponse,
   type CoveredBy,
@@ -82,4 +84,10 @@ export function verdictCounts(tree: ScanTreeResponse): Record<TaskVerdict, numbe
 export function resolveScanNode(node: ScanNode, tree: ScanTreeResponse): ScanNode {
   if (node.kind === "root") return node;
   return tree.tasks.some((task) => task.index === node.index) ? node : { kind: "root" };
+}
+
+/** The site report's issues that hit a given task, each with its site-wide rank (1-based). Shared by the sidebar and the orbit graph's satellite nodes. */
+export function rankedIssuesForTask(report: ScanReportResponse | null, taskIndex: number): { issue: ScanIssue; rank: number }[] {
+  if (!report) return [];
+  return report.issues.map((issue, index) => ({ issue, rank: index + 1 })).filter(({ issue }) => issue.taskIndexes.includes(taskIndex));
 }
