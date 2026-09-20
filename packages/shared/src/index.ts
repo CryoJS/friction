@@ -1,5 +1,6 @@
 export * from "./events";
 export * from "./anchor";
+export * from "./overlayVersion";
 export * from "./agent";
 export * from "./api";
 export * from "./report";

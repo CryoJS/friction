@@ -47,13 +47,6 @@ export const AnchorSchema = z.object({
 export type Anchor = z.infer<typeof AnchorSchema>;
 
 /**
- * Bumped whenever the overlay's rendering or resolution changes. Served with
- * every annotations response so a panel drawn by an older bookmarklet can tell
- * the user to re-drag it.
- */
-export const OVERLAY_VERSION = 1;
-
-/**
  * A URL or bare host reduced to the form the annotations endpoint matches on:
  * lowercase, no leading "www.", no port. Junk returns "" rather than throwing,
  * because the caller is a query parameter handler, not a parser.
