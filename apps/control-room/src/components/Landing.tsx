@@ -61,7 +61,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
         <div aria-hidden="true" className="horizon-scrim pointer-events-none absolute inset-0 -z-10" />
         <AgentAmbient />
 
-        <div className="relative z-10 mx-auto max-w-300 px-4 pt-32 sm:px-6 sm:pt-40">
+        <div className="relative z-10 mx-auto max-w-300 px-4 pt-40 sm:px-6 sm:pt-48">
           <h1 className="max-w-[28ch] text-[clamp(44px,6.2vw,72px)] leading-[1.02] tracking-[-0.035em] text-white text-balance lg:max-w-none">
             <span className="block">Ship fast</span>
             <span className="block">
@@ -69,7 +69,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
             </span>
           </h1>
 
-          <div className="mt-10 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
+          <div className="mt-16 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
             <div className="pb-10 lg:pb-14">
               <div className="dusk-pool">
                 <ScanForm onStarted={onOpenScan} />
@@ -84,7 +84,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
       </section>
 
       {/* -------------------------------------------------------- recent scans */}
-      <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 pt-24 sm:px-6 sm:pt-32">
+      <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 pt-16 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
         </div>
