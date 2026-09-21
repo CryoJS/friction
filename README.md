@@ -1,88 +1,91 @@
 # Friction
 
-Give it a URL. Friction reads the site, picks the 10 most critical tasks to QA, and has one AI agent, a competent first-time visitor, attempt each one on the live site in an isolated Browserbase browser. Friction is detected as it happens, shown as a live node tree (site â†’ tasks), and merged into one site-wide report that ranks each issue by severity and by how many tasks hit it, with screenshot evidence. For each run's worst findings, Friction proposes a fix, **proves** whether it works by re-running the same task in a fresh browser with the fix installed, and, for a verified fix, can open a draft pull request against your repository. Built for Hack the North 2026.
+### Autonomous QA that finds the flaw, proves the fix, and opens the PR.
 
-Setup, env vars, deploy commands and the demo runbook: **[SETUP.md](SETUP.md)**.
+Programmers have automated product development, so what's next?
+Product testing.
+
+Friction gives an AI agent a website and asks it to complete the tasks that matter most to a first time visitor. The agent uses a real browser, records what happened, and turns the evidence into a severity ranked report. Then, Friction proposes a small fix, installs it in a fresh browser session, and reruns the exact same task to verify whether the experience actually improved.
+
+If the fix is verified and can be mapped back to the source, Friction can open a draft GitHub pull request with a regression test.
+
+Built for [Hack the North 2026](https://devpost.com/software/friction-z0xgf6).
+
+## Watch the demo
+
+[Watch Friction on YouTube →](https://www.youtube.com/watch?v=8UGiKTf0RAI)
+
+
+## Why it stands out
+
+- **Tests like a visitor.** One agent navigates a live site and attempts realistic, high value tasks instead of checking isolated selectors.
+- **Findings come with evidence.** Each issue includes the observed interaction, screenshot evidence, severity, confidence, and how many tasks encountered it.
+- **Fixes are experimentally verified.** A proposed patch is installed before first paint in a brand new browser context, then the same task is replayed.
+- **The report is site wide.** Findings from multiple tasks are deduplicated and ranked so repeated friction rises to the top.
+- **The loop can reach the codebase.** Verified fixes can be mapped to source, covered by a generated Playwright regression test, and opened as draft PRs.
+- **The demo works without credentials.** Mock mode replays a deterministic golden run through the real pipeline, including fix verification.
+
+## How it works
+
+![friction-howitworks.png](public/readme/friction-howitworks.png)
+
+The control room shows the scan as a live task tree and streams run events as they happen. The report brings each fix together with a **Before / After** comparison and the evidence behind the verdict.
+
+## Product demo
+
+1. Start the app in [mock mode](SETUP.md#quick-start).
+2. Open the control room and click **Replay the golden run**, or enter a URL and choose **Scan & test**.
+3. Select a task to watch the agent work through the browser.
+4. Open the report to see ranked findings, screenshots, and fix verification.
+
+For the full live browser setup, environment variables, deployment notes, and demo runbook, see **[SETUP.md](SETUP.md)**. Start from **[.env.example](.env.example)** when enabling live runs.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="public/readme/pics/friction1.png" alt="Friction landing page with a URL ready to scan" width="100%"></td>
+    <td><img src="public/readme/pics/friction3.png" alt="Live site scan with paths, agents, and issue counts" width="100%"></td>
+  </tr>
+  <tr>
+    <td><img src="public/readme/pics/friction4.png" alt="Live annotations showing detected friction on a page" width="100%"></td>
+    <td><img src="public/readme/pics/friction5.png" alt="Ranked scan results grouped by severity" width="100%"></td>
+  </tr>
+</table>
 
 ## Architecture
 
+![friction-architecture.png](public/readme/friction-architecture.png)
+
+The monorepo is split into three deployable pieces:
+
+| Package | Responsibility |
+| --- | --- |
+| `apps/control-room` | Vite + React interface for scans, live runs, evidence, and reports |
+| `apps/orchestrator` | Browser sessions, agent loop, friction detection, fix verification, and GitHub integration |
+| `apps/worker` | Hono API, Cloudflare D1 persistence, R2 evidence storage, and server sent events |
+| `packages/shared` | Shared contracts, detectors, verification rules, report assembly, and demo fixture |
+
+## Tech stack
+
+`TypeScript` · `React` · `Vite` · `Node.js` · `OpenAI Responses API` · `Browserbase` · `Stagehand` · `Cloudflare Workers` · `D1` · `R2` · `GitHub REST API` · `Playwright`
+
+## Development
+
+```bash
+pnpm install
+pnpm dev
 ```
-control-room (Vite/React) --POST /scans--> orchestrator (Node/Express) --scans, runs, events, fixes, evidence--> worker (Cloudflare)
-        ^        \--"Open pull request"-->   | crawl, 5 tasks, one run each; Browserbase      | D1: scans, runs, events, findings, fixes
-        |                                     | sessions from one pool; OpenAI; GitHub (PAT)   | R2: screenshots
-        +--- scan tree (poll) / SSE per run / replay / reports / evidence ----------------------+
+
+Then open `http://localhost:5173`. The default setup is credential free and uses the deterministic golden run. Run the checks with:
+
+```bash
+pnpm typecheck
+pnpm test
 ```
 
-**Scans.** The home page has one field and one button. **Scan & test** POSTs `{url}` to the orchestrator (`POST /scans`), which creates the scan on the Worker and returns its id at once. One browser session reads the landing page and up to five same-origin navigation pages (`crawl.ts`). One Structured Outputs call turns that into up to 5 ranked tasks, each with why it is critical and what success looks like (`taskGen.ts`). Each task then becomes an ordinary run, as below, and its planner (and any verification of its fixes) judges completion against that success check. Every browser session, primary or verify, comes from one process-wide pool of `MAX_SESSIONS`, most critical task first; a run waiting for a session shows as **Queued**. The scan page (`?scan=<id>&node=<nodeId>`) draws the site and its tasks as a React Flow node tree. It polls `GET /api/scans/:id` every 2s, streams only the task you select (the same SSE and `LanePane` a run uses), and shows `GET /api/scans/:id/report`. There, findings from every run are merged into issues by category, page and element, and ranked by severity, then by how many tasks hit them (`packages/shared/src/scanReport.ts`). If the site cannot be read or the model call fails, the scan runs 5 generic tasks and says so. In mock mode the crawl is scripted, the tasks are canned and every run replays the golden run, verification included.
+More commands and the live configuration path are documented in **[SETUP.md](SETUP.md)**.
 
-Each run works as follows:
+## License
 
-1. The run is created on the Worker with `{url, task}` (plus its scan link when it belongs to a scan) and gets a `runId` at once. The orchestrator's `POST /runs {url, task}` still starts a single run directly; the UI no longer calls it, but scripts and `smoke-local.ts` do.
-2. One agent runs in lane **`primary`**, in its own Browserbase **session** inside a fresh **context**, capped at 15 steps: **observe** (screenshot + Stagehand's accessibility tree pruned to interactive elements and headings), **plan** (OpenAI Responses API: image input, strict function call, one neutral system prompt), **act** (Stagehand), **capture** (screenshot to R2, step event to the Worker).
-3. After every step the **pure detectors** in `packages/shared/src/friction.ts` run over the events so far. Findings are deduplicated by category + selector; a repeat raises the finding's `hitCount` ("the agent hit this 3 times") instead of adding a new one. Each new finding gets one Structured Outputs call that writes only the judgement.
-4. **Fix verification** (`fixer.ts`, `verify.ts`, `selection.ts`), for `VERIFY_TOP_N` findings, one at a time: a model proposes a small JS patch; a **brand-new** session installs it with `page.addInitScript()` before the first navigation (so the fix is there from first paint), and the identical task is re-run in lane **`verify`**. The patch only changes the DOM in Friction's own disposable browser, never your site.
-   - **Which findings** (`planVerification`): causes before symptoms. A *fixable* finding is an element misbehaving (`dead_click`, `error_text`, `modal_interrupt`, `keyboard_trap`, `ambiguous_label`, `retry`); a *symptom* says the run went badly (`loop`, `step_budget`, `long_wait`) and gives a DOM patch nothing to aim at. Fixable findings take the slots first, by severity, confidence and hit count; a symptom is only verified if slots are left over. Two findings on the same element of the same page are one cause, verified once. The report's ranking is unchanged.
-   - **The verdict** (`judgeVerification`). Verified = the outcome went from failure/timeout to success; or the category no longer fires on a page the verify run reached; or the task was completed before and is completed now in clearly fewer steps (at least 2 and at least 30% fewer) while the category fired less than it did, or its page was never needed ("completed the task in 2 steps, down from 15 steps; dead_click no longer needed to be passed"). An errored run, a patch that did not load, a worse outcome, giving up sooner, or "no change from before" is rejected, with the reason. One exception to "worse": when the primary run only finished on its last step or so, a verify run that runs out of steps at the same count (within one step) is the agent's variance at the step cap, not the fix breaking the task, so the category going quiet still verifies and the note says so. Giving up, or running out of steps when the primary run had steps to spare, is still worse.
-   - **What the proposer is shown.** Besides the accessibility tree: the target element's real markup inside its ancestors' opening tags, and the markup of any overlay covering the page (`pageScripts.ts` `elementHtmlScript`), so a patch selects by an id or attribute that exists rather than a guessed class name. Its instructions end with the defects of real rejected patches (an overlay matched by `textContent` across `body *`, which also matches every ancestor and hid the whole page; a `MutationObserver` on attributes that re-triggers itself; navigating from script to fix a dead link).
-   - **A fix is judged by its own element** (`hitsOfFinding`). On a page with five dead buttons, the fix for one is not refuted by the other four: for `dead_click`, `retry`, `ambiguous_label` and `keyboard_trap` only hits on the same selector, or the same accessible name (a patch that removes a node shifts every xpath after it), count. Other categories are still counted across the category.
-   - **One retry.** A fixable finding whose patch ran and was rejected with "still fires", or because the agent no longer completed the task with it installed, gets one more proposal, given the previous patch, the rejection note and the steps the agent took with that patch, and one more verification, on the same fix row. Retries come after every selected finding has had its first attempt, and a run never spends more than `VERIFY_MAX_RUNS` verifications in all.
-   - **Symptoms are credited, not fixed.** When a fixable finding's fix is verified and a symptom of the same run no longer fires in that verify run, the fix records it as *also resolved*; no separate fix is proposed for it.
-   - **Only a verified fix ever reaches a pull request.** None of the above changes that: there is no unverified mode.
-5. **Pull requests** (`repo.ts`, `pr.ts`, `scanPullRequests.ts`): a verified fix is mapped to one source file (never from the browser's DOM), and a model writes the complete new file. The search terms come from four sources, in order, stopping at the first that yields a file: the finding's selector and label; the selectors in the verified patch's own `querySelector` / `closest` / `matches` calls (the patch was proven to touch the right element); the parts of the target's visible text; and the finding's page route matched against file paths under `src/pages`, `app` or `routes` (`/products/x` finds `src/pages/products/[slug].astro`). Every candidate still goes through `rankSearchHits` and the path guard, and the fix row keeps which source hit, or everything that was searched for. From there, two ways to a **draft** PR, sharing the same steps. Never merged, never force-pushed, never an existing branch, never any target but the base branch.
-   - **Every pull request carries a Playwright regression test it has proven** (`prTest.ts`, shared `prTest.ts`; `PR_TESTS=0` turns it off). For each mapped fix a model writes the test as *data*: up to 8 steps addressed by ARIA role and accessible name, then 1 to 3 expectations (text visible or hidden, a role visible or hidden, the URL). Friction runs that data itself in two fresh sessions: against the site as it is it must **fail**, with the verified patch installed it must **pass**. Only a test that told the two apart is rendered to `tests/friction/<run>-<finding>.spec.ts` and added to the PR as its own commit; otherwise the PR opens without one and says why. No model-written code is ever executed or committed: the spec is a fixed template, and every string in it goes through `JSON.stringify`. The test file is the one path outside the source guard a PR may add, through its own stricter check, and only as a new file (no sha, so GitHub refuses an existing one). The spec fails against the scanned site, passes with `FRICTION_RUNTIME_PATCH=1` (which installs the runtime patch), and is meant to pass against the PR's source change; it has not been run against that change, and the PR says so.
-   - **Connecting GitHub** takes a button, not a token (`githubConnection.ts`, shared `githubConnect.ts`): with `GITHUB_CLIENT_ID` set, **Connect GitHub** in the scan form runs GitHub's device flow (a code typed at `github.com/login/device`; no callback URL, no secret, so it works on localhost), then lists the repositories that account can push to, and only the ones **ticked** there can be named by a scan. The token stays in the orchestrator; managing the connection only works from the orchestrator's own machine. `GITHUB_TOKEN` and the env allow-list remain the fallback. See SETUP.md.
-   - **By hand:** a click on **Open pull request** commits one fix to `friction/fix-<findingId>`.
-   - **Scan pull requests:** start the scan with a **Repository** selected and "Open draft pull requests automatically" ticked. Once every run is over, each task that has a verified, mapped fix gets **one** draft PR (`friction/scan-<scanId>-task-<n>`, one commit per file), opened one at a time in task-rank order while the scan is still `running`. Tasks with nothing to fix open nothing. The same problem seen by several tasks gets one PR: a source file belongs to the first task whose PR touches it, later tasks are recorded as **covered** by it, and that PR lists them under "Also unblocks". Rejected, unverified and unmapped fixes never ship. The PR and the task's pull request card account for **every** finding of the task: committed; "Also resolved" by a committed fix; or "Found, not fixed" with the furthest stage it reached and why it stopped there (not selected: a symptom, below the cut, or the same cause as another finding; no acceptable patch; rejected, with the verdict; verified but unmapped, with what was searched for). A task that found problems and ends `nothing_to_fix` says why, finding by finding. A re-scan skips any file an open `friction/` PR already changes. A path guard, in code, after the model and before any commit, refuses `.github/`, CI config, lockfiles, `.env*`, `package.json` and build or deploy config, so text from the scanned site can never choose the file. Every task ends as a recorded status (`opened`, `dry_run`, `covered`, `nothing_to_fix`, `skipped`, `failed`) with a reason; one task's failure never touches another task or the scan.
-   - **Dry run** (`GITHUB_DRY_RUN=1`, mock mode, or no token): everything but the network writes. The would-be branch, title, body and per-file line counts are stored, and the task panel shows them under **Preview pull request**. This is the path a demo falls back to with no wifi.
-6. The Worker validates every event with zod, stores it in **D1**, mirrors primary-lane friction into `findings`, keeps fixes in `fixes`, and fans out to SSE clients from an in-memory `Map` (no Durable Object). It also tails D1, so delivery survives the producer and the viewer landing on different isolates. The stream ends when the run is `completed`, after verification.
-7. A single run's control room (`?run=<id>`, linked from every task's panel on the scan page) shows one live pane during the run; once a fix is being verified, a second pane appears beside it. The Report leads with each fix's **Before / After** comparison (both lanes, rendered by the same component), then the ranked findings with screenshot evidence.
-8. **Replay is a first-class mode.** `?replay=1` fetches `GET /api/runs/:id` once and plays it back client-side: no orchestrator, no OpenAI, no Browserbase, no wifi.
-9. Every layer has a fallback: no producer -> the Worker streams `fixtures/golden-run.json` (which includes one verified and one rejected fix); no Worker -> the control room plays the copy compiled into its bundle; no API keys -> the orchestrator replays the golden run, verification included, through the *real* pipeline.
-10. `packages/shared` is the single source of truth: zod event contracts, the agent, detectors, the pure rules of verification and PRs (`fixes.ts`), scan contracts and the merged site report, report assembly, the fixture. All three apps import its TypeScript source directly; there is no build step.
-11. The OpenAI model is read from `OPENAI_MODEL` and nowhere else. No model name appears in this repo.
-
-## Who owns what
-
-| Dev | Area | Path | Notes |
-| --- | --- | --- | --- |
-| **A** | Orchestrator | `apps/orchestrator` | Browserbase sessions, Stagehand, OpenAI planner + judge + fixer, the agent loop, verification, repo mapping, PRs, scans (`crawl.ts`, `taskGen.ts`, `scanManager.ts`), `/suggest-tasks`. Tune prompts in `planner.ts` and `fixer.ts`; page-side measurement lives in `pageScripts.ts` |
-| **B** | Worker | `apps/worker` | Hono routes, D1 schema and queries (`db.ts`, `scanDb.ts`), SSE (`stream.ts`, `hub.ts`), R2 evidence, report, deploys |
-| **C** | Site scan UI | `apps/control-room` | React UI in the dusk design system (`DESIGN.md`). The scan polls `hooks/useScan.ts`, draws `components/scan/`, and exposes the graph and merged Results report |
-| **D** | Shared, friction, demo | `packages/shared`, `fixtures/`, `scripts/` | Contracts, detectors + tests, verification rules + tests, scan contracts + merged report + tests, the golden run, the demo shop, the demo itself |
-
-The contract between everyone is `packages/shared/src/events.ts`. Change it there, run `pnpm typecheck`, and every app tells you what broke.
-
-## What is verified, and what is not
-
-Verified by running it:
-
-- `pnpm typecheck` and `pnpm test` (the detectors reproduce every friction occurrence recorded in the fixture, incrementally, in both lanes; plus the rules of dedupe, which findings are verified (causes before symptoms, one per element), verification verdicts (every branch, from the rejection notes of three live scans), the retry budget, patch validation, the mapping fallbacks' search terms, repo search ranking, generated-file checks and the PR body; plus the scan contracts and the merged site report).
-- The **real browser loop and real verification**, via `pnpm --filter @friction/orchestrator smoke`: local Chromium sessions through the real `runAgent` against the demo shop, all expected findings from real browser signals, then two fixes through the real `verifyFix`: a genuine patch installed with `addInitScript` in a fresh session comes back **verified**, an inert one **rejected**.
-- The whole pipeline in mock mode, end to end through Worker, D1, SSE and the control room: primary run, verification, verdicts computed by the real detectors, the run completing, the stream ending. In the golden run the dead "Add to cart" (f13) is verified; the repeated click on the same button (f15) is the same cause and is no longer verified separately (its recorded rejection still judges as rejected, which a unit test holds); the spent step budget (f21) no longer fires in f13's verify run and is credited to it. Mock mode verifies only categories the fixture recorded a verify run for.
-- **The pull request's regression test, in real browsers, no keys**, via `pnpm --filter @friction/orchestrator smoke:pr-test`: the rendered spec is run by the real Playwright test runner (Edge, no browser download) against a local demo shop, where it **fails** on its expectation as the shop is and **passes** with `FRICTION_RUNTIME_PATCH=1`; Friction's own runner (through Stagehand, as in a live run) then reaches the same verdicts: that test is proven, a patch that does nothing proves no test, and a test that already passes today is thrown away. The same script reads the proposer's markup capture from a real page. Unit tests execute a rendered spec against a fake `page` with hostile strings in every field and show none of it becomes code. `smoke:github-fake` commits the test file through the real Octokit client. What no test has shown: a model writing a good test, or the spec passing against a real source change.
-- **The retry path with fakes, not a browser:** `selection.test.ts` drives the verification schedule (first attempts before retries, one retry per finding, never past `VERIFY_MAX_RUNS`) and `fixer.test.ts` the re-proposal onto the same fix row with the rejection as feedback. No live run has exercised a retry yet.
-- A full mock scan, via `pnpm --filter @friction/orchestrator smoke:scan`: a scripted crawl, 5 tasks and 5 runs (each with its verifications) through the real pipeline, and a merged report in which an issue is hit by all 5 runs.
-- **Scan pull requests in mock mode, no keys**, via `pnpm --filter @friction/orchestrator smoke:scan-pr`: a scan started with a repository ends `completed` with one pull request **preview** on task 1 and the other four tasks **covered** by it (every task replays the golden run, so they all hit the same file), a repository off the allow-list is refused with 400, and nothing is pushed. The mapping it previews is canned (`mockSource.ts`), as mock mode's tasks are.
-- **The pull request code against a fake GitHub**, via `pnpm --filter @friction/orchestrator smoke:github-fake`: the real `pr.ts` and `scanPullRequests.ts`, through the real Octokit client, against a local HTTP server standing in for the REST API. One draft PR per fixable task, cross-task dedupe, a re-scan that writes nothing, a taken branch name falling through to a suffixed one, a file that changed since generation skipped rather than overwritten, the path guard, a 429 retried after its `retry-after`, a 403 and a 404 ending as a task's `failed` status with a sentence, and a dry run that reads but never writes. It shows the code does what it says; it cannot show that api.github.com answers the way the fake does.
-
-**Not verified, because no credentials existed when this was built:** the OpenAI calls (planner, judge, fixer, source generation, suggest-tasks, scan task generation), the live crawl, Browserbase session creation, and every GitHub call: `search.code`, `repos.get`, `repos.getContent`, `git.getRef`, `git.createRef`, `repos.createOrUpdateFileContents`, `pulls.create`, `pulls.list` and `pulls.listFiles`. None has ever reached the real GitHub API, by the click path or by a scan. They type-check against the installed SDKs (`openai` 6, `@browserbasehq/sdk`, Stagehand 3.7.3, `@octokit/rest` 22) and were written from those type definitions, but they have never executed. Start with `BROWSER_ENV=LOCAL` and a throwaway repository so only one unknown is in play at a time.
-
-## Decisions worth knowing
-
-- **Stagehand is pinned to 3.7.3, not 4.x.** v4 validates `modelName` against a closed allow-list at runtime, which cannot coexist with "the model comes from an env var", and it needs Node 22.18+. v3 attaches to an existing Browserbase session over CDP, as the design calls for. Stagehand v3 replaced its Playwright layer with a CDP-native driver that keeps the Playwright-style page API.
-- **Targets resolve in two tiers.** The planner cites an element id from Stagehand's accessibility snapshot; we map it to its XPath and pass Stagehand a ready-made `Action`, so `act()` needs no second model call. `stagehand.observe()` is the fallback when the id is stale.
-- **Screenshots are downscaled in the browser** (CDP clip scale, 1280x720 -> 768x432) for the model; full size goes to R2. The two captures must never run concurrently, and the clip is document-relative, not viewport-relative. Both are commented where they matter; both were found by testing.
-- **The in-memory SSE `Map` holds queues, not streams.** Workers forbid one request from writing to another's response, so each connection drains its own queue. Connections recycle themselves before the free plan's 50-D1-queries-per-request limit.
-
-### Deviations from the original contract
-
-All additive; consumers must tolerate their absence.
-
-- `actionType` gains **`"press"`**: the agent may choose the keyboard, and `keyboard_trap` fires only when it actually pressed Tab.
-- The step payload gains optional `value`, `viewport` (so a bbox scales onto any screenshot size) and **`signals`**: the raw observations the detectors need (URL after, error texts, overlay appeared, keys pressed, focus moved, same-name count). The base payload could not express them.
-- The friction payload gains optional `summary`, `whyItMatters`, `judgedBy`; `status` gains `message`; `done` gains `summary`. `findings` gains two nullable columns for the first two.
-- A ninth detector, `ambiguous_label`, since the category existed without one.
-- The persona system is gone. The envelope's `personaId` became `lane` (`"primary"` or `"verify"`), plus an optional `fixId` on verify-lane events. The `personas` table is dropped; the primary session and outcome live on `runs`.
-- `fix` joins the event union. Fix events are written by the Worker (`POST /api/runs/:id/fixes`), which assigns their seq. The fix payload gains optional `category`, `note`, and the verify session's `liveViewUrl` / `replayUrl`; the `fixes` table also holds `source_sha`, so a PR never overwrites a file that changed since the fix was generated.
-- The friction payload gains `findingId`, `findingKey`, `selector`, `hitCount`, `lastSeq` (dedupe); the status payload gains `session` (how a verify lane's live view reaches the UI).
-- Migrations: `0002_lanes.sql` (personas -> lanes; lossy for old three-persona runs, see SETUP.md), `0003_fixes.sql` and `0004_scans.sql`. The spec named the fixes migration `0002_fixes.sql`; it is `0003` because the lane change needed its own migration first. Scans were built as `0002_scans.sql` on a branch that predates lanes and became `0004` when merged.
+See [LICENSE](LICENSE).
