@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { normalizeTargetUrl, type ScanListItem } from "@friction/shared";
 import { api } from "../lib/api";
+import { DEMO_MODE } from "../lib/config";
 import { shortUrl } from "../lib/format";
 import { SCAN_STATUS } from "../lib/scan";
 import { Dot } from "./badges";
@@ -42,6 +43,19 @@ interface HomeScanNavProps {
 
 /** The landing nav is either a compact scan launcher or a link to the newest scan. */
 export function HomeScanNav({ onOpenScan }: HomeScanNavProps) {
+  if (DEMO_MODE) return <DemoHomeNav />;
+  return <LiveHomeScanNav onOpenScan={onOpenScan} />;
+}
+
+function DemoHomeNav() {
+  return (
+    <a href="#scans" className="pill-ghost">
+      Golden run
+    </a>
+  );
+}
+
+function LiveHomeScanNav({ onOpenScan }: HomeScanNavProps) {
   const [scans, setScans] = useState<ScanListItem[]>([]);
   const [url, setUrl] = useState(() => loadSavedScanUrl());
   const [busy, setBusy] = useState(false);

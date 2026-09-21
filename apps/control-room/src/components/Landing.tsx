@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ScanListItem } from "@friction/shared";
 import { api } from "../lib/api";
+import { DEMO_MODE } from "../lib/config";
 import { shortUrl, timeAgo } from "../lib/format";
 import { SCAN_STATUS } from "../lib/scan";
 import { AgentAmbient } from "./AgentAmbient";
@@ -19,7 +20,7 @@ interface Props {
 type Probe<T> = { status: "loading" } | { status: "ok"; value: T } | { status: "down" };
 
 export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
-  const [scans, setScans] = useState<Probe<ScanListItem[]>>({ status: "loading" });
+  const [scans, setScans] = useState<Probe<ScanListItem[]>>(() => (DEMO_MODE ? { status: "ok", value: [] } : { status: "loading" }));
   const hero = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
   }, [onOverHero, scrollerRef]);
 
   useEffect(() => {
+    if (DEMO_MODE) return;
     let cancelled = false;
     api
       .listScans()
@@ -71,9 +73,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
 
           <div className="mt-16 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
             <div className="pb-10 lg:pb-14">
-              <div className="dusk-pool">
-                <ScanForm onStarted={onOpenScan} />
-              </div>
+              {DEMO_MODE ? <DemoCard /> : <div className="dusk-pool"><ScanForm onStarted={onOpenScan} /></div>}
             </div>
 
             <div className="-mx-2 sm:mx-0">
@@ -86,17 +86,20 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
       {/* -------------------------------------------------------- recent scans */}
       <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 pt-16 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">Recent scans</h2>
+          <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">{DEMO_MODE ? "The golden run" : "Recent scans"}</h2>
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
           <div aria-hidden="true" className="wash absolute inset-x-0 top-0 h-px" style={{ backgroundPosition: "50% 0" }} />
-          {scans.status === "loading" && <p className="px-6 py-6 text-body text-smoke">Loading scans…</p>}
-          {scans.status === "down" && (
+          {DEMO_MODE && (
+            <p className="px-6 py-6 text-body text-ash">A deterministic golden run is bundled into this showcase. The full scan form is available when you run the local stack.</p>
+          )}
+          {!DEMO_MODE && scans.status === "loading" && <p className="px-6 py-6 text-body text-smoke">Loading scans…</p>}
+          {!DEMO_MODE && scans.status === "down" && (
             <p className="px-6 py-6 text-body text-ash">The Worker is not answering, so past scans are unavailable. The golden run still plays: it is bundled into this app.</p>
           )}
-          {scans.status === "ok" && scans.value.length === 0 && <p className="px-6 py-6 text-body text-ash">No scans yet. Start one above.</p>}
-          {scans.status === "ok" && scans.value.length > 0 && (
+          {!DEMO_MODE && scans.status === "ok" && scans.value.length === 0 && <p className="px-6 py-6 text-body text-ash">No scans yet. Start one above.</p>}
+          {!DEMO_MODE && scans.status === "ok" && scans.value.length > 0 && (
             <ul>
               {scans.value.map((scan) => {
                 const status = SCAN_STATUS[scan.status];
@@ -154,6 +157,19 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
         </div>
       </footer>
     </main>
+  );
+}
+
+function DemoCard() {
+  return (
+    <div className="dusk-pool p-6 sm:p-8">
+      <p className="text-caption uppercase tracking-[0.18em] text-smoke">Static showcase</p>
+      <h2 className="mt-3 font-heading text-heading-sm font-medium tracking-[-0.02em] text-white">Explore the golden run.</h2>
+      <p className="mt-3 max-w-md text-body text-ash">This build bundles a deterministic Friction run so you can see the product story without a backend, API keys, or a live scan.</p>
+      <a href="https://www.youtube.com/watch?v=8UGiKTf0RAI" target="_blank" rel="noreferrer" className="pill-cta mt-6 inline-flex h-10 px-4 text-ui">
+        Watch the full demo <ArrowRight size={15} />
+      </a>
+    </div>
   );
 }
 

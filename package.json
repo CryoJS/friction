@@ -15,11 +15,13 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "build": "pnpm --filter @friction/control-room build",
+    "build:demo": "tsx scripts/build-demo.ts",
+    "preview:demo": "pnpm --filter @friction/control-room preview",
     "golden:generate": "tsx scripts/generate-golden.ts",
     "db:migrate:local": "pnpm --filter @friction/worker db:migrate:local",
     "db:migrate:remote": "pnpm --filter @friction/worker db:migrate:remote",
     "deploy:worker": "pnpm --filter @friction/worker deploy",
-    "deploy:pages": "pnpm --filter @friction/control-room deploy"
+    "deploy:pages": "pnpm build:demo && pnpm --filter @friction/control-room exec wrangler pages deploy dist --project-name friction"
   },
   "devDependencies": {
     "tsx": "^4.23.13",

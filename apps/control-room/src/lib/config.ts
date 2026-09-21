@@ -6,5 +6,8 @@ export const WORKER_URL = trimSlash(import.meta.env.VITE_WORKER_URL ?? "http://l
 /** Node orchestrator: starts scans. Replays, reports and past scans work without it. */
 export const ORCHESTRATOR_URL = trimSlash(import.meta.env.VITE_ORCHESTRATOR_URL ?? "http://localhost:8788");
 
+/** Static showcase build: show the bundled golden run without probing a backend. */
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "1";
+
 /** Hard cap on steps per agent run; mirrors the orchestrator. Used for progress bars only. */
 export const MAX_STEPS = 15;

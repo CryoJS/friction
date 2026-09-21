@@ -13,7 +13,7 @@ Built for [Hack the North 2026](https://devpost.com/software/friction-z0xgf6).
 
 ## Watch the demo
 
-[Watch Friction on YouTube →](https://www.youtube.com/watch?v=8UGiKTf0RAI)
+[![Watch Friction on YouTube](https://img.youtube.com/vi/8UGiKTf0RAI/maxresdefault.jpg)](https://www.youtube.com/watch?v=8UGiKTf0RAI)
 
 
 ## Why it stands out
@@ -31,14 +31,31 @@ Built for [Hack the North 2026](https://devpost.com/software/friction-z0xgf6).
 
 The control room shows the scan as a live task tree and streams run events as they happen. The report brings each fix together with a **Before / After** comparison and the evidence behind the verdict.
 
-## Product demo
+## Run it locally
 
-1. Start the app in [mock mode](SETUP.md#quick-start).
-2. Open the control room and click **Replay the golden run**, or enter a URL and choose **Scan & test**.
-3. Select a task to watch the agent work through the browser.
-4. Open the report to see ranked findings, screenshots, and fix verification.
+The full local stack starts with one command:
 
-For the full live browser setup, environment variables, deployment notes, and demo runbook, see **[SETUP.md](SETUP.md)**. Start from **[.env.example](.env.example)** when enabling live runs.
+```bash
+pnpm install
+pnpm dev
+```
+
+That starts the control room, local Cloudflare Worker, and Node orchestrator together. No credentials are needed: with no complete set of live keys, the orchestrator automatically replays the deterministic golden run through the same Worker, event stream, findings, and verification UI. Add the values from **[.env.example](.env.example)** to the root `.env` and restart when you want real browser runs.
+
+Open [http://localhost:5173](http://localhost:5173). The bundled golden run is the fastest way to see the product; entering a URL exercises the full local pipeline.
+
+## Public showcase
+
+The public deployment is a static golden-run showcase. It intentionally contains no API keys, Worker, D1 database, R2 bucket, orchestrator, or live scan controls.
+
+Build and preview the same artifact locally:
+
+```bash
+pnpm build:demo
+pnpm preview:demo
+```
+
+For Cloudflare Pages settings, see **[SETUP.md](SETUP.md#deploy-the-static-golden-run-demo-with-cloudflare-pages)**. The build bundles `fixtures/golden-run.json`, so anyone can open the site and see the product story without configuring a backend.
 
 ## Screenshots
 
@@ -57,7 +74,7 @@ For the full live browser setup, environment variables, deployment notes, and de
 
 ![friction-architecture.png](public/readme/friction-architecture.png)
 
-The monorepo is split into three deployable pieces:
+The full local and live scan stack is split into three runtime pieces:
 
 | Package | Responsibility |
 | --- | --- |
@@ -70,21 +87,14 @@ The monorepo is split into three deployable pieces:
 
 `TypeScript` · `React` · `Vite` · `Node.js` · `OpenAI Responses API` · `Browserbase` · `Stagehand` · `Cloudflare Workers` · `D1` · `R2` · `GitHub REST API` · `Playwright`
 
-## Development
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Then open `http://localhost:5173`. The default setup is credential free and uses the deterministic golden run. Run the checks with:
+## Checks
 
 ```bash
 pnpm typecheck
 pnpm test
 ```
 
-More commands and the live configuration path are documented in **[SETUP.md](SETUP.md)**.
+The full local configuration, optional live keys, and static deployment notes are documented in **[SETUP.md](SETUP.md)**.
 
 ## License
 

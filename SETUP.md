@@ -15,27 +15,26 @@ pnpm install
 
 ## Quick start
 
-Copy the environment template before starting the apps:
+You do not need an `.env` file for the credential-free demo. Install dependencies and start the complete local stack:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). With no complete set of live credentials, the orchestrator automatically runs in mock mode and replays the golden run through the real control room, Worker, event stream, findings, and verification pipeline. You can also enter a URL to exercise the scan flow in mock mode.
+
+To configure live browser runs, copy the template and fill in the values you need, then restart `pnpm dev`:
 
 ```bash
 cp .env.example .env
 ```
 
-On Windows PowerShell, use:
+On Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
-
-The template is intentionally safe to copy as is. With no credentials filled in, Friction runs in mock mode and replays the golden run through the real control room, Worker, event stream, findings, and verification pipeline.
-
-Start all three local apps:
-
-```bash
-pnpm dev
-```
-
-Open [http://localhost:5173](http://localhost:5173). Choose **Replay the golden run** for the fastest demo, or enter a URL and choose **Scan & test** to exercise the scan flow in mock mode.
 
 To run the services separately:
 
@@ -110,39 +109,47 @@ pnpm --filter @friction/orchestrator smoke:scan
 pnpm --filter @friction/orchestrator smoke:pr-test
 ```
 
-## Deploying the demo
+## Deploy the static golden-run demo with Cloudflare Pages
 
-The Worker can be deployed to Cloudflare and serves the built in demo shop at `/demo-shop`:
+This is the public website path. It is intentionally only a polished showcase of the bundled golden run, so it needs no OpenAI key, Browserbase account, Worker, D1 database, R2 bucket, Node orchestrator, or secret environment variables.
+
+You can build and preview the exact static artifact locally:
 
 ```bash
-pnpm exec wrangler login
-pnpm exec wrangler d1 create friction
-pnpm exec wrangler r2 bucket create friction-evidence
-pnpm db:migrate:remote
-pnpm deploy:worker
+pnpm build:demo
+pnpm preview:demo
 ```
 
-After deployment, set `WORKER_URL` to the Worker URL. The control room can be built and deployed to Cloudflare Pages with `VITE_WORKER_URL` and `VITE_ORCHESTRATOR_URL` in `apps/control-room/.env.production`:
+Create a **Cloudflare Pages** project from the repository and use:
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `main` |
+| Root directory | `/` (the repository root) |
+| Build command | `pnpm build:demo` |
+| Build output directory | `apps/control-room/dist` |
+
+Leave the deploy command empty. Under **Environment variables**, add these build variables for Production (and Preview if you want preview deployments):
 
 ```dotenv
-VITE_WORKER_URL=https://friction-worker.<your-subdomain>.workers.dev
-VITE_ORCHESTRATOR_URL=http://127.0.0.1:8788
+NODE_VERSION=22.12.0
+PNPM_VERSION=11.4.0
 ```
 
-```bash
-pnpm deploy:pages
-```
+These are tool versions, not secrets. Do not add API keys or `VITE_WORKER_URL` / `VITE_ORCHESTRATOR_URL`; `pnpm build:demo` sets demo mode during the build.
 
-For a hosted live scan, the orchestrator still needs to run somewhere that can reach the Worker, OpenAI, Browserbase, and any configured GitHub repository.
+The animated preview on the landing page replays data from `fixtures/golden-run.json`, and demo mode removes backend polling and live scan controls so visitors see a deliberate showcase instead of failed requests.
+
+The full URL scan form is available in the local app from `pnpm dev`; it is deliberately omitted from this public static build.
 
 ## Demo flow
 
-For a polished walkthrough, point Friction at the deployed `/demo-shop` route or use the built in replay:
+For the complete local walkthrough:
 
-1. Show the URL input and start a scan.
-2. Open a task node and let the live event stream show the agent navigating.
-3. Open the report and show a repeated issue with screenshot evidence.
-4. Open the fix card and compare the primary and verification lanes.
-5. If GitHub is configured, preview or open the draft PR with its regression test.
+1. Run `pnpm dev` and open [http://localhost:5173](http://localhost:5173).
+2. Enter `http://127.0.0.1:8787/demo-shop` and start a scan.
+3. Open a task node and let the live event stream show the agent navigating.
+4. Open the report and show ranked findings, screenshot evidence, and fix verification.
+5. If GitHub is configured, preview the draft PR and generated regression test.
 
-Live scans use one browser run per generated task and may run additional verification sessions. Mock mode is the fastest and cheapest way to explore the product.
+The public Cloudflare Pages build is the lightweight showcase described above; it does not run scans. Mock mode is the fastest and cheapest way to explore the complete product locally.
