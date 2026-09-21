@@ -11,6 +11,8 @@ If the fix is verified and can be mapped back to the source, Friction can open a
 
 Built for [Hack the North 2026](https://devpost.com/software/friction-z0xgf6).
 
+Source code: [GitHub repository](https://github.com/CryoJS/friction)
+
 ## Watch the demo
 
 [![Watch Friction on YouTube](https://img.youtube.com/vi/8UGiKTf0RAI/maxresdefault.jpg)](https://www.youtube.com/watch?v=8UGiKTf0RAI)
@@ -40,13 +42,13 @@ pnpm install
 pnpm dev
 ```
 
-That starts the control room, local Cloudflare Worker, and Node orchestrator together. No credentials are needed: with no complete set of live keys, the orchestrator automatically replays the deterministic golden run through the same Worker, event stream, findings, and verification UI. Add the values from **[.env.example](.env.example)** to the root `.env` and restart when you want real browser runs.
+That starts the control room, local Cloudflare Worker, and Node orchestrator together. No credentials are needed: with no complete set of live keys, the orchestrator automatically replays the deterministic golden run through the same Worker, event stream, findings, and verification UI. Add the values from **[.env.example](.env.example)** to the root `.env` and restart when you want real browser runs. See **[SETUP.md](SETUP.md)** for API key configuration and the local GitHub workflow; the source is available in the [GitHub repository](https://github.com/CryoJS/friction).
 
 Open [http://localhost:5173](http://localhost:5173). The bundled golden run is the fastest way to see the product; entering a URL exercises the full local pipeline.
 
 ## Public showcase
 
-The public deployment is a static golden-run showcase. It intentionally contains no API keys, Worker, D1 database, R2 bucket, orchestrator, or live scan controls.
+The public deployment is a static golden-run showcase. It intentionally contains no API keys, Worker, D1 database, R2 bucket, orchestrator, or live scan controls. Click **Start mock run** on the site to open the bundled results, or watch the full walkthrough above.
 
 Build and preview the same artifact locally:
 

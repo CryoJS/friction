@@ -4,7 +4,7 @@ This guide gets the project running locally. You can explore the complete demo w
 
 ## Prerequisites
 
-- Node.js 22.12 or newer
+- Node.js 22.22.2 or newer
 - pnpm 11 (`corepack enable` will use the version pinned in `package.json`)
 
 Install dependencies from the repository root:
@@ -132,7 +132,7 @@ Create a **Cloudflare Pages** project from the repository and use:
 Leave the deploy command empty. Under **Environment variables**, add these build variables for Production (and Preview if you want preview deployments):
 
 ```dotenv
-NODE_VERSION=22.12.0
+NODE_VERSION=22.22.2
 PNPM_VERSION=11.4.0
 ```
 

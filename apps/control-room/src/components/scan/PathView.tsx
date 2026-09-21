@@ -391,7 +391,7 @@ function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenAnnotation, o
       style={{ paddingLeft: `${sidebar ? 12 + row.depth * 16 : 20 + row.depth * 24}px` }}
       className={`path-directory-row grid ${sidebar ? "min-h-0 grid-cols-[minmax(0,1fr)_56px] gap-2 py-2 pr-3" : "min-h-16 grid-cols-[minmax(0,1fr)_auto_64px] gap-3 py-3 pr-4"} items-center border-b border-hairline/10 transition-colors last:border-b-0 hover:bg-white/4 ${sidebar ? "sm:grid-cols-[minmax(0,1fr)_64px] sm:pr-3" : "sm:grid-cols-[minmax(0,1fr)_auto_80px] sm:pr-5"}`}
     >
-      <div className={`flex min-w-0 ${sidebar ? "flex-col items-start gap-1" : "items-center gap-3"}`}>
+      <div className={`flex min-w-0 ${sidebar ? "flex-col items-start gap-1" : "flex-wrap items-center gap-3"}`}>
         <button
           type="button"
           disabled={!row.hasChildren && !onSelectPath}
@@ -401,18 +401,18 @@ function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenAnnotation, o
             if (row.hasChildren) onToggle(row.key);
             onSelectPath?.(row.key);
           }}
-          className={`flex min-w-0 items-center gap-2 text-left text-smoke transition-colors hover:text-white disabled:cursor-default disabled:hover:text-smoke ${sidebar ? "w-full" : ""}`}
+          className={`flex min-w-0 max-w-full items-start gap-2 text-left text-smoke transition-colors hover:text-white disabled:cursor-default disabled:hover:text-smoke ${sidebar ? "w-full" : "shrink-0"}`}
         >
           {row.hasChildren ? row.collapsed ? <ChevronRight size={15} className="shrink-0" /> : <ChevronDown size={15} className="shrink-0" /> : <span aria-hidden="true" className="h-4 w-4 shrink-0" />}
-          <span className="min-w-0 max-w-full">
-            <span className={`block truncate font-mono text-ui tracking-normal ${row.root ? "text-white" : "text-bone"}`} title={row.title}>
+          <span className="min-w-0 max-w-full flex-1">
+            <span className={`block whitespace-normal break-words font-mono text-ui tracking-normal ${row.root ? "text-white" : "text-bone"}`} title={row.title}>
               {row.label}
             </span>
             {!sidebar && (row.root ? <span className="mt-0.5 block text-caption text-smoke">Starting path</span> : row.kind === "panel" ? <span className="mt-0.5 block text-caption text-smoke">Panel</span> : null)}
           </span>
         </button>
 
-        {!sidebar && <div className="flex shrink-0 flex-wrap justify-start gap-1.5" aria-label={`${row.agents.length} agents on this path`}>
+        {!sidebar && <div className="flex min-w-0 max-w-full flex-wrap justify-start gap-1.5" aria-label={`${row.agents.length} agents on this path`}>
           {row.agents.map((task) => <AgentMarker key={task.runId} task={task} onSelectNode={onSelectNode} />)}
         </div>}
 
@@ -423,7 +423,7 @@ function PathRow({ row, onToggle, onSelectNode, onOpenIssue, onOpenAnnotation, o
         )}
       </div>
 
-      {!sidebar && <div className="flex min-w-7 justify-end gap-1.5" aria-label={`${row.issues.length} issues on this path`}>
+      {!sidebar && <div className="flex min-w-7 max-w-full flex-wrap justify-end gap-1.5" aria-label={`${row.issues.length} issues on this path`}>
         {row.issues.map((issue) => <IssueMarker key={issue.key} issue={issue} onOpenIssue={onOpenIssue} onOpenAnnotation={onOpenAnnotation} />)}
       </div>}
 
@@ -461,7 +461,7 @@ function PreviewDialog({ preview, onClose }: { preview: ExpandedPreview; onClose
         <div className="path-preview-header">
           <div className="min-w-0">
             <p className="text-caption text-smoke">Preview</p>
-            <h2 id="path-preview-title" className="mt-1 truncate font-mono text-ui font-medium tracking-normal text-white" title={preview.label}>
+            <h2 id="path-preview-title" className="mt-1 whitespace-normal break-words font-mono text-ui font-medium tracking-normal text-white" title={preview.label}>
               {preview.label}
             </h2>
           </div>

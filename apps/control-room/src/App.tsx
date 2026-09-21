@@ -5,6 +5,7 @@ import { Plus } from "./components/icons";
 import { NewScanDialog } from "./components/NewScanDialog";
 import { ScanPage } from "./components/scan/ScanPage";
 import { ScanViewTabs, type ScanView } from "./components/scan/ScanGraph";
+import { DEMO_MODE } from "./lib/config";
 import { useQuery, type Tab } from "./lib/useQuery";
 
 export default function App() {
@@ -57,7 +58,7 @@ export default function App() {
   const closeNewScan = useCallback(() => setNewScanOpen(false), []);
 
   // The scan view keeps the launcher available without taking the user away from the current scan.
-  const newScan = (
+  const newScan = DEMO_MODE ? null : (
     <button type="button" onClick={openNewScan} className="pill-cta h-8.5 px-3.5 text-ui sm:px-4" aria-label="New scan">
       <Plus size={14} />
       <span className="hidden sm:inline">New scan</span>

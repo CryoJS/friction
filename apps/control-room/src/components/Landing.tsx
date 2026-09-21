@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ScanListItem } from "@friction/shared";
 import { api } from "../lib/api";
 import { DEMO_MODE } from "../lib/config";
+import { createDemoScanId } from "../lib/demo";
 import { shortUrl, timeAgo } from "../lib/format";
 import { SCAN_STATUS } from "../lib/scan";
 import { AgentAmbient } from "./AgentAmbient";
@@ -73,7 +74,7 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
 
           <div className="mt-16 grid grid-cols-[minmax(0,1fr)] items-end gap-10 lg:grid-cols-2 lg:gap-14">
             <div className="pb-10 lg:pb-14">
-              {DEMO_MODE ? <DemoCard /> : <div className="dusk-pool"><ScanForm onStarted={onOpenScan} /></div>}
+              {DEMO_MODE ? <DemoCard onStart={() => onOpenScan(createDemoScanId())} /> : <div className="dusk-pool"><ScanForm onStarted={onOpenScan} /></div>}
             </div>
 
             <div className="-mx-2 sm:mx-0">
@@ -86,13 +87,20 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
       {/* -------------------------------------------------------- recent scans */}
       <section id="scans" className="mx-auto max-w-300 scroll-mt-24 px-4 pb-24 pt-16 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">{DEMO_MODE ? "The golden run" : "Recent scans"}</h2>
+          <h2 className="font-heading text-[32px] font-semibold leading-tight tracking-tight text-bone">{DEMO_MODE ? "An interactive demo" : "Recent scans"}</h2>
         </div>
 
         <div className="relative mt-6 overflow-hidden rounded-card border border-hairline/10 bg-white/4">
           <div aria-hidden="true" className="wash absolute inset-x-0 top-0 h-px" style={{ backgroundPosition: "50% 0" }} />
           {DEMO_MODE && (
-            <p className="px-6 py-6 text-body text-ash">A deterministic golden run is bundled into this showcase. The full scan form is available when you run the local stack.</p>
+            <p className="px-6 py-6 text-body text-white/80">
+              <span className="block">A deterministic mock run is bundled into this showcase.</span>
+              <span className="mt-1 block">
+                Start it above, or visit the{" "}
+                <a href="https://github.com/CryoJS/friction" target="_blank" rel="noreferrer" className="text-white underline decoration-white/40 underline-offset-4 transition-colors hover:decoration-white">GitHub repository</a>{" "}
+                to run the full local stack with API keys.
+              </span>
+            </p>
           )}
           {!DEMO_MODE && scans.status === "loading" && <p className="px-6 py-6 text-body text-smoke">Loading scans…</p>}
           {!DEMO_MODE && scans.status === "down" && (
@@ -160,15 +168,19 @@ export function Landing({ onOpenScan, onOverHero, scrollerRef }: Props) {
   );
 }
 
-function DemoCard() {
+function DemoCard({ onStart }: { onStart: () => void }) {
   return (
     <div className="dusk-pool p-6 sm:p-8">
-      <p className="text-caption uppercase tracking-[0.18em] text-smoke">Static showcase</p>
-      <h2 className="mt-3 font-heading text-heading-sm font-medium tracking-[-0.02em] text-white">Explore the golden run.</h2>
-      <p className="mt-3 max-w-md text-body text-ash">This build bundles a deterministic Friction run so you can see the product story without a backend, API keys, or a live scan.</p>
-      <a href="https://www.youtube.com/watch?v=8UGiKTf0RAI" target="_blank" rel="noreferrer" className="pill-cta mt-6 inline-flex h-10 px-4 text-ui">
-        Watch the full demo <ArrowRight size={15} />
-      </a>
+      <h2 className="font-heading text-heading-sm font-medium tracking-[-0.02em] text-white">Explore the static showcase.</h2>
+      <p className="mt-3 max-w-md text-body text-white/80">This build bundles a deterministic Friction run so you can see the product story without a backend, API keys, or a live scan.</p>
+      <div className="mt-6 flex flex-wrap gap-2">
+        <button type="button" onClick={onStart} className="pill-cta h-10 px-4 text-ui">
+          Start mock run <ArrowRight size={15} />
+        </button>
+        <a href="https://www.youtube.com/watch?v=8UGiKTf0RAI" target="_blank" rel="noreferrer" className="pill-ghost h-10 px-4 text-ui">
+          Watch the full demo <ArrowRight size={15} />
+        </a>
+      </div>
     </div>
   );
 }

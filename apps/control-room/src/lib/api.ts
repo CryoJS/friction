@@ -12,7 +12,8 @@ import type {
   ScanReportResponse,
   ScanTreeResponse,
 } from "@friction/shared";
-import { ORCHESTRATOR_URL, WORKER_URL } from "./config";
+import { getDemoAnnotations, getDemoFixes, getDemoRunReport, getDemoScanReport, getDemoSnapshot, getDemoTree, isDemoRunId, isDemoScanId } from "./demo";
+import { DEMO_MODE, ORCHESTRATOR_URL, WORKER_URL } from "./config";
 
 export class ApiError extends Error {
   constructor(
@@ -113,20 +114,20 @@ export const api = {
   githubSetAllowed: (repos: string[]) => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github/allowed`, json({ repos }), 30_000),
   githubDisconnect: () => request<GitHubConnectionStatus>(`${ORCHESTRATOR_URL}/github/disconnect`, json({}), 8000),
 
-  listScans: () => request<ScanListResponse>(`${WORKER_URL}/api/scans?limit=12`, undefined, 5000),
-  getScanTree: (scanId: string) => request<ScanTreeResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}`, undefined, 6000),
+  listScans: () => DEMO_MODE ? Promise.resolve<ScanListResponse>({ scans: [] }) : request<ScanListResponse>(`${WORKER_URL}/api/scans?limit=12`, undefined, 5000),
+  getScanTree: (scanId: string) => DEMO_MODE && isDemoScanId(scanId) ? Promise.resolve(getDemoTree(scanId)) : request<ScanTreeResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}`, undefined, 6000),
   getScanReport: (scanId: string) =>
-    request<ScanReportResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}/report`, undefined, 8000),
+    DEMO_MODE && isDemoScanId(scanId) ? Promise.resolve(getDemoScanReport(scanId)) : request<ScanReportResponse>(`${WORKER_URL}/api/scans/${encodeURIComponent(scanId)}/report`, undefined, 8000),
 
   /** This scan's own findings, in the overlay's flattened shape -- what the offline bookmarklet can inline. `token` is the scan id, per GET /api/annotations's host-or-token contract. */
   getAnnotations: (scanId: string) =>
-    request<AnnotationsResponse>(`${WORKER_URL}/api/annotations?token=${encodeURIComponent(scanId)}`, undefined, 8000),
+    DEMO_MODE && isDemoScanId(scanId) ? Promise.resolve(getDemoAnnotations(scanId)) : request<AnnotationsResponse>(`${WORKER_URL}/api/annotations?token=${encodeURIComponent(scanId)}`, undefined, 8000),
 
   /** Every fix of one run, newest state per finding: what the issue cards show as the proposed fix. */
-  getFixes: (runId: string) => request<FixListResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/fixes`, undefined, 6000),
+  getFixes: (runId: string) => DEMO_MODE && isDemoRunId(runId) ? Promise.resolve(getDemoFixes(runId)) : request<FixListResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/fixes`, undefined, 6000),
 
-  getSnapshot: (runId: string) => request<RunSnapshot>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}`, undefined, 6000),
-  getReport: (runId: string) => request<ReportResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/report`, undefined, 6000),
+  getSnapshot: (runId: string) => DEMO_MODE && isDemoRunId(runId) ? Promise.resolve(getDemoSnapshot(runId)) : request<RunSnapshot>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}`, undefined, 6000),
+  getReport: (runId: string) => DEMO_MODE && isDemoRunId(runId) ? Promise.resolve(getDemoRunReport(runId)) : request<ReportResponse>(`${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/report`, undefined, 6000),
 
   streamUrl(runId: string, after: string): string {
     const base = `${WORKER_URL}/api/runs/${encodeURIComponent(runId)}/stream`;

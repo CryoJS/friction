@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_VIEWPORT, GOLDEN_EVIDENCE_PREFIX, mockScreenshotDataUri, type BBox, type StepPayload, type Viewport } from "@friction/shared";
 import { api } from "../lib/api";
+import { DEMO_MODE } from "../lib/config";
+import { goldenPayloadForScreenshot } from "../lib/demo";
 
 /** What we need from a step to show it as evidence. ReportEvidence and StepPayload both fit. */
 export interface EvidenceSource {
@@ -21,7 +23,7 @@ type Stage = "network" | "wireframe" | "missing";
  */
 function firstStage(source: EvidenceSource): Stage {
   if (!source.screenshotKey) return source.payload ? "wireframe" : "missing";
-  if (source.screenshotKey.startsWith(GOLDEN_EVIDENCE_PREFIX) && source.payload) return "wireframe";
+  if (source.screenshotKey.startsWith(GOLDEN_EVIDENCE_PREFIX) && (source.payload || (DEMO_MODE && goldenPayloadForScreenshot(source.screenshotKey)))) return "wireframe";
   return "network";
 }
 
@@ -39,11 +41,13 @@ export function EvidenceImage({ source, boxClass = "border-white", label, classN
   useEffect(() => setStage(firstStage(source)), [source.screenshotKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const viewport = source.viewport ?? DEFAULT_VIEWPORT;
-  const canWireframe = Boolean(source.payload) && (source.screenshotKey.endsWith(".svg") || !source.screenshotKey);
+  const demoPayload = DEMO_MODE ? goldenPayloadForScreenshot(source.screenshotKey) : null;
+  const wireframePayload = source.payload ?? demoPayload;
+  const canWireframe = Boolean(wireframePayload) && (source.screenshotKey.endsWith(".svg") || !source.screenshotKey);
 
   let src: string | null = null;
   if (stage === "network") src = api.evidenceUrl(source.screenshotKey);
-  else if (stage === "wireframe" && source.payload) src = mockScreenshotDataUri(source.payload);
+  else if (stage === "wireframe" && wireframePayload) src = mockScreenshotDataUri(wireframePayload);
 
   const box = source.bbox && src ? clampBox(source.bbox, viewport) : null;
 
